@@ -119,6 +119,16 @@ td.num{font-variant-numeric:tabular-nums;font-weight:600;}
 .age-block .n{font-size:2.2rem;font-weight:800;line-height:1;}
 .age-block .l{font-size:.72rem;color:var(--g400);margin-top:3px;}
 .age-arrow{font-size:1.4rem;color:var(--g400);}
+.guide{margin:4px 0 6px;border:1px solid var(--g200);border-radius:10px;background:var(--g50);}
+.guide>summary{cursor:pointer;list-style:none;padding:10px 12px;font-size:.8rem;font-weight:700;color:var(--pri);user-select:none;}
+.guide>summary::-webkit-details-marker{display:none;}
+.guide[open]>summary{border-bottom:1px solid var(--g200);}
+.guide-body{padding:10px 14px 12px;}
+.guide-note{font-size:.76rem;color:var(--g600);line-height:1.6;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:10px;}
+.guide-body ol{margin:0 0 6px 1.1rem;padding:0;}
+.guide-body li{font-size:.79rem;color:var(--g700);line-height:1.65;margin-bottom:5px;}
+.guide-body code{background:var(--g100);border-radius:5px;padding:1px 5px;font-size:.74rem;color:var(--prid);font-family:'DM Mono',ui-monospace,monospace;}
+.guide-tip{font-size:.75rem;color:var(--g600);line-height:1.6;background:#f0fdfa;border-radius:8px;padding:8px 10px;margin-top:4px;}
 
 /* ===== 足部訓練（scoped under #foot-app）===== */
 :root{
@@ -635,6 +645,22 @@ td.num{font-variant-numeric:tabular-nums;font-weight:600;}
       連結後可跨裝置雲端同步、自動比對、每週自動產生健康週報（Email）。設定方式見 <b>health-backend.gs</b> 說明。
     </div>
     <div class="fg"><label class="fl">Apps Script 部署網址</label><input class="fi" id="set-gas" type="url" placeholder="https://script.google.com/macros/s/…/exec"></div>
+    <details class="guide">
+      <summary>❓ 這個網址要填什麼？如何取得？</summary>
+      <div class="guide-body">
+        <div class="guide-note">此欄為<b>選填</b>。不填也能正常使用（資料存在本機）；填了才能跨裝置雲端同步、每日/每週自動 Email 守護。網址需<b>你本人</b>用自己的 Google 帳號部署後才會產生。</div>
+        <ol>
+          <li><b>建立專案：</b>開一份新的 Google 試算表 →「擴充功能」→「Apps Script」。</li>
+          <li><b>貼程式碼：</b>把 <code>health-backend.gs</code> 全部內容貼進去（取代原本的 <code>myFunction</code>）→ 存檔。</li>
+          <li><b>先授權：</b>函式選 <code>setupSheets</code> → 執行 → 依指示授權你的帳號（進階 → 前往 → 允許）。</li>
+          <li><b>部署：</b>右上「部署 → 新增部署作業」→ 類型選「<b>網頁應用程式</b>」。</li>
+          <li><b>關鍵設定：</b>執行身分＝<b>我</b>；誰可以存取＝<b>所有人（Anyone）</b>。按「部署」再授權一次。</li>
+          <li><b>複製網址：</b>完成後顯示的「網頁應用程式網址」（結尾是 <code>/exec</code>），整串貼到上方欄位。</li>
+          <li>回到這裡按「🔌 測試連線」，出現連線正常即完成。</li>
+        </ol>
+        <div class="guide-tip">💡 網址結尾一定是 <code>/exec</code>（不是 <code>/dev</code>）。「誰可以存取」若不是「所有人」，測試連線會失敗。日後改了程式碼：部署 → 管理部署作業 → 編輯 → 版本選「新版本」，網址不變。</div>
+      </div>
+    </details>
     <label style="display:flex;align-items:center;gap:6px;font-size:.82rem;margin:8px 0;"><input type="checkbox" id="set-autosync"> 存為紀錄點時自動同步雲端</label>
     <div class="row-btn">
       <button class="btn bp" onclick="testCloud()">🔌 測試連線</button>
