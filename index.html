@@ -435,6 +435,16 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   <div class="disc">🔗 <b>資料串接說明：</b>台灣全民健保基於安全設計，<b>未開放</b>第三方 App 直接讀取。正確流程是：由你本人到 <b>健保快易通／健康存摺</b> 匯出自己的資料（FHIR/JSON），再於此匯入，系統會自動解析檢驗值並帶入評估。所有解析都在你的瀏覽器完成，資料不外傳。</div>
 
   <div class="card">
+    <div class="ct">📷 檢驗報告圖片辨識 <span class="hint">（AI 視覺）</span></div>
+    <div class="hint" style="line-height:1.6;margin-bottom:10px;">
+      拍照或上傳健檢／檢驗報告圖片，AI 自動辨識血壓、血糖、膽固醇等數值，核對後一鍵存成紀錄點。需先在「設定」填入 Gemini 或 OpenAI API Key。<b>辨識時圖片會傳送至你所設定的 AI 服務（Google／OpenAI）判讀。</b>
+    </div>
+    <button class="btn bp" onclick="document.getElementById('fileImg').click()">📷 拍照 / 選擇報告圖片</button>
+    <input type="file" id="fileImg" accept="image/*" style="display:none;" onchange="handleImageImport(event)">
+    <div id="imgStatus" class="hint" style="margin-top:8px;"></div>
+  </div>
+
+  <div class="card">
     <div class="ct">🏥 健康存摺（My Health Bank）</div>
     <div class="hint" style="line-height:1.6;margin-bottom:10px;">
       步驟：健保快易通 App 或 <a class="link" href="https://myhealthbank.nhi.gov.tw/" target="_blank">健康存摺網站</a> → 登入 → 下載／匯出（FHIR 或 JSON）→ 於此上傳。<br>
@@ -466,7 +476,8 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
     <div class="ct">✅ 匯入結果</div>
     <div id="importResult"></div>
     <div class="row-btn">
-      <button class="btn bp" onclick="applyImport()">➡️ 帶入健康評估</button>
+      <button class="btn bp" onclick="applyImportAndSave()">💾 帶入並存成紀錄</button>
+      <button class="btn bg" onclick="applyImport()">➡️ 只帶入評估表</button>
       <button class="btn bg" onclick="go('assess')">📝 前往評估表</button>
     </div>
   </div>
@@ -1536,6 +1547,7 @@ const LOINC={
   '8302-2':'height','8867-4':'hr','4548-4':'hba1c','4549-2':'hba1c','17856-6':'hba1c'
 };
 const FIELD_LABEL={sbp:'收縮壓',dbp:'舒張壓',glucose:'空腹血糖',chol:'總膽固醇',hdl:'HDL',
+  ldl:'LDL',tg:'三酸甘油酯',waist:'腰圍',
   weight:'體重',height:'身高',hr:'靜止心率',hba1c:'糖化血色素',exercise:'每週運動',sleep:'睡眠'};
 
 function handleImport(e,kind){
@@ -1553,6 +1565,99 @@ function handleImport(e,kind){
     }catch(err){toast('解析失敗：'+err.message);}
   };
   rd.readAsText(f);e.target.value='';
+}
+
+/* ---- 檢驗報告圖片辨識（AI 視覺） ---- */
+async function handleImageImport(e){
+  const f=e.target.files[0];if(!f){return;}
+  e.target.value='';
+  const s=state.settings;
+  if(!s.gemini&&!s.openai){toast('請先到「設定」填入 Gemini 或 OpenAI API Key');go('settings');return;}
+  const st=document.getElementById('imgStatus');
+  const setSt=(t,c)=>{if(st){st.textContent=t;st.style.color=c||'var(--g600)';}};
+  setSt('壓縮圖片中…');
+  try{
+    const dataUrl=await resizeImage(f,1600);
+    setSt('🔍 AI 辨識中…（約 5–15 秒，請稍候）');
+    const raw=await visionExtract(dataUrl);
+    const parsed=parseVisionJSON(raw);
+    const fields=cleanLabFields(parsed.fields||{});
+    if(!Object.keys(fields).length){setSt('⚠️ 未辨識到可用數值，請換清晰、正對的圖片再試一次','var(--err)');return;}
+    const notes=['📷 AI 視覺辨識結果，請務必核對數值是否正確再存檔'];
+    (parsed.notes||[]).forEach(n=>{if(n)notes.push(String(n));});
+    pendingImport={kind:'image',fields,notes};
+    renderImportResult();go('connect');
+    setSt('✅ 辨識完成，請於下方「匯入結果」核對後存檔');
+    toast('✅ 辨識完成');
+  }catch(err){setSt('⚠️ 辨識失敗：'+err.message,'var(--err)');}
+}
+function resizeImage(file,maxDim){
+  return new Promise((resolve,reject)=>{
+    const rd=new FileReader();
+    rd.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        let w=img.width,h=img.height;
+        if(Math.max(w,h)>maxDim){const sc=maxDim/Math.max(w,h);w=Math.round(w*sc);h=Math.round(h*sc);}
+        try{
+          const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+          cv.getContext('2d').drawImage(img,0,0,w,h);
+          resolve(cv.toDataURL('image/jpeg',0.85));
+        }catch(err){resolve(rd.result);}
+      };
+      img.onerror=()=>reject(new Error('圖片讀取失敗'));
+      img.src=rd.result;
+    };
+    rd.onerror=()=>reject(new Error('檔案讀取失敗'));
+    rd.readAsDataURL(file);
+  });
+}
+const VISION_PROMPT=`你是醫療檢驗報告的資料擷取助手。這是一張健康檢查／檢驗報告的圖片。請擷取其中的檢驗數值，只回傳 JSON、不要任何多餘文字或說明。
+JSON 格式：
+{"fields":{"sbp":收縮壓,"dbp":舒張壓,"glucose":空腹血糖,"chol":總膽固醇,"hdl":HDL,"ldl":LDL,"tg":三酸甘油酯,"hba1c":糖化血色素,"weight":體重,"height":身高,"waist":腰圍,"hr":心率},"notes":["補充說明或異常標記"]}
+規則：
+- 只放你在圖片中實際看到的數值；找不到的欄位直接省略，不要猜測或填 0。
+- 數值只放數字（去掉單位）。單位若不同請換算：血糖／膽固醇／HDL／LDL／TG 用 mg/dL；體重 kg；身高／腰圍 cm；HbA1c 用 %。
+- 若同一項目有多筆，取最新一次或有標註參考值那筆。
+- notes 用繁體中文，列出無法確定或超出參考範圍的項目。`;
+async function visionExtract(dataUrl){
+  const s=state.settings;
+  const useGemini=s.engine==='gemini'||(s.engine!=='openai'&&s.gemini);
+  if(useGemini&&s.gemini)return callGeminiVision(s.gemini,dataUrl,VISION_PROMPT);
+  if(s.openai)return callOpenAIVision(s.openai,dataUrl,VISION_PROMPT);
+  return callGeminiVision(s.gemini,dataUrl,VISION_PROMPT);
+}
+async function callGeminiVision(key,dataUrl,prompt){
+  const m=dataUrl.match(/^data:(.*?);base64,(.*)$/);
+  const mime=m?m[1]:'image/jpeg',b64=m?m[2]:'';
+  const url=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+  const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({contents:[{parts:[{text:prompt},{inline_data:{mime_type:mime,data:b64}}]}],
+      generationConfig:{temperature:0,responseMimeType:'application/json'}})});
+  if(!res.ok)throw new Error('HTTP '+res.status+'（請確認 Gemini 金鑰與額度）');
+  const d=await res.json();
+  return d.candidates?.[0]?.content?.parts?.[0]?.text||'';
+}
+async function callOpenAIVision(key,dataUrl,prompt){
+  const res=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+    body:JSON.stringify({model:'gpt-4o-mini',temperature:0,response_format:{type:'json_object'},
+      messages:[{role:'user',content:[{type:'text',text:prompt},{type:'image_url',image_url:{url:dataUrl}}]}]})});
+  if(!res.ok)throw new Error('HTTP '+res.status+'（請確認 OpenAI 金鑰與額度）');
+  const d=await res.json();
+  return d.choices?.[0]?.message?.content||'';
+}
+function parseVisionJSON(raw){
+  if(!raw)return {};
+  let t=String(raw).trim().replace(/^```(?:json)?/i,'').replace(/```$/,'').trim();
+  const m=t.match(/\{[\s\S]*\}/);if(m)t=m[0];
+  try{return JSON.parse(t);}catch(e){return {};}
+}
+function cleanLabFields(obj){
+  const allow=['sbp','dbp','glucose','chol','hdl','ldl','tg','hba1c','weight','height','waist','hr'];
+  const out={};
+  allow.forEach(k=>{if(obj[k]!==undefined&&obj[k]!==null&&obj[k]!==''){const n=toNum(obj[k]);if(n!==null)out[k]=n;}});
+  return out;
 }
 function toNum(v){const n=parseFloat(v);return isNaN(n)?null:n;}
 function pushField(map,key,val){const n=toNum(val);if(n!==null)map[key]=n;}
@@ -1671,19 +1776,31 @@ function renderImportResult(){
   el.innerHTML=(rows||'<div class="hint">無數值</div>')+
     (pendingImport.notes.length?'<div class="hint" style="margin-top:8px;">'+pendingImport.notes.map(n=>'· '+n).join('<br>')+'</div>':'');
 }
-function applyImport(){
-  if(!pendingImport)return;
+function applyImportFields(){
+  if(!pendingImport)return false;
   const f=pendingImport.fields;
   const setV=(id,v)=>{if(v!=null)document.getElementById(id).value=v;};
   setV('in-sbp',f.sbp);setV('in-dbp',f.dbp);setV('in-glucose',f.glucose);
   setV('in-chol',f.chol);setV('in-hdl',f.hdl);setV('in-weight',f.weight);
-  setV('in-height',f.height);setV('in-hr',f.hr);setV('in-exercise',f.exercise);setV('in-sleep',f.sleep);
-  // 上傳檢驗值到雲端（若已連線）
+  setV('in-height',f.height);setV('in-waist',f.waist);setV('in-hr',f.hr);
+  setV('in-exercise',f.exercise);setV('in-sleep',f.sleep);
+  // 上傳檢驗值到雲端（若已連結 Apps Script）
   if(state.settings.gas){
     const labs=Object.keys(f).map(k=>({metric:k,value:f[k],source:pendingImport.kind,measuredAt:new Date().toISOString()}));
     gasPost({action:'importLabs',labs}).catch(()=>{});
   }
+  return true;
+}
+function applyImport(){
+  if(!applyImportFields())return;
   go('assess');toast('✅ 已帶入評估表，請確認後產生預測');
+}
+function applyImportAndSave(){
+  if(!applyImportFields())return;
+  const p=readProfile();
+  if(!p.age||!p.height||!p.weight){go('assess');toast('請先補齊 年齡／身高／體重 再存成紀錄');return;}
+  saveSnapshot();          // 計算並存為紀錄點（含雲端自動同步）
+  go('trend');
 }
 
 /* ============ 智慧預警：主動警示 + 未來預測 + 方案模擬 ============ */
