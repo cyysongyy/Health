@@ -661,12 +661,23 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   </div>
   <div id="labsContent" style="display:none;">
     <div class="card">
-      <div class="ct">🧪 最新檢驗值 <span class="hint" id="labsCount"></span></div>
+      <div class="ct">🧪 檢驗總覽 <span class="hint" id="labsCount"></span></div>
+      <div id="labsSummary" class="disc" style="margin-bottom:10px;display:none;"></div>
       <div id="labsLatest" class="sg" style="grid-template-columns:repeat(2,1fr);"></div>
       <div class="hint" style="margin-top:4px;">顏色：<span style="color:var(--ok);font-weight:700;">正常</span> · <span style="color:var(--warn);font-weight:700;">偏高／注意</span> · <span style="color:var(--err);font-weight:700;">過高</span>（僅供參考，非診斷）</div>
     </div>
     <div class="card">
-      <div class="ct">📈 單項趨勢</div>
+      <div class="ct">🔍 資料檢視</div>
+      <div class="seg" id="labViewSeg" style="margin-bottom:12px;"></div>
+      <div id="labOverall"><div style="overflow-x:auto;"><table id="labAnalysisTable"></table></div></div>
+      <div id="labSingle" style="display:none;">
+        <div class="fg"><label class="fl">選擇一筆紀錄（依時間）</label>
+          <select class="fs" id="labRecordSel" onchange="labPickRecord(this.value)"></select></div>
+        <div style="overflow-x:auto;"><table id="labSingleTable"></table></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="ct">📈 單項時序趨勢 <span class="hint">同一項目跨時間變化</span></div>
       <div class="seg" id="labMetricSeg" style="margin-bottom:10px;"></div>
       <div class="cw" id="labChartWrap"><canvas id="labChart"></canvas></div>
       <div style="overflow-x:auto;margin-top:8px;"><table id="labHistTable"></table></div>
@@ -1346,7 +1357,22 @@ function labFlag(metric,v){
     default: return 'ok';
   }
 }
-let curLab=null;
+const LAB_GOOD={sbp:'down',dbp:'down',glucose:'down',hba1c:'down',chol:'down',ldl:'down',tg:'down',waist:'down',weight:'down',hdl:'up'};
+let curLab=null, labView='overall', labSingleId=null;
+function labStats(metric){
+  const s=labSeries(metric);
+  if(!s.length)return null;
+  const vals=s.map(x=>x.value);
+  const first=s[0], last=s[s.length-1];
+  const delta=Math.round((last.value-first.value)*100)/100;
+  const good=LAB_GOOD[metric];
+  let dir='flat';
+  if(delta!==0&&good) dir=((good==='down'&&delta<0)||(good==='up'&&delta>0))?'better':'worse';
+  else if(delta!==0) dir='changed';
+  return {n:s.length, first, last, delta, dir,
+    min:Math.min.apply(null,vals), max:Math.max.apply(null,vals),
+    avg:Math.round(vals.reduce((a,b)=>a+b,0)/vals.length*10)/10};
+}
 function recordLabEntry(fields,source){
   const values={};
   Object.keys(LAB_META).forEach(k=>{const n=toNum(fields[k]); if(n!==null) values[k]=n;});
@@ -1379,6 +1405,25 @@ function renderLabs(){
     const m=LAB_META[k],col=FLAG_COLOR[labFlag(k,latest[k].v)];
     return `<div class="sc" style="border-left-color:${col};"><div class="sv" style="color:${col};">${latest[k].v}<small> ${m.unit}</small></div><div class="sl">${m.label} · ${new Date(latest[k].date).toLocaleDateString('zh-TW')}</div></div>`;
   }).join('');
+  // 總覽摘要：改善 / 惡化 / 需注意
+  let improved=0,worsened=0,attention=0;
+  present.forEach(k=>{const st=labStats(k);if(st){if(st.dir==='better')improved++;if(st.dir==='worse')worsened++;}if(labFlag(k,latest[k].v)!=='ok')attention++;});
+  const sumEl=document.getElementById('labsSummary');
+  sumEl.style.display='block';
+  sumEl.innerHTML=`共 <b>${present.length}</b> 項檢驗｜`+
+    `<span style="color:var(--ok);font-weight:700;">▼ 改善 ${improved}</span>　`+
+    `<span style="color:var(--err);font-weight:700;">▲ 惡化 ${worsened}</span>　`+
+    `<span style="color:var(--warn);font-weight:700;">⚠ 目前偏高／過高 ${attention}</span>`;
+  // 檢視模式切換
+  const vseg=document.getElementById('labViewSeg');vseg.innerHTML='';
+  [['overall','📊 總體分析'],['single','📋 單筆檢視']].forEach(([v,lbl])=>{
+    const btn=document.createElement('div');btn.className='seg-btn'+(labView===v?' on':'');btn.textContent=lbl;
+    btn.onclick=()=>{labView=v;renderLabs();};vseg.appendChild(btn);
+  });
+  document.getElementById('labOverall').style.display=labView==='overall'?'block':'none';
+  document.getElementById('labSingle').style.display=labView==='single'?'block':'none';
+  if(labView==='overall')renderLabAnalysis(present);
+  else renderLabSingle(labs);
   // 單項趨勢
   if(!curLab||!present.includes(curLab))curLab=present[0];
   const seg=document.getElementById('labMetricSeg');seg.innerHTML='';
@@ -1402,6 +1447,39 @@ function renderLabs(){
     present.map(k=>{const v=e.values&&e.values[k];if(v==null)return '<td class="num">—</td>';const fl=labFlag(k,v);return '<td class="num" style="color:'+FLAG_COLOR[fl]+';">'+v+'</td>';}).join('')+'</tr>').join('');
   document.getElementById('labAllTable').innerHTML=head+body;
 }
+function renderLabAnalysis(present){
+  const dirTxt={better:'改善',worse:'惡化',changed:'變化',flat:'持平'};
+  const dirCol={better:'var(--ok)',worse:'var(--err)',changed:'var(--g600)',flat:'var(--g400)'};
+  let html='<tr><th>項目</th><th>最新</th><th>變化(vs首次)</th><th>趨勢</th><th>範圍 / 平均</th><th>筆數</th></tr>';
+  present.forEach(k=>{
+    const m=LAB_META[k], st=labStats(k); if(!st)return;
+    const fl=labFlag(k,st.last.value);
+    const arrow=st.delta>0?'▲':st.delta<0?'▼':'＝';
+    const chg=st.n>=2?`${st.first.value} → ${st.last.value}<br><span style="font-size:.68rem;">${arrow}${Math.abs(st.delta)}</span>`:'—';
+    const trend=st.n>=2?`<span style="color:${dirCol[st.dir]};font-weight:700;font-size:.72rem;">${dirTxt[st.dir]||'—'}</span>`:'<span class="hint">單筆</span>';
+    html+=`<tr><td>${m.label}<br><span class="hint">${m.unit}</span></td>`+
+      `<td class="num" style="color:${FLAG_COLOR[fl]};font-weight:700;">${st.last.value}</td>`+
+      `<td class="num" style="font-size:.74rem;">${chg}</td>`+
+      `<td>${trend}</td>`+
+      `<td class="num" style="font-size:.72rem;">${st.min}–${st.max}<br>平均 ${st.avg}</td>`+
+      `<td class="num">${st.n}</td></tr>`;
+  });
+  document.getElementById('labAnalysisTable').innerHTML=html;
+}
+function renderLabSingle(labs){
+  const sorted=[...labs].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  if(!labSingleId||!sorted.some(e=>e.id===labSingleId))labSingleId=sorted[0].id;
+  const sel=document.getElementById('labRecordSel');
+  sel.innerHTML=sorted.map(e=>`<option value="${e.id}"${e.id===labSingleId?' selected':''}>${new Date(e.date).toLocaleDateString('zh-TW')}　${SRC_LABEL[e.source]||e.source||''}　(${Object.keys(e.values||{}).length} 項)</option>`).join('');
+  const rec=sorted.find(e=>e.id===labSingleId);
+  const t=document.getElementById('labSingleTable');
+  if(!rec){t.innerHTML='';return;}
+  const keys=LAB_ORDER.filter(k=>rec.values&&rec.values[k]!=null);
+  t.innerHTML='<tr><th>項目</th><th>數值</th><th>狀態</th></tr>'+
+    keys.map(k=>{const v=rec.values[k],fl=labFlag(k,v);return `<tr><td>${LAB_META[k].label}</td><td class="num" style="color:${FLAG_COLOR[fl]};font-weight:700;">${v} <span class="hint">${LAB_META[k].unit}</span></td><td style="color:${FLAG_COLOR[fl]};font-size:.72rem;">${fl==='high'?'過高':fl==='warn'?'注意':'正常'}</td></tr>`;}).join('')+
+    `<tr><td colspan="3" class="hint" style="padding-top:8px;">來源：${SRC_LABEL[rec.source]||rec.source||'—'}　·　時間：${new Date(rec.date).toLocaleString('zh-TW')}</td></tr>`;
+}
+function labPickRecord(id){ labSingleId=id; renderLabSingle(state.labs||[]); }
 function exportLabs(){
   const labs=state.labs||[]; if(!labs.length){toast('沒有可匯出的檢驗數據');return;}
   const cols=LAB_ORDER.filter(k=>labs.some(e=>e.values&&e.values[k]!=null));
