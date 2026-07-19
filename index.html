@@ -11,6 +11,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js"></script>
 <style>
 :root{
   --pri:#0d9488;--pril:#ccfbf1;--prid:#0f766e;
@@ -298,6 +299,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   <div class="nt" data-sec="risk">🔬 風險預測</div>
   <div class="nt" data-sec="smart">🚨 智慧預警</div>
   <div class="nt" data-sec="trend">📈 趨勢追蹤</div>
+  <div class="nt" data-sec="labs">🧪 檢驗數據庫</div>
   <div class="nt" data-sec="habit">✅ 每日習慣</div>
   <div class="nt" data-sec="advice">💡 建議 & AI</div>
   <div class="nt" data-sec="foot">🦶 足部訓練</div>
@@ -438,7 +440,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   <div class="card">
     <div class="ct">📷 檢驗報告辨識 <span class="hint">（AI 視覺 · 圖片 / PDF）</span></div>
     <div class="hint" style="line-height:1.6;margin-bottom:10px;">
-      拍照或上傳健檢／檢驗報告（<b>圖片或 PDF</b>），AI 自動辨識血壓、血糖、膽固醇等數值，核對後一鍵存成紀錄點；登入雲端時可把原檔留底備查。需先在「設定」填入 Gemini（PDF 需 Gemini）或 OpenAI API Key。<b>辨識時報告會傳送至你所設定的 AI 服務（Google／OpenAI）判讀。</b>
+      拍照或上傳健檢／檢驗報告（<b>圖片或 PDF</b>），AI 自動辨識血壓、血糖、膽固醇等數值，核對後一鍵存成紀錄點；登入雲端時可把原檔留底備查。需先在「設定」填入 Gemini 或 OpenAI API Key（PDF 會自動逐頁轉圖再辨識，兩種引擎皆可）。<b>辨識時報告會傳送至你所設定的 AI 服務（Google／OpenAI）判讀。</b>
     </div>
     <button class="btn bp" onclick="document.getElementById('fileImg').click()">📷 拍照 / 選擇報告（圖片或 PDF）</button>
     <input type="file" id="fileImg" accept="image/*,application/pdf" style="display:none;" onchange="handleImageImport(event)">
@@ -650,6 +652,36 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   </div>
 </div>
 
+<!-- ========== LAB DATABASE ========== -->
+<div class="sec" id="sec-labs">
+  <div id="labsEmpty" class="card empty">
+    <div class="em">🧪</div>
+    <div>尚無檢驗數據。到「🔗 匯入串接」拍照／上傳檢驗報告（圖片、PDF、JSON），辨識後的數值會自動彙整到這裡。</div>
+    <button class="btn bp" style="margin-top:12px;" onclick="go('connect')">📷 前往辨識報告</button>
+  </div>
+  <div id="labsContent" style="display:none;">
+    <div class="card">
+      <div class="ct">🧪 最新檢驗值 <span class="hint" id="labsCount"></span></div>
+      <div id="labsLatest" class="sg" style="grid-template-columns:repeat(2,1fr);"></div>
+      <div class="hint" style="margin-top:4px;">顏色：<span style="color:var(--ok);font-weight:700;">正常</span> · <span style="color:var(--warn);font-weight:700;">偏高／注意</span> · <span style="color:var(--err);font-weight:700;">過高</span>（僅供參考，非診斷）</div>
+    </div>
+    <div class="card">
+      <div class="ct">📈 單項趨勢</div>
+      <div class="seg" id="labMetricSeg" style="margin-bottom:10px;"></div>
+      <div class="cw" id="labChartWrap"><canvas id="labChart"></canvas></div>
+      <div style="overflow-x:auto;margin-top:8px;"><table id="labHistTable"></table></div>
+    </div>
+    <div class="card">
+      <div class="ct">🗂️ 全部檢驗紀錄</div>
+      <div style="overflow-x:auto;"><table id="labAllTable"></table></div>
+      <div class="row-btn" style="margin-top:10px;">
+        <button class="btn bg" onclick="exportLabs()">📤 匯出檢驗數據 (CSV)</button>
+        <button class="btn bd" onclick="clearLabs()">🗑️ 清除檢驗數據</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ========== FOOT TRAINING ========== -->
 <div class="sec" id="sec-foot">
   <div id="foot-app"><div class="app" id="foot-root"></div></div>
@@ -785,7 +817,7 @@ function load(){
   try{return JSON.parse(localStorage.getItem(LS_KEY))||defaults();}catch(e){return defaults();}
 }
 function defaults(){
-  return {profile:null, result:null, history:[], habits:{}, settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:''}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], habits:{}, settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:''}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));}
 
@@ -797,6 +829,7 @@ function go(sec){
   document.getElementById('sec-'+sec).classList.add('active');
   window.scrollTo(0,0);
   if(sec==='trend')renderTrend();
+  if(sec==='labs')renderLabs();
   if(sec==='habit')renderHabits();
   if(sec==='dash')renderDash();
   if(sec==='risk')renderRisk();
@@ -1010,7 +1043,7 @@ function loadSample(){
     smoke:'former',exercise:60,alcohol:9,sleep:6,sitting:9,diet:2,stress:4,fhHeart:true,fhDiabetes:true,fhCancer:false};
   fillProfile(s);toast('已載入範例資料，按「產生健康預測」');
 }
-function saveSnapshot(){
+function saveSnapshot(fromImport){
   const p=readProfile();
   if(!p.age||!p.height||!p.weight){ toast('請先填入基本數據'); return; }
   const r=compute(p);
@@ -1018,6 +1051,7 @@ function saveSnapshot(){
   const snap=buildSnapshot(p,r);
   state.history.push(snap);
   if(state.history.length>200)state.history.shift();
+  if(!fromImport) recordLabEntry(p,'manual');   // 手動評估也收進檢驗數據庫（匯入路徑已另外收）
   save();
   if(state.settings.autosync && fbUser){
     fbSyncNow().then(()=>toast('💾 已存並同步雲端')).catch(()=>toast('💾 已存（雲端同步失敗）'));
@@ -1285,6 +1319,105 @@ function renderTrend(){
 }
 function clearHistory(){ if(confirm('確定清除所有趨勢紀錄？')){state.history=[];save();renderTrend();toast('已清除紀錄');} }
 
+/* ============ 檢驗數據庫 ============ */
+const LAB_META={
+  sbp:{label:'收縮壓',unit:'mmHg'}, dbp:{label:'舒張壓',unit:'mmHg'},
+  glucose:{label:'空腹血糖',unit:'mg/dL'}, hba1c:{label:'糖化血色素',unit:'%'},
+  chol:{label:'總膽固醇',unit:'mg/dL'}, hdl:{label:'HDL',unit:'mg/dL'},
+  ldl:{label:'LDL',unit:'mg/dL'}, tg:{label:'三酸甘油酯',unit:'mg/dL'},
+  waist:{label:'腰圍',unit:'cm'}, weight:{label:'體重',unit:'kg'},
+  hr:{label:'心率',unit:'bpm'}, height:{label:'身高',unit:'cm'}
+};
+const LAB_ORDER=['sbp','dbp','glucose','hba1c','chol','hdl','ldl','tg','waist','weight','hr','height'];
+const FLAG_COLOR={ok:'var(--ok)',warn:'var(--warn)',high:'var(--err)'};
+const SRC_LABEL={image:'📷 圖片',pdf:'📄 PDF',nhi:'健保存摺',wearable:'穿戴',app:'App',manual:'手動'};
+function labFlag(metric,v){
+  const n=parseFloat(v); if(isNaN(n))return 'ok';
+  switch(metric){
+    case 'sbp': return n>=140?'high':n>=130?'warn':'ok';
+    case 'dbp': return n>=90?'high':n>=85?'warn':'ok';
+    case 'glucose': return n>=126?'high':n>=100?'warn':'ok';
+    case 'hba1c': return n>=6.5?'high':n>=5.7?'warn':'ok';
+    case 'chol': return n>=240?'high':n>=200?'warn':'ok';
+    case 'hdl': return n<40?'high':n<50?'warn':'ok';
+    case 'ldl': return n>=160?'high':n>=130?'warn':'ok';
+    case 'tg': return n>=200?'high':n>=150?'warn':'ok';
+    case 'hr': return (n>100||n<50)?'warn':'ok';
+    default: return 'ok';
+  }
+}
+let curLab=null;
+function recordLabEntry(fields,source){
+  const values={};
+  Object.keys(LAB_META).forEach(k=>{const n=toNum(fields[k]); if(n!==null) values[k]=n;});
+  if(!Object.keys(values).length)return false;
+  state.labs=state.labs||[];
+  state.labs.push({id:'lab_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),
+    date:new Date().toISOString(), source:source||'app', values});
+  if(state.labs.length>1000)state.labs.shift();
+  save();
+  if(document.getElementById('sec-labs').classList.contains('active'))renderLabs();
+  return true;
+}
+function labSeries(metric){
+  return (state.labs||[]).filter(e=>e.values&&e.values[metric]!=null)
+    .map(e=>({date:e.date,value:e.values[metric]}))
+    .sort((a,b)=>new Date(a.date)-new Date(b.date));
+}
+function renderLabs(){
+  const labs=state.labs||[];
+  const has=labs.length>0;
+  document.getElementById('labsEmpty').style.display=has?'none':'block';
+  document.getElementById('labsContent').style.display=has?'block':'none';
+  if(!has)return;
+  document.getElementById('labsCount').textContent='共 '+labs.length+' 筆';
+  // 各項最新值
+  const latest={};
+  labs.forEach(e=>{const t=new Date(e.date).getTime();Object.keys(e.values||{}).forEach(k=>{if(!latest[k]||t>=latest[k].t)latest[k]={v:e.values[k],t,date:e.date};});});
+  const present=LAB_ORDER.filter(k=>latest[k]!==undefined);
+  document.getElementById('labsLatest').innerHTML=present.map(k=>{
+    const m=LAB_META[k],col=FLAG_COLOR[labFlag(k,latest[k].v)];
+    return `<div class="sc" style="border-left-color:${col};"><div class="sv" style="color:${col};">${latest[k].v}<small> ${m.unit}</small></div><div class="sl">${m.label} · ${new Date(latest[k].date).toLocaleDateString('zh-TW')}</div></div>`;
+  }).join('');
+  // 單項趨勢
+  if(!curLab||!present.includes(curLab))curLab=present[0];
+  const seg=document.getElementById('labMetricSeg');seg.innerHTML='';
+  present.forEach(k=>{const b=document.createElement('div');b.className='seg-btn'+(k===curLab?' on':'');b.textContent=LAB_META[k].label;b.onclick=()=>{curLab=k;renderLabs();};seg.appendChild(b);});
+  const series=labSeries(curLab);
+  const wrap=document.getElementById('labChartWrap');
+  if(chartReady()&&series.length){
+    if(charts.lab)charts.lab.destroy();
+    charts.lab=new Chart(document.getElementById('labChart'),{type:'line',
+      data:{labels:series.map(s=>new Date(s.date).toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})),
+        datasets:[{label:LAB_META[curLab].label,data:series.map(s=>s.value),borderColor:'#0d9488',backgroundColor:'#0d948822',fill:true,tension:.3,pointRadius:4,spanGaps:true}]},
+      options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:false}}}});
+    wrap.style.display='block';
+  }else{wrap.style.display='none';}
+  document.getElementById('labHistTable').innerHTML=
+    '<tr><th>日期</th><th>'+LAB_META[curLab].label+'（'+LAB_META[curLab].unit+'）</th><th>狀態</th></tr>'+
+    [...series].reverse().map(s=>{const fl=labFlag(curLab,s.value);return `<tr><td>${new Date(s.date).toLocaleDateString('zh-TW')}</td><td class="num" style="color:${FLAG_COLOR[fl]};">${s.value}</td><td style="color:${FLAG_COLOR[fl]};font-size:.72rem;">${fl==='high'?'過高':fl==='warn'?'注意':'正常'}</td></tr>`;}).join('');
+  // 全部紀錄
+  let head='<tr><th>日期</th><th>來源</th>'+present.map(k=>'<th>'+LAB_META[k].label+'</th>').join('')+'</tr>';
+  const body=[...labs].reverse().map(e=>'<tr><td>'+new Date(e.date).toLocaleDateString('zh-TW')+'</td><td style="font-size:.72rem;">'+(SRC_LABEL[e.source]||e.source||'—')+'</td>'+
+    present.map(k=>{const v=e.values&&e.values[k];if(v==null)return '<td class="num">—</td>';const fl=labFlag(k,v);return '<td class="num" style="color:'+FLAG_COLOR[fl]+';">'+v+'</td>';}).join('')+'</tr>').join('');
+  document.getElementById('labAllTable').innerHTML=head+body;
+}
+function exportLabs(){
+  const labs=state.labs||[]; if(!labs.length){toast('沒有可匯出的檢驗數據');return;}
+  const cols=LAB_ORDER.filter(k=>labs.some(e=>e.values&&e.values[k]!=null));
+  const head=['date','source',...cols];
+  const rows=labs.map(e=>[new Date(e.date).toISOString(),e.source||'',...cols.map(k=>(e.values&&e.values[k]!=null)?e.values[k]:'')]);
+  const csv=[head.join(','),...rows.map(r=>r.join(','))].join('\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='lifespan-labs-'+todayKey()+'.csv';a.click();
+}
+function clearLabs(){
+  if(confirm('確定清除所有檢驗數據？此動作無法復原。')){
+    state.labs=[];save();renderLabs();toast('已清除檢驗數據');
+    if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  }
+}
+
 /* ============ 每日習慣 ============ */
 function todayKey(){return new Date().toISOString().slice(0,10);}
 function renderHabits(){
@@ -1467,7 +1600,7 @@ function fbDoc(){
 function fbSyncNow(){
   if(!fbUser||!fbDb)return Promise.reject(new Error('未登入'));
   return fbDoc().set(fbClean({
-    profile:state.profile||null, history:state.history||[], habits:state.habits||{},
+    profile:state.profile||null, history:state.history||[], labs:state.labs||[], habits:state.habits||{},
     updatedAt:new Date().toISOString()
   }),{merge:true});
 }
@@ -1487,11 +1620,16 @@ async function fbPull(){
     const map={};
     [...(state.history||[]),...((d.history)||[])].forEach(s=>{if(s&&s.id)map[s.id]=s;});
     state.history=Object.values(map).sort((a,b)=>new Date(a.date)-new Date(b.date));
+    if(Array.isArray(d.labs)){
+      const lm={};[...(state.labs||[]),...d.labs].forEach(x=>{if(x&&x.id)lm[x.id]=x;});
+      state.labs=Object.values(lm).sort((a,b)=>new Date(a.date)-new Date(b.date));
+    }
     if(d.profile)state.profile=d.profile;
     if(d.habits)state.habits=Object.assign({},state.habits,d.habits);
     save();
-    fbMsg('✅ 已合併，共 '+state.history.length+' 筆紀錄',true);toast('已從雲端拉取');
+    fbMsg('✅ 已合併，共 '+state.history.length+' 筆紀錄、'+(state.labs?state.labs.length:0)+' 筆檢驗',true);toast('已從雲端拉取');
     if(document.getElementById('sec-trend').classList.contains('active'))renderTrend();
+    if(document.getElementById('sec-labs').classList.contains('active'))renderLabs();
   }catch(e){fbMsg('⚠️ 拉取失敗：'+fbErr(e),false);}
 }
 async function gasGet(action){
@@ -1615,23 +1753,50 @@ async function handleImageImport(e){
   const setSt=(t,c)=>{if(st){st.textContent=t;st.style.color=c||'var(--g600)';}};
   const isPdf = f.type==='application/pdf' || /\.pdf$/i.test(f.name);
   try{
-    setSt(isPdf?'讀取 PDF…':'壓縮圖片中…');
-    // 用於辨識的檔案：圖片壓到 1600px；PDF 直接用原檔（Gemini 可原生讀 PDF）
-    const visionUrl = isPdf ? await readAsDataURL(f) : await resizeImage(f,1600,0.85);
-    // 留底用的精簡副本：圖片再壓小一點；PDF 沿用原檔（超過上限則不留底）
-    const backupUrl = isPdf ? visionUrl : await resizeImage(f,1280,0.7);
-    setSt('🔍 AI 辨識中…（約 5–15 秒，請稍候）');
-    const raw=await visionExtract(visionUrl,isPdf);
+    let images, backupUrl, backupKind;
+    if(isPdf){
+      setSt('轉換 PDF 頁面…');
+      images = await pdfToImages(f,4);          // 每頁轉成圖片 → 任何 AI 引擎都能辨識
+      if(!images.length)throw new Error('PDF 無法轉換頁面');
+      backupUrl = await readAsDataURL(f);        // 原始 PDF 留底備查
+      backupKind = 'pdf';
+    }else{
+      setSt('壓縮圖片中…');
+      images = [await resizeImage(f,1600,0.85)];
+      backupUrl = await resizeImage(f,1280,0.7);
+      backupKind = 'image';
+    }
+    setSt('🔍 AI 辨識中…（約 5–20 秒，請稍候）');
+    const raw=await visionExtract(images);
     const parsed=parseVisionJSON(raw);
     const fields=cleanLabFields(parsed.fields||{});
     if(!Object.keys(fields).length){setSt('⚠️ 未辨識到可用數值，請換清晰、正對的'+(isPdf?'PDF':'圖片')+'再試一次','var(--err)');return;}
     const notes=['📷 AI 視覺辨識結果，請務必核對數值是否正確再存檔'];
     (parsed.notes||[]).forEach(n=>{if(n)notes.push(String(n));});
-    pendingImport={kind:isPdf?'pdf':'image',fields,notes,blob:backupUrl,blobKind:isPdf?'pdf':'image'};
+    pendingImport={kind:isPdf?'pdf':'image',fields,notes,blob:backupUrl,blobKind:backupKind};
     renderImportResult();go('connect');
     setSt('✅ 辨識完成，請於下方「匯入結果」核對後存檔');
     toast('✅ 辨識完成');
   }catch(err){setSt('⚠️ 辨識失敗：'+err.message,'var(--err)');}
+}
+// PDF 每頁 render 成 JPEG（pdf.js），讓任何視覺引擎都能辨識
+async function pdfToImages(file,maxPages){
+  if(typeof pdfjsLib==='undefined')throw new Error('PDF 元件未載入，請確認網路後重整頁面');
+  try{if(!pdfjsLib.GlobalWorkerOptions.workerSrc)pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js';}catch(err){}
+  const buf=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  const n=Math.min(pdf.numPages,maxPages||4);
+  const imgs=[];
+  for(let i=1;i<=n;i++){
+    const page=await pdf.getPage(i);
+    let vp=page.getViewport({scale:2});
+    const cap=2200;
+    if(Math.max(vp.width,vp.height)>cap){vp=page.getViewport({scale:2*cap/Math.max(vp.width,vp.height)});}
+    const cv=document.createElement('canvas');cv.width=vp.width;cv.height=vp.height;
+    await page.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+    imgs.push(cv.toDataURL('image/jpeg',0.82));
+  }
+  return imgs;
 }
 function readAsDataURL(file){
   return new Promise((resolve,reject)=>{
@@ -1662,7 +1827,7 @@ function resizeImage(file,maxDim,quality){
     rd.readAsDataURL(file);
   });
 }
-const VISION_PROMPT=`你是醫療檢驗報告的資料擷取助手。這是一張健康檢查／檢驗報告的圖片。請擷取其中的檢驗數值，只回傳 JSON、不要任何多餘文字或說明。
+const VISION_PROMPT=`你是醫療檢驗報告的資料擷取助手。以下是一份健康檢查／檢驗報告（可能包含多張圖片或多頁）。請彙整其中的檢驗數值，只回傳 JSON、不要任何多餘文字或說明。
 JSON 格式：
 {"fields":{"sbp":收縮壓,"dbp":舒張壓,"glucose":空腹血糖,"chol":總膽固醇,"hdl":HDL,"ldl":LDL,"tg":三酸甘油酯,"hba1c":糖化血色素,"weight":體重,"height":身高,"waist":腰圍,"hr":心率},"notes":["補充說明或異常標記"]}
 規則：
@@ -1670,32 +1835,31 @@ JSON 格式：
 - 數值只放數字（去掉單位）。單位若不同請換算：血糖／膽固醇／HDL／LDL／TG 用 mg/dL；體重 kg；身高／腰圍 cm；HbA1c 用 %。
 - 若同一項目有多筆，取最新一次或有標註參考值那筆。
 - notes 用繁體中文，列出無法確定或超出參考範圍的項目。`;
-async function visionExtract(dataUrl,isPdf){
+async function visionExtract(images){
   const s=state.settings;
+  const arr=Array.isArray(images)?images:[images];
   const useGemini=s.engine==='gemini'||(s.engine!=='openai'&&s.gemini);
-  if(useGemini&&s.gemini)return callGeminiVision(s.gemini,dataUrl,VISION_PROMPT);
-  if(s.openai){
-    if(isPdf)throw new Error('PDF 目前需使用 Gemini 引擎辨識；請於「設定」填入 Gemini 金鑰，或改上傳圖片');
-    return callOpenAIVision(s.openai,dataUrl,VISION_PROMPT);
-  }
-  return callGeminiVision(s.gemini,dataUrl,VISION_PROMPT);
+  if(useGemini&&s.gemini)return callGeminiVision(s.gemini,arr,VISION_PROMPT);
+  if(s.openai)return callOpenAIVision(s.openai,arr,VISION_PROMPT);
+  return callGeminiVision(s.gemini,arr,VISION_PROMPT);
 }
-async function callGeminiVision(key,dataUrl,prompt){
-  const m=dataUrl.match(/^data:(.*?);base64,(.*)$/);
-  const mime=m?m[1]:'image/jpeg',b64=m?m[2]:'';
+async function callGeminiVision(key,images,prompt){
+  const parts=[{text:prompt}];
+  images.forEach(u=>{const m=u.match(/^data:(.*?);base64,(.*)$/);parts.push({inline_data:{mime_type:m?m[1]:'image/jpeg',data:m?m[2]:''}});});
   const url=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
   const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({contents:[{parts:[{text:prompt},{inline_data:{mime_type:mime,data:b64}}]}],
-      generationConfig:{temperature:0,responseMimeType:'application/json'}})});
+    body:JSON.stringify({contents:[{parts}],generationConfig:{temperature:0,responseMimeType:'application/json'}})});
   if(!res.ok)throw new Error('HTTP '+res.status+'（請確認 Gemini 金鑰與額度）');
   const d=await res.json();
   return d.candidates?.[0]?.content?.parts?.[0]?.text||'';
 }
-async function callOpenAIVision(key,dataUrl,prompt){
+async function callOpenAIVision(key,images,prompt){
+  const content=[{type:'text',text:prompt}];
+  images.forEach(u=>content.push({type:'image_url',image_url:{url:u}}));
   const res=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
     body:JSON.stringify({model:'gpt-4o-mini',temperature:0,response_format:{type:'json_object'},
-      messages:[{role:'user',content:[{type:'text',text:prompt},{type:'image_url',image_url:{url:dataUrl}}]}]})});
+      messages:[{role:'user',content}]})});
   if(!res.ok)throw new Error('HTTP '+res.status+'（請確認 OpenAI 金鑰與額度）');
   const d=await res.json();
   return d.choices?.[0]?.message?.content||'';
@@ -1850,13 +2014,20 @@ function applyImport(){
 }
 function applyImportAndSave(){
   if(!applyImportFields())return;
-  const p=readProfile();
-  if(!p.age||!p.height||!p.weight){go('assess');toast('請先補齊 年齡／身高／體重 再存成紀錄');return;}
+  const fields=pendingImport?pendingImport.fields:{};
+  const kind=pendingImport?pendingImport.kind:'app';
   const blob=pendingImport&&pendingImport.blob, blobKind=pendingImport&&pendingImport.blobKind;
-  saveSnapshot();          // 計算並存為紀錄點（含雲端自動同步）
+  recordLabEntry(fields,kind);   // 辨識出的數值一律收進檢驗數據庫（含 LDL／TG／HbA1c）
+  const p=readProfile();
+  if(!p.age||!p.height||!p.weight){
+    save();go('labs');
+    toast('✅ 已收進檢驗數據庫（補齊 年齡／身高／體重 可另存為健康紀錄點）');
+    return;
+  }
+  saveSnapshot(true);      // 另存為健康紀錄點（含雲端自動同步）；true=匯入路徑不重複記檢驗
   const snap=state.history[state.history.length-1];
   if(snap&&blob) backupReportImage(snap,blob,blobKind);
-  go('trend');
+  go('labs');
 }
 // 將原始報告檔留底到雲端（Firestore：users/{uid}/lifespan_images/{snapId}）
 function backupReportImage(snap,dataUrl,kind){
