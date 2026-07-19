@@ -137,6 +137,9 @@ td.num{font-variant-numeric:tabular-nums;font-weight:600;}
 .guide-tip{font-size:.75rem;color:var(--g600);line-height:1.6;background:#f0fdfa;border-radius:8px;padding:8px 10px;margin-top:4px;}
 textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-height:92px;line-height:1.5;font-size:.76rem;}
 .rules{background:#0f172a;color:#a7f3d0;border-radius:8px;padding:10px;margin-top:6px;font-family:'DM Mono',ui-monospace,monospace;font-size:.7rem;line-height:1.5;overflow-x:auto;white-space:pre;}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;}
+.modal-box{background:#fff;border-radius:14px;padding:16px;max-width:440px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.3);}
+.lab-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;}
 
 /* ===== 足部訓練（scoped under #foot-app）===== */
 :root{
@@ -693,6 +696,10 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
         <div class="fg"><label class="fl">選擇一筆紀錄（依時間）</label>
           <select class="fs" id="labRecordSel" onchange="labPickRecord(this.value)"></select></div>
         <div style="overflow-x:auto;"><table id="labSingleTable"></table></div>
+        <div class="row-btn" style="margin-top:10px;">
+          <button class="btn bp" onclick="labEditCurrent()">✏️ 編輯這筆</button>
+          <button class="btn bd" onclick="labDeleteCurrent()">🗑️ 刪除這筆</button>
+        </div>
       </div>
     </div>
     <div class="card">
@@ -705,8 +712,9 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <div class="ct">🗂️ 全部檢驗紀錄</div>
       <div style="overflow-x:auto;"><table id="labAllTable"></table></div>
       <div class="row-btn" style="margin-top:10px;">
-        <button class="btn bg" onclick="exportLabs()">📤 匯出檢驗數據 (CSV)</button>
-        <button class="btn bd" onclick="clearLabs()">🗑️ 清除檢驗數據</button>
+        <button class="btn bp" onclick="openLabEditor()">➕ 新增紀錄</button>
+        <button class="btn bg" onclick="exportLabs()">📤 匯出 CSV</button>
+        <button class="btn bd" onclick="clearLabs()">🗑️ 清除全部</button>
       </div>
     </div>
   </div>
@@ -1462,9 +1470,10 @@ function renderLabs(){
     '<tr><th>日期</th><th>'+LAB_META[curLab].label+'（'+LAB_META[curLab].unit+'）</th><th>狀態</th></tr>'+
     [...series].reverse().map(s=>{const fl=labFlag(curLab,s.value);return `<tr><td>${new Date(s.date).toLocaleDateString('zh-TW')}</td><td class="num" style="color:${FLAG_COLOR[fl]};">${s.value}</td><td style="color:${FLAG_COLOR[fl]};font-size:.72rem;">${fl==='high'?'過高':fl==='warn'?'注意':'正常'}</td></tr>`;}).join('');
   // 全部紀錄
-  let head='<tr><th>日期</th><th>來源</th>'+present.map(k=>'<th>'+LAB_META[k].label+'</th>').join('')+'</tr>';
+  let head='<tr><th>日期</th><th>來源</th>'+present.map(k=>'<th>'+LAB_META[k].label+'</th>').join('')+'<th>操作</th></tr>';
   const body=[...labs].reverse().map(e=>'<tr><td>'+new Date(e.date).toLocaleDateString('zh-TW')+'</td><td style="font-size:.72rem;">'+(SRC_LABEL[e.source]||e.source||'—')+'</td>'+
-    present.map(k=>{const v=e.values&&e.values[k];if(v==null)return '<td class="num">—</td>';const fl=labFlag(k,v);return '<td class="num" style="color:'+FLAG_COLOR[fl]+';">'+v+'</td>';}).join('')+'</tr>').join('');
+    present.map(k=>{const v=e.values&&e.values[k];if(v==null)return '<td class="num">—</td>';const fl=labFlag(k,v);return '<td class="num" style="color:'+FLAG_COLOR[fl]+';">'+v+'</td>';}).join('')+
+    '<td style="white-space:nowrap;"><a class="link" style="cursor:pointer;" onclick="openLabEditor(\''+e.id+'\')">✏️</a>　<a class="link" style="cursor:pointer;color:var(--err);" onclick="labDelete(\''+e.id+'\')">🗑️</a></td></tr>').join('');
   document.getElementById('labAllTable').innerHTML=head+body;
 }
 function renderLabAnalysis(present){
@@ -1514,6 +1523,53 @@ function clearLabs(){
     state.labs=[];save();renderLabs();toast('已清除檢驗數據');
     if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
   }
+}
+/* 單筆檢驗紀錄：新增 / 編輯 / 刪除 */
+function labSyncMaybe(){ save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{}); }
+function labDelete(id){
+  if(!confirm('確定刪除這一筆檢驗紀錄？此動作無法復原。'))return;
+  state.labs=(state.labs||[]).filter(e=>e.id!==id);
+  if(labSingleId===id)labSingleId=null;
+  labSyncMaybe();renderLabs();toast('已刪除該筆');
+}
+function labEditCurrent(){ if(labSingleId)openLabEditor(labSingleId); else toast('請先選擇一筆'); }
+function labDeleteCurrent(){ if(labSingleId)labDelete(labSingleId); else toast('請先選擇一筆'); }
+function openLabEditor(id){
+  const editing=id?((state.labs||[]).find(e=>e.id===id)):null;
+  const dateVal=editing?new Date(editing.date).toISOString().slice(0,10):todayKey();
+  const vals=editing?(editing.values||{}):{};
+  const inputs=LAB_ORDER.map(k=>{const m=LAB_META[k];
+    return `<div class="fg" style="margin:0;"><label class="fl">${m.label} <span class="hint">${m.unit}</span></label>`+
+      `<input class="fi" type="number" step="any" inputmode="decimal" id="labIn_${k}" value="${vals[k]!=null?vals[k]:''}"></div>`;}).join('');
+  let m=document.getElementById('labModal');
+  if(!m){m=document.createElement('div');m.id='labModal';m.className='modal-overlay';document.body.appendChild(m);}
+  m.innerHTML=`<div class="modal-box">
+    <div class="ct">${editing?'✏️ 編輯檢驗紀錄':'➕ 新增檢驗紀錄'}</div>
+    <div class="fg"><label class="fl">日期</label><input class="fi" type="date" id="labIn_date" value="${dateVal}"></div>
+    <div class="hint" style="margin:2px 0 4px;">只填有的項目即可，留空表示無此數值。</div>
+    <div class="lab-grid">${inputs}</div>
+    <div class="row-btn" style="margin-top:14px;">
+      <button class="btn bp" onclick="saveLabEditor('${editing?editing.id:''}')">💾 儲存</button>
+      <button class="btn bg" onclick="closeLabEditor()">取消</button>
+    </div></div>`;
+  m.style.display='flex';
+}
+function closeLabEditor(){const m=document.getElementById('labModal');if(m){m.style.display='none';m.innerHTML='';}}
+function saveLabEditor(id){
+  const ds=document.getElementById('labIn_date').value;
+  const date=ds?new Date(ds+'T00:00:00').toISOString():new Date().toISOString();
+  const values={};
+  LAB_ORDER.forEach(k=>{const el=document.getElementById('labIn_'+k);const n=toNum(el&&el.value);if(n!==null)values[k]=n;});
+  if(!Object.keys(values).length){toast('請至少填入一個數值');return;}
+  state.labs=state.labs||[];
+  if(id){
+    const e=state.labs.find(x=>x.id===id);
+    if(e){e.date=date;e.values=values;e.edited=true;}
+  }else{
+    state.labs.push({id:'lab_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),date,source:'manual',values});
+    if(state.labs.length>1000)state.labs.shift();
+  }
+  labSyncMaybe();closeLabEditor();renderLabs();toast(id?'✅ 已更新該筆':'✅ 已新增一筆');
 }
 
 /* ============ 每日習慣 ============ */
@@ -1583,7 +1639,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.19-text-import';
+const APP_VERSION='2026.07.19-lab-crud';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
