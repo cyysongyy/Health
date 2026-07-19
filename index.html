@@ -446,6 +446,15 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
     <button class="btn bp" onclick="document.getElementById('fileImg').click()">📷 拍照 / 選擇報告（圖片或 PDF）</button>
     <input type="file" id="fileImg" accept="image/*,application/pdf" style="display:none;" onchange="handleImageImport(event)">
     <div id="imgStatus" class="hint" style="margin-top:8px;"></div>
+    <details class="guide">
+      <summary>✍️ 或貼上純文字辨識</summary>
+      <div class="guide-body">
+        <div class="hint" style="margin-bottom:6px;">把檢驗數值文字貼上（例如：<code>血壓 130/85、空腹血糖 98、LDL 138、HbA1c 5.9</code>），用 AI 辨識成結構化數值。</div>
+        <textarea class="fi" id="reportText" rows="4" placeholder="貼上檢驗報告文字或數值…"></textarea>
+        <div class="row-btn" style="margin-top:8px;"><button class="btn bp" onclick="handleTextImport('report')">🔍 辨識文字</button></div>
+        <div id="reportTextStatus" class="hint" style="margin-top:6px;"></div>
+      </div>
+    </details>
   </div>
 
   <div class="card">
@@ -457,6 +466,15 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
     </div>
     <button class="btn bp" onclick="document.getElementById('fileFhir').click()">📥 上傳健康存摺檔案（JSON／壓縮檔／PDF）</button>
     <input type="file" id="fileFhir" accept=".json,.txt,.zip,.gz,.pdf,image/*" style="display:none;" onchange="handleImport(event,'nhi')">
+    <details class="guide">
+      <summary>✍️ 或貼上文字／JSON 辨識</summary>
+      <div class="guide-body">
+        <div class="hint" style="margin-bottom:6px;">貼上健康存摺的 <b>FHIR／JSON 文字</b>（本機解析，不外傳）；或直接貼一般<b>檢驗數值文字</b>（用 AI 辨識）。</div>
+        <textarea class="fi" id="nhiText" rows="4" placeholder="貼上 FHIR/JSON 或檢驗數值文字…"></textarea>
+        <div class="row-btn" style="margin-top:8px;"><button class="btn bp" onclick="handleTextImport('nhi')">🔍 辨識／解析</button></div>
+        <div id="nhiTextStatus" class="hint" style="margin-top:6px;"></div>
+      </div>
+    </details>
   </div>
 
   <div class="card">
@@ -1343,7 +1361,7 @@ const LAB_META={
 };
 const LAB_ORDER=['sbp','dbp','glucose','hba1c','chol','hdl','ldl','tg','waist','weight','hr','height'];
 const FLAG_COLOR={ok:'var(--ok)',warn:'var(--warn)',high:'var(--err)'};
-const SRC_LABEL={image:'📷 圖片',pdf:'📄 PDF',nhi:'健保存摺',wearable:'穿戴',app:'App',manual:'手動'};
+const SRC_LABEL={image:'📷 圖片',pdf:'📄 PDF',nhi:'健保存摺',wearable:'穿戴',app:'App',manual:'手動',text:'📝 文字'};
 function labFlag(metric,v){
   const n=parseFloat(v); if(isNaN(n))return 'ok';
   switch(metric){
@@ -1565,7 +1583,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.19-zip-pdf-pw';
+const APP_VERSION='2026.07.19-text-import';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -1998,6 +2016,54 @@ function cleanLabFields(obj){
   const out={};
   allow.forEach(k=>{if(obj[k]!==undefined&&obj[k]!==null&&obj[k]!==''){const n=toNum(obj[k]);if(n!==null)out[k]=n;}});
   return out;
+}
+
+/* ---- 純文字辨識（貼上文字／JSON） ---- */
+const TEXT_PROMPT=`你是醫療檢驗報告的資料擷取助手。以下是使用者貼上的檢驗報告或數值文字。請擷取其中的檢驗數值，只回傳 JSON、不要任何多餘文字或說明。
+JSON 格式：
+{"fields":{"sbp":收縮壓,"dbp":舒張壓,"glucose":空腹血糖,"chol":總膽固醇,"hdl":HDL,"ldl":LDL,"tg":三酸甘油酯,"hba1c":糖化血色素,"weight":體重,"height":身高,"waist":腰圍,"hr":心率},"notes":["補充說明或異常標記"]}
+規則：只放實際出現的數值，找不到的省略；數值只放數字（去單位並換算為 mg/dL、kg、cm、%、mmHg、bpm）；notes 用繁體中文。`;
+async function textExtract(text){
+  const s=state.settings;
+  const useGemini=s.engine==='gemini'||(s.engine!=='openai'&&s.gemini);
+  const prompt=TEXT_PROMPT+'\n\n---報告內容---\n'+text;
+  if(useGemini&&s.gemini)return callGemini(s.gemini,prompt);
+  if(s.openai)return callOpenAI(s.openai,prompt);
+  return callGemini(s.gemini,prompt);
+}
+const TEXT_CFG={report:{ta:'reportText',st:'reportTextStatus',out:'text'},nhi:{ta:'nhiText',st:'nhiTextStatus',out:'nhi'}};
+async function handleTextImport(kind){
+  const cfg=TEXT_CFG[kind]||TEXT_CFG.report;
+  const ta=document.getElementById(cfg.ta);
+  const text=(ta&&ta.value||'').trim();
+  const st=document.getElementById(cfg.st);
+  const setSt=(t,c)=>{if(st){st.textContent=t;st.style.color=c||'var(--g600)';}};
+  if(!text){setSt('請先貼上文字','var(--err)');return;}
+  let fields=null, notes=[];
+  // 1) 若像 JSON／FHIR → 本機解析（免 AI、不外傳）
+  if(text[0]==='{'||text[0]==='['){
+    try{
+      const parsed=(kind==='nhi')?parseNHI(text):parseAppFile(text,'paste.json');
+      if(parsed&&parsed.fields&&Object.keys(parsed.fields).length){fields=parsed.fields;notes=parsed.notes||[];}
+    }catch(e){}
+  }
+  // 2) 否則交給 AI 辨識自由文字
+  if(!fields){
+    if(!state.settings.gemini&&!state.settings.openai){setSt('⚠️ 自由文字辨識需 AI 金鑰（或改貼 JSON 格式）','var(--err)');return;}
+    setSt('🔍 AI 辨識文字中…（約 3–10 秒）');
+    try{
+      const raw=await textExtract(text);
+      const parsed=parseVisionJSON(raw);
+      fields=cleanLabFields(parsed.fields||{});
+      notes=['📝 純文字 AI 辨識，請核對數值是否正確'];
+      (parsed.notes||[]).forEach(n=>{if(n)notes.push(String(n));});
+    }catch(e){setSt('⚠️ 辨識失敗：'+e.message,'var(--err)');return;}
+  }
+  if(!fields||!Object.keys(fields).length){setSt('⚠️ 未辨識到可用數值，請確認文字內容','var(--err)');return;}
+  pendingImport={kind:cfg.out,fields,notes};
+  renderImportResult();go('connect');
+  setSt('✅ 辨識完成，請於下方「匯入結果」核對後存檔');
+  toast('✅ 辨識完成');
 }
 function toNum(v){const n=parseFloat(v);return isNaN(n)?null:n;}
 function pushField(map,key,val){const n=toNum(val);if(n!==null)map[key]=n;}
