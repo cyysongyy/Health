@@ -10,6 +10,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
 <style>
 :root{
   --pri:#0d9488;--pril:#ccfbf1;--prid:#0f766e;
@@ -451,7 +452,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       自動擷取：血壓、空腹血糖、糖化血色素、總膽固醇、HDL、體重、身高、心率等。
     </div>
     <button class="btn bp" onclick="document.getElementById('fileFhir').click()">📥 上傳健康存摺檔案</button>
-    <input type="file" id="fileFhir" accept=".json,.txt" style="display:none;" onchange="handleImport(event,'nhi')">
+    <input type="file" id="fileFhir" accept=".json,.txt,.zip,.gz" style="display:none;" onchange="handleImport(event,'nhi')">
   </div>
 
   <div class="card">
@@ -460,7 +461,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       支援 Apple 健康「匯出所有健康資料」(export.xml) 與 Google Fit 匯出 (JSON)。自動彙整：每日步數 → 每週運動量、靜止心率、睡眠時數。
     </div>
     <button class="btn bp" onclick="document.getElementById('fileWear').click()">📥 上傳穿戴裝置匯出檔</button>
-    <input type="file" id="fileWear" accept=".xml,.json" style="display:none;" onchange="handleImport(event,'wearable')">
+    <input type="file" id="fileWear" accept=".xml,.json,.zip,.gz" style="display:none;" onchange="handleImport(event,'wearable')">
   </div>
 
   <div class="card">
@@ -469,7 +470,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       匯入其他系統匯出的健康資料檔（JSON 或 CSV）。CSV 標題若含 sbp/dbp/glucose/chol/hdl/weight/height/hr 等欄位會自動對應。
     </div>
     <button class="btn bp" onclick="document.getElementById('fileApp').click()">📥 上傳 JSON / CSV</button>
-    <input type="file" id="fileApp" accept=".json,.csv,.txt" style="display:none;" onchange="handleImport(event,'app')">
+    <input type="file" id="fileApp" accept=".json,.csv,.txt,.zip,.gz" style="display:none;" onchange="handleImport(event,'app')">
   </div>
 
   <div class="card" id="importResultCard" style="display:none;">
@@ -1552,21 +1553,51 @@ const FIELD_LABEL={sbp:'收縮壓',dbp:'舒張壓',glucose:'空腹血糖',chol:'
   ldl:'LDL',tg:'三酸甘油酯',waist:'腰圍',
   weight:'體重',height:'身高',hr:'靜止心率',hba1c:'糖化血色素',exercise:'每週運動',sleep:'睡眠'};
 
-function handleImport(e,kind){
+async function handleImport(e,kind){
   const f=e.target.files[0];if(!f)return;
-  const rd=new FileReader();
-  rd.onload=()=>{
-    try{
-      let parsed;
-      if(kind==='nhi')parsed=parseNHI(rd.result);
-      else if(kind==='wearable')parsed=parseWearable(rd.result,f.name);
-      else parsed=parseAppFile(rd.result,f.name);
-      if(!parsed||!Object.keys(parsed.fields).length){toast('未從檔案擷取到可用數值');return;}
-      pendingImport={kind,fields:parsed.fields,notes:parsed.notes||[]};
-      renderImportResult();go('connect');toast('✅ 解析完成');
-    }catch(err){toast('解析失敗：'+err.message);}
-  };
-  rd.readAsText(f);e.target.value='';
+  e.target.value='';
+  try{
+    const entries=await extractTextEntries(f);   // 自動解壓縮（.zip/.gz），回傳多個文字檔
+    const fields={};const notes=[];
+    let ok=0;
+    entries.forEach(({name,text})=>{
+      try{
+        let parsed;
+        if(kind==='nhi')parsed=parseNHI(text);
+        else if(kind==='wearable')parsed=parseWearable(text,name);
+        else parsed=parseAppFile(text,name);
+        if(parsed&&parsed.fields){Object.assign(fields,parsed.fields);ok++;}
+        (parsed&&parsed.notes||[]).forEach(n=>notes.push(n));
+      }catch(err){/* 略過無法解析的檔案 */}
+    });
+    if(!Object.keys(fields).length){toast('未從檔案擷取到可用數值');return;}
+    if(entries.length>1)notes.unshift('已解壓縮並合併 '+ok+'/'+entries.length+' 個檔案');
+    pendingImport={kind,fields,notes};
+    renderImportResult();go('connect');toast('✅ 解析完成');
+  }catch(err){toast('解析失敗：'+err.message);}
+}
+// 讀檔並在需要時解壓縮：.zip → 取出內含 JSON/XML/CSV；.gz → 解 gzip；其他 → 純文字
+async function extractTextEntries(file){
+  const name=(file.name||'').toLowerCase();
+  const dec=u8=>(typeof fflate!=='undefined'&&fflate.strFromU8)?fflate.strFromU8(u8):new TextDecoder('utf-8').decode(u8);
+  if(name.endsWith('.zip')){
+    if(typeof fflate==='undefined')throw new Error('解壓縮元件未載入，請確認網路後重整頁面');
+    const buf=new Uint8Array(await file.arrayBuffer());
+    const files=fflate.unzipSync(buf);
+    const out=[];
+    Object.keys(files).forEach(fn=>{
+      if(fn.endsWith('/')||/(^|\/)__MACOSX\//.test(fn)||/(^|\/)\._/.test(fn))return;
+      if(/\.(json|xml|csv|txt)$/i.test(fn))out.push({name:fn.split('/').pop(),text:dec(files[fn])});
+    });
+    if(!out.length)throw new Error('ZIP 內找不到 JSON／XML／CSV 檔');
+    return out;
+  }
+  if(name.endsWith('.gz')){
+    if(typeof fflate==='undefined')throw new Error('解壓縮元件未載入，請確認網路後重整頁面');
+    const buf=new Uint8Array(await file.arrayBuffer());
+    return [{name:name.replace(/\.gz$/,''),text:dec(fflate.gunzipSync(buf))}];
+  }
+  return [{name:file.name,text:await file.text()}];
 }
 
 /* ---- 檢驗報告圖片辨識（AI 視覺） ---- */
