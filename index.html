@@ -799,7 +799,8 @@ service cloud.firestore {
     <div style="font-size:.8rem;color:var(--g600);line-height:1.6;">
       <b>LifeSpan 健康預測</b> 是一套個人健康管理與延壽輔助系統。<br>
       預測模型整合了 BMI、腰高比、血壓、代謝、運動、睡眠、飲食、吸菸等實證流行病學因子，估算生理年齡、預期壽命與慢性病相對風險。<br><br>
-      <span class="hint">本工具僅供衛教與自我管理參考，不構成醫療建議。· 2026</span>
+      <span class="hint">本工具僅供衛教與自我管理參考，不構成醫療建議。· 2026</span><br>
+      <span class="hint">版本 <b id="buildTag"></b></span>
     </div>
   </div>
 </div>
@@ -1564,6 +1565,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
+const APP_VERSION='2026.07.19-zip-pdf-pw';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -1594,6 +1596,7 @@ function init(){
   document.getElementById('set-fb').value=state.settings.fb||'';
   document.getElementById('set-fb-email').value=state.settings.fbEmail||'';
   refreshAiBadge();refreshCloudBadge();
+  const bt=document.getElementById('buildTag');if(bt)bt.textContent=APP_VERSION;
   if(state.settings.fb) fbInit();   // 還原登入狀態
   renderDash();
 }
