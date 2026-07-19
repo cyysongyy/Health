@@ -11,6 +11,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@zip.js/zip.js@2.7.52/dist/zip-full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.min.js"></script>
 <style>
 :root{
@@ -1809,23 +1810,41 @@ async function extractTextEntries(file){
   const name=(file.name||'').toLowerCase();
   const dec=u8=>(typeof fflate!=='undefined'&&fflate.strFromU8)?fflate.strFromU8(u8):new TextDecoder('utf-8').decode(u8);
   if(name.endsWith('.zip')){
-    if(typeof fflate==='undefined')throw new Error('解壓縮元件未載入，請確認網路後重整頁面');
-    const buf=new Uint8Array(await file.arrayBuffer());
-    const files=fflate.unzipSync(buf);
-    const out=[];
-    Object.keys(files).forEach(fn=>{
-      if(fn.endsWith('/')||/(^|\/)__MACOSX\//.test(fn)||/(^|\/)\._/.test(fn))return;
-      if(/\.(json|xml|csv|txt)$/i.test(fn))out.push({name:fn.split('/').pop(),text:dec(files[fn])});
-    });
-    if(!out.length)throw new Error('ZIP 內找不到 JSON／XML／CSV 檔');
-    return out;
+    return await unzipEntries(file);   // 支援加密（密碼保護）ZIP
   }
   if(name.endsWith('.gz')){
     if(typeof fflate==='undefined')throw new Error('解壓縮元件未載入，請確認網路後重整頁面');
-    const buf=new Uint8Array(await file.arrayBuffer());
-    return [{name:name.replace(/\.gz$/,''),text:dec(fflate.gunzipSync(buf))}];
+    try{
+      const buf=new Uint8Array(await file.arrayBuffer());
+      return [{name:name.replace(/\.gz$/,''),text:dec(fflate.gunzipSync(buf))}];
+    }catch(e){throw new Error('此 .gz 檔無法解壓（格式不符或已損毀），請改上傳解壓後的檔案');}
   }
   return [{name:file.name,text:await file.text()}];
+}
+// 以 zip.js 解壓，支援密碼保護的 ZIP（健康存摺常見）
+async function unzipEntries(file){
+  if(typeof zip==='undefined')throw new Error('解壓縮元件未載入，請確認網路後重整頁面');
+  try{zip.configure({useWebWorkers:false});}catch(e){}
+  const reader=new zip.ZipReader(new zip.BlobReader(file));
+  let entries;
+  try{entries=await reader.getEntries();}
+  catch(e){await reader.close().catch(()=>{});throw new Error('壓縮檔無法讀取（格式不支援或已損毀），請改上傳解壓後的 JSON');}
+  const data=entries.filter(en=>!en.directory&&/\.(json|xml|csv|txt)$/i.test(en.filename)&&!/(^|\/)__MACOSX\//.test(en.filename)&&!/(^|\/)\._/.test(en.filename));
+  if(!data.length){await reader.close().catch(()=>{});throw new Error('ZIP 內找不到 JSON／XML／CSV 檔');}
+  let pw;
+  if(data.some(en=>en.encrypted)){
+    pw=window.prompt('此壓縮檔有密碼保護，請輸入密碼（健康存摺常為身分證字號）：');
+    if(pw==null){await reader.close().catch(()=>{});throw new Error('已取消（此壓縮檔需要密碼）');}
+  }
+  const out=[];
+  for(const en of data){
+    try{
+      const text=await en.getData(new zip.TextWriter(),en.encrypted?{password:pw}:{});
+      out.push({name:en.filename.split('/').pop(),text});
+    }catch(e){await reader.close().catch(()=>{});throw new Error(en.encrypted?'密碼錯誤或解密失敗，請重試':'壓縮檔項目解壓失敗');}
+  }
+  await reader.close().catch(()=>{});
+  return out;
 }
 
 /* ---- 檢驗報告圖片辨識（AI 視覺） ---- */
@@ -1837,6 +1856,8 @@ async function handleImageImport(e){
   const st=document.getElementById('imgStatus');
   const setSt=(t,c)=>{if(st){st.textContent=t;st.style.color=c||'var(--g600)';}};
   const isPdf = f.type==='application/pdf' || /\.pdf$/i.test(f.name);
+  const isImg = (f.type||'').startsWith('image/') || /\.(jpe?g|png|heic|heif|webp|gif|bmp)$/i.test(f.name);
+  if(!isPdf&&!isImg){setSt('⚠️ 此處僅支援圖片或 PDF；JSON／壓縮檔請用下方「健康存摺」或「現有 App」上傳','var(--err)');return;}
   try{
     let images, backupUrl, backupKind;
     if(isPdf){
@@ -1868,8 +1889,22 @@ async function handleImageImport(e){
 async function pdfToImages(file,maxPages){
   if(typeof pdfjsLib==='undefined')throw new Error('PDF 元件未載入，請確認網路後重整頁面');
   try{if(!pdfjsLib.GlobalWorkerOptions.workerSrc)pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/legacy/build/pdf.worker.min.js';}catch(err){}
-  const buf=await file.arrayBuffer();
-  const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  let pdf, pw;
+  for(let attempt=0;attempt<5;attempt++){
+    try{
+      const buf=new Uint8Array(await file.arrayBuffer());
+      pdf=await pdfjsLib.getDocument(pw!==undefined?{data:buf,password:pw}:{data:buf}).promise;
+      break;
+    }catch(e){
+      if(e&&e.name==='PasswordException'){   // 密碼保護的 PDF → 詢問密碼後重試
+        pw=window.prompt(e.code===2?'PDF 密碼錯誤，請再輸入一次：':'此 PDF 有密碼保護，請輸入密碼：');
+        if(pw==null)throw new Error('已取消（此 PDF 需要密碼）');
+        continue;
+      }
+      throw e;
+    }
+  }
+  if(!pdf)throw new Error('PDF 密碼嘗試次數過多');
   const n=Math.min(pdf.numPages,maxPages||4);
   const imgs=[];
   for(let i=1;i<=n;i++){
