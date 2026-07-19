@@ -449,10 +449,11 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
     <div class="ct">🏥 健康存摺（My Health Bank）</div>
     <div class="hint" style="line-height:1.6;margin-bottom:10px;">
       步驟：健保快易通 App 或 <a class="link" href="https://myhealthbank.nhi.gov.tw/" target="_blank">健康存摺網站</a> → 登入 → 下載／匯出（FHIR 或 JSON）→ 於此上傳。<br>
-      自動擷取：血壓、空腹血糖、糖化血色素、總膽固醇、HDL、體重、身高、心率等。
+      自動擷取：血壓、空腹血糖、糖化血色素、總膽固醇、HDL、體重、身高、心率等。<br>
+      支援 <b>FHIR／JSON、.zip／.gz 壓縮檔</b>（本機解析）；若上傳的是 <b>PDF 報告</b>，會改用 AI 視覺辨識（需 AI 金鑰，報告會傳送至 AI 服務判讀）。
     </div>
-    <button class="btn bp" onclick="document.getElementById('fileFhir').click()">📥 上傳健康存摺檔案</button>
-    <input type="file" id="fileFhir" accept=".json,.txt,.zip,.gz" style="display:none;" onchange="handleImport(event,'nhi')">
+    <button class="btn bp" onclick="document.getElementById('fileFhir').click()">📥 上傳健康存摺檔案（JSON／壓縮檔／PDF）</button>
+    <input type="file" id="fileFhir" accept=".json,.txt,.zip,.gz,.pdf,image/*" style="display:none;" onchange="handleImport(event,'nhi')">
   </div>
 
   <div class="card">
@@ -1555,6 +1556,10 @@ const FIELD_LABEL={sbp:'收縮壓',dbp:'舒張壓',glucose:'空腹血糖',chol:'
 
 async function handleImport(e,kind){
   const f=e.target.files[0];if(!f)return;
+  // PDF／圖片 → 改走 AI 視覺辨識（例如健康存摺的 PDF 報告）
+  if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)||(f.type||'').startsWith('image/')||/\.(jpe?g|png|heic|heif|webp)$/i.test(f.name)){
+    return handleImageImport(e);
+  }
   e.target.value='';
   try{
     const entries=await extractTextEntries(f);   // 自動解壓縮（.zip/.gz），回傳多個文字檔
