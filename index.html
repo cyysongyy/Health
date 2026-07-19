@@ -1562,15 +1562,22 @@ function saveSettings(){
   state.settings.fbEmail=document.getElementById('set-fb-email').value.trim();
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
+const SCHEMA_VERSION=1;
 function exportData(){
-  const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
+  const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='lifespan-health-'+todayKey()+'.json';a.click();
 }
 function importData(e){
   const f=e.target.files[0];if(!f)return;
   const rd=new FileReader();
-  rd.onload=()=>{try{state=Object.assign(defaults(),JSON.parse(rd.result));save();toast('✅ 匯入成功');init();}catch(err){toast('匯入失敗：格式錯誤');}};
+  rd.onload=()=>{try{
+    const parsed=JSON.parse(rd.result);
+    const data=(parsed&&parsed.schemaVersion&&parsed.data)?parsed.data:parsed; // 相容新（含中繼）與舊（純 state）格式
+    state=Object.assign(defaults(),data);save();toast('✅ 匯入成功');init();
+  }catch(err){toast('匯入失敗：格式錯誤');}};
   rd.readAsText(f);e.target.value='';
 }
 function resetAll(){ if(confirm('確定清除所有資料？此動作無法復原。')){localStorage.removeItem(LS_KEY);state=defaults();init();toast('已清除全部資料');} }
