@@ -88,14 +88,14 @@ README.md             ← 本說明文件
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /lifespan/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
 ```
 
-> 資料存在你自己的 Firebase 專案；密碼僅用於登入，不會被上傳或儲存到雲端。
+> 健康資料存於 `users/{uid}/lifespan/data`，只有登入本人能讀寫。若專案已有 `match /users/{userId}/…` 規則（與其他 App 共用），通常無需更動。密碼僅用於登入，不會被上傳或儲存到雲端。
 
 ---
 

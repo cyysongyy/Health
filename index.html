@@ -681,16 +681,17 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
           <li>回到這裡輸入 Email／密碼 → 按「🆕 註冊新帳號」→ 完成。其他手機/電腦用同帳密「🔑 登入」即同步。</li>
         </ol>
         <div class="guide-note" style="background:#f0fdfa;border-color:#99f6e4;">
-          <b>Firestore 安全規則</b>（只允許本人讀寫自己的資料）：
+          <b>Firestore 安全規則</b>（只允許本人讀寫自己 <code>users/{uid}</code> 底下的資料；健康資料存於 <code>users/{uid}/lifespan/data</code>）：
           <pre class="rules">rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /lifespan/{uid} {
+    match /users/{userId}/{document=**} {
       allow read, write: if request.auth != null
-                         &amp;&amp; request.auth.uid == uid;
+                         &amp;&amp; request.auth.uid == userId;
     }
   }
 }</pre>
+          若你的專案已有 <code>match /users/{userId}/…</code> 這類規則（例如與其他 App 共用），<b>通常不需更動</b>即可支援本 App。
         </div>
         <div class="guide-tip">💡 設定可整段貼（含 <code>const firebaseConfig =</code>），系統會自動解析。若之後換了 Firebase 設定，請重整頁面再登入。密碼只用於登入、<b>不會</b>被上傳或儲存到雲端。</div>
       </div>
@@ -1444,9 +1445,13 @@ async function fbSignOut(){
   if(fbAuth){try{await fbAuth.signOut();}catch(e){}}
   fbMsg('已登出',true);
 }
+function fbDoc(){
+  // 存於 users/{uid}/lifespan/data —— 相容「本人讀寫自己 users/{uid} 子樹」的常見規則
+  return fbDb.collection('users').doc(fbUser.uid).collection('lifespan').doc('data');
+}
 function fbSyncNow(){
   if(!fbUser||!fbDb)return Promise.reject(new Error('未登入'));
-  return fbDb.collection('lifespan').doc(fbUser.uid).set(fbClean({
+  return fbDoc().set(fbClean({
     profile:state.profile||null, history:state.history||[], habits:state.habits||{},
     updatedAt:new Date().toISOString()
   }),{merge:true});
@@ -1461,7 +1466,7 @@ async function fbPull(){
   if(!fbUser){fbMsg('請先登入',false);return;}
   fbMsg('拉取中…',true);
   try{
-    const doc=await fbDb.collection('lifespan').doc(fbUser.uid).get();
+    const doc=await fbDoc().get();
     if(!doc.exists){fbMsg('雲端尚無資料',false);return;}
     const d=doc.data()||{};
     const map={};
