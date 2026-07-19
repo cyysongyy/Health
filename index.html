@@ -7,6 +7,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.10.0/dist/tabler-icons.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <style>
 :root{
   --pri:#0d9488;--pril:#ccfbf1;--prid:#0f766e;
@@ -129,6 +132,8 @@ td.num{font-variant-numeric:tabular-nums;font-weight:600;}
 .guide-body li{font-size:.79rem;color:var(--g700);line-height:1.65;margin-bottom:5px;}
 .guide-body code{background:var(--g100);border-radius:5px;padding:1px 5px;font-size:.74rem;color:var(--prid);font-family:'DM Mono',ui-monospace,monospace;}
 .guide-tip{font-size:.75rem;color:var(--g600);line-height:1.6;background:#f0fdfa;border-radius:8px;padding:8px 10px;margin-top:4px;}
+textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-height:92px;line-height:1.5;font-size:.76rem;}
+.rules{background:#0f172a;color:#a7f3d0;border-radius:8px;padding:10px;margin-top:6px;font-family:'DM Mono',ui-monospace,monospace;font-size:.7rem;line-height:1.5;overflow-x:auto;white-space:pre;}
 
 /* ===== 足部訓練（scoped under #foot-app）===== */
 :root{
@@ -640,34 +645,76 @@ td.num{font-variant-numeric:tabular-nums;font-weight:600;}
 <!-- ========== SETTINGS ========== -->
 <div class="sec" id="sec-settings">
   <div class="card">
-    <div class="ct">☁️ 雲端後台 <span class="hint">（Google Apps Script + 試算表）</span></div>
+    <div class="ct">🔥 Firebase 雲端同步 <span class="hint">（手機即可設定）</span></div>
     <div class="hint" style="line-height:1.6;margin-bottom:10px;">
-      連結後可跨裝置雲端同步、自動比對、每週自動產生健康週報（Email）。設定方式見 <b>health-backend.gs</b> 說明。
+      免部署伺服器：貼上 Firebase 設定並登入，即可跨裝置自動同步健康紀錄與個人檔案。資料存在<b>你自己的</b> Firebase 專案，本 App 不經任何第三方伺服器。
     </div>
-    <div class="fg"><label class="fl">Apps Script 部署網址</label><input class="fi" id="set-gas" type="url" placeholder="https://script.google.com/macros/s/…/exec"></div>
+    <div class="fg"><label class="fl">Firebase 設定（firebaseConfig）</label>
+      <textarea class="fi" id="set-fb" rows="5" placeholder="貼上 Firebase 主控台給的整段：&#10;const firebaseConfig = {&#10;  apiKey: &quot;...&quot;, authDomain: &quot;...&quot;,&#10;  projectId: &quot;...&quot;, appId: &quot;...&quot;&#10;};"></textarea></div>
+    <div class="fr">
+      <div class="fg"><label class="fl">Email</label><input class="fi" id="set-fb-email" type="email" autocomplete="username" placeholder="you@example.com"></div>
+      <div class="fg"><label class="fl">密碼</label><input class="fi" id="set-fb-pw" type="password" autocomplete="current-password" placeholder="至少 6 碼"></div>
+    </div>
+    <div id="fbAuthStatus" class="hint" style="margin:2px 0 8px;"></div>
+    <div class="row-btn">
+      <button class="btn bp" onclick="fbSignIn()">🔑 登入</button>
+      <button class="btn bg" onclick="fbSignUp()">🆕 註冊新帳號</button>
+      <button class="btn bg" id="fbSignOutBtn" onclick="fbSignOut()" style="display:none;">🚪 登出</button>
+    </div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:.82rem;margin:10px 0 8px;"><input type="checkbox" id="set-autosync"> 存為紀錄點時自動同步雲端</label>
+    <div class="row-btn">
+      <button class="btn bp" onclick="fbPush()">⬆️ 上傳全部到雲端</button>
+      <button class="btn bg" onclick="fbPull()">⬇️ 從雲端拉取</button>
+    </div>
+    <div id="fbMsg" class="hint" style="margin-top:8px;"></div>
+
     <details class="guide">
-      <summary>❓ 這個網址要填什麼？如何取得？</summary>
+      <summary>❓ 如何取得 Firebase 設定？（手機可完成）</summary>
       <div class="guide-body">
-        <div class="guide-note">此欄為<b>選填</b>。不填也能正常使用（資料存在本機）；填了才能跨裝置雲端同步、每日/每週自動 Email 守護。網址需<b>你本人</b>用自己的 Google 帳號部署後才會產生。</div>
+        <div class="guide-note">全程在手機瀏覽器即可操作，不需電腦。只需做一次；之後其他裝置用同一組 Email/密碼登入就會同步。</div>
         <ol>
-          <li><b>建立專案：</b>開一份新的 Google 試算表 →「擴充功能」→「Apps Script」。</li>
-          <li><b>貼程式碼：</b>把 <code>health-backend.gs</code> 全部內容貼進去（取代原本的 <code>myFunction</code>）→ 存檔。</li>
-          <li><b>先授權：</b>函式選 <code>setupSheets</code> → 執行 → 依指示授權你的帳號（進階 → 前往 → 允許）。</li>
-          <li><b>部署：</b>右上「部署 → 新增部署作業」→ 類型選「<b>網頁應用程式</b>」。</li>
-          <li><b>關鍵設定：</b>執行身分＝<b>我</b>；誰可以存取＝<b>所有人（Anyone）</b>。按「部署」再授權一次。</li>
-          <li><b>複製網址：</b>完成後顯示的「網頁應用程式網址」（結尾是 <code>/exec</code>），整串貼到上方欄位。</li>
-          <li>回到這裡按「🔌 測試連線」，出現連線正常即完成。</li>
+          <li>到 <a class="link" href="https://console.firebase.google.com/" target="_blank">console.firebase.google.com</a> 用 Google 帳號登入 →「建立專案」（名稱隨意，Analytics 可略過）。</li>
+          <li><b>Firestore：</b>左側「建構 → Firestore Database」→「建立資料庫」→ 地區選 <code>asia-east1</code>（近台灣）→ 先選「測試模式」即可（規則稍後改）。</li>
+          <li><b>登入方式：</b>「建構 → Authentication → 開始使用」→ 選「<b>電子郵件/密碼</b>」→ 啟用 → 儲存。</li>
+          <li><b>拿設定：</b>齒輪「專案設定」→ 下方「你的應用程式」→ 點 <code>&lt;/&gt;</code> 網頁圖示 → 註冊 App → 複製整段 <code>const firebaseConfig = {…}</code> 貼到上面欄位。</li>
+          <li><b>設定規則：</b>回 Firestore →「規則」分頁 → 貼上下方規則 → 發布。</li>
+          <li>回到這裡輸入 Email／密碼 → 按「🆕 註冊新帳號」→ 完成。其他手機/電腦用同帳密「🔑 登入」即同步。</li>
         </ol>
-        <div class="guide-tip">💡 網址結尾一定是 <code>/exec</code>（不是 <code>/dev</code>）。「誰可以存取」若不是「所有人」，測試連線會失敗。日後改了程式碼：部署 → 管理部署作業 → 編輯 → 版本選「新版本」，網址不變。</div>
+        <div class="guide-note" style="background:#f0fdfa;border-color:#99f6e4;">
+          <b>Firestore 安全規則</b>（只允許本人讀寫自己的資料）：
+          <pre class="rules">rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /lifespan/{uid} {
+      allow read, write: if request.auth != null
+                         &amp;&amp; request.auth.uid == uid;
+    }
+  }
+}</pre>
+        </div>
+        <div class="guide-tip">💡 設定可整段貼（含 <code>const firebaseConfig =</code>），系統會自動解析。若之後換了 Firebase 設定，請重整頁面再登入。密碼只用於登入、<b>不會</b>被上傳或儲存到雲端。</div>
       </div>
     </details>
-    <label style="display:flex;align-items:center;gap:6px;font-size:.82rem;margin:8px 0;"><input type="checkbox" id="set-autosync"> 存為紀錄點時自動同步雲端</label>
-    <div class="row-btn">
-      <button class="btn bp" onclick="testCloud()">🔌 測試連線</button>
-      <button class="btn bg" onclick="cloudPush()">⬆️ 上傳全部到雲端</button>
-      <button class="btn bg" onclick="cloudPull()">⬇️ 從雲端拉取</button>
-    </div>
-    <div id="cloudMsg" class="hint" style="margin-top:8px;"></div>
+
+    <details class="guide">
+      <summary>⚙️ 進階：改用 Google Apps Script（需電腦部署）</summary>
+      <div class="guide-body">
+        <div class="guide-note">此為替代方案，適合想用 Google 試算表當資料庫、且能存取電腦的人。<b>手機無法建立 Apps Script</b>，部署步驟需在電腦上完成。設定後可額外使用每日/每週自動 Email 健康守護。</div>
+        <div class="fg"><label class="fl">Apps Script 部署網址</label><input class="fi" id="set-gas" type="url" placeholder="https://script.google.com/macros/s/…/exec"></div>
+        <div class="row-btn">
+          <button class="btn bp" onclick="testCloud()">🔌 測試連線</button>
+          <button class="btn bg" onclick="cloudPush()">⬆️ 上傳到試算表</button>
+          <button class="btn bg" onclick="cloudPull()">⬇️ 從試算表拉取</button>
+        </div>
+        <div id="cloudMsg" class="hint" style="margin-top:8px;"></div>
+        <ol style="margin-top:10px;">
+          <li>開一份 Google 試算表 →「擴充功能 → Apps Script」，貼上 <code>health-backend.gs</code> 全部內容並存檔。</li>
+          <li>函式選 <code>setupSheets</code> → 執行 → 授權（進階 → 前往 → 允許）。</li>
+          <li>「部署 → 新增部署作業 → 網頁應用程式」；執行身分＝<b>我</b>、存取權＝<b>所有人</b>。</li>
+          <li>複製結尾為 <code>/exec</code> 的網址貼上，按「🔌 測試連線」。</li>
+        </ol>
+      </div>
+    </details>
   </div>
   <div class="card">
     <div class="ct">🤖 AI 引擎設定 <span class="hint">（選填）</span></div>
@@ -724,7 +771,7 @@ function load(){
   try{return JSON.parse(localStorage.getItem(LS_KEY))||defaults();}catch(e){return defaults();}
 }
 function defaults(){
-  return {profile:null, result:null, history:[], habits:{}, settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], habits:{}, settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:''}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));}
 
@@ -958,7 +1005,9 @@ function saveSnapshot(){
   state.history.push(snap);
   if(state.history.length>200)state.history.shift();
   save();
-  if(state.settings.gas && state.settings.autosync){
+  if(state.settings.autosync && fbUser){
+    fbSyncNow().then(()=>toast('💾 已存並同步雲端')).catch(()=>toast('💾 已存（雲端同步失敗）'));
+  }else if(state.settings.gas && state.settings.autosync){
     cloudSaveSnapshot(snap).then(()=>toast('💾 已存並同步雲端')).catch(()=>toast('💾 已存（雲端同步失敗）'));
   }else{
     toast('💾 已存為紀錄點');
@@ -1282,6 +1331,8 @@ function saveSettings(){
   state.settings.engine=document.getElementById('set-engine').value;
   state.settings.gas=document.getElementById('set-gas').value.trim();
   state.settings.autosync=document.getElementById('set-autosync').checked;
+  state.settings.fb=document.getElementById('set-fb').value.trim();
+  state.settings.fbEmail=document.getElementById('set-fb-email').value.trim();
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 function exportData(){
@@ -1305,16 +1356,123 @@ function init(){
   document.getElementById('set-engine').value=state.settings.engine||'auto';
   document.getElementById('set-gas').value=state.settings.gas||'';
   document.getElementById('set-autosync').checked=!!state.settings.autosync;
+  document.getElementById('set-fb').value=state.settings.fb||'';
+  document.getElementById('set-fb-email').value=state.settings.fbEmail||'';
   refreshAiBadge();refreshCloudBadge();
+  if(state.settings.fb) fbInit();   // 還原登入狀態
   renderDash();
 }
 
 /* ============ 雲端後台 ============ */
 function refreshCloudBadge(){
-  const on=!!state.settings.gas;
+  const on=!!(fbUser||state.settings.gas);
   const b=document.getElementById('cloudBadge');
   b.className='api-badge '+(on?'api-on':'api-off');
-  b.textContent=on?'☁️ 已連線':'☁️ 未連線';
+  b.textContent=fbUser?'☁️ 已登入':(on?'☁️ 已連線':'☁️ 未連線');
+}
+
+/* ---- Firebase 雲端同步 ---- */
+let fbApp=null, fbAuth=null, fbDb=null, fbUser=null;
+function fbMsg(t,ok){const el=document.getElementById('fbMsg');if(el){el.textContent=t;el.style.color=ok?'var(--ok)':'var(--err)';}}
+function fbErr(e){
+  const m={'auth/invalid-email':'Email 格式不正確','auth/missing-password':'請輸入密碼',
+    'auth/weak-password':'密碼太弱（至少 6 碼）','auth/email-already-in-use':'此 Email 已註冊，請改用「登入」',
+    'auth/user-not-found':'查無此帳號，請先「註冊新帳號」','auth/wrong-password':'密碼錯誤',
+    'auth/invalid-credential':'帳號或密碼錯誤','auth/network-request-failed':'網路連線失敗',
+    'auth/operation-not-allowed':'尚未在 Firebase 啟用「電子郵件/密碼」登入方式'};
+  return (e&&(m[e.code]||e.message))||'未知錯誤';
+}
+function fbClean(o){try{return JSON.parse(JSON.stringify(o));}catch(e){return o;}}
+function fbGetConfig(){
+  const raw=(state.settings.fb||document.getElementById('set-fb').value||'').trim();
+  if(!raw)return null;
+  const m=raw.match(/\{[\s\S]*\}/);
+  const txt=m?m[0]:raw;
+  try{return (new Function('return ('+txt+')'))();}catch(e){return null;}
+}
+function fbInit(){
+  if(typeof firebase==='undefined'){fbMsg('Firebase 元件尚未載入，請確認網路後重整頁面',false);return false;}
+  if(fbApp)return true;
+  const cfg=fbGetConfig();
+  if(!cfg||!cfg.apiKey||!cfg.projectId){fbMsg('Firebase 設定格式不正確，請貼上完整的 firebaseConfig',false);return false;}
+  try{
+    fbApp=firebase.initializeApp(cfg);
+    fbAuth=firebase.auth();
+    fbDb=firebase.firestore();
+    fbAuth.onAuthStateChanged(u=>{fbUser=u;fbRenderAuth();refreshCloudBadge();});
+    return true;
+  }catch(e){fbMsg('初始化失敗：'+(e.message||e),false);return false;}
+}
+function fbRenderAuth(){
+  const st=document.getElementById('fbAuthStatus');
+  const out=document.getElementById('fbSignOutBtn');
+  if(fbUser){
+    if(st){st.textContent='✅ 已登入：'+(fbUser.email||fbUser.uid);st.style.color='var(--ok)';}
+    if(out)out.style.display='inline-flex';
+  }else{
+    if(st){st.textContent='尚未登入';st.style.color='var(--g400)';}
+    if(out)out.style.display='none';
+  }
+}
+function fbSaveConfigFromInput(){
+  state.settings.fb=document.getElementById('set-fb').value.trim();
+  state.settings.fbEmail=document.getElementById('set-fb-email').value.trim();
+  save();
+}
+async function fbSignIn(){
+  fbSaveConfigFromInput();
+  if(!fbInit())return;
+  const email=document.getElementById('set-fb-email').value.trim();
+  const pw=document.getElementById('set-fb-pw').value;
+  if(!email||!pw){fbMsg('請輸入 Email 與密碼',false);return;}
+  fbMsg('登入中…',true);
+  try{await fbAuth.signInWithEmailAndPassword(email,pw);fbMsg('✅ 已登入：'+email,true);}
+  catch(e){fbMsg('⚠️ '+fbErr(e),false);}
+}
+async function fbSignUp(){
+  fbSaveConfigFromInput();
+  if(!fbInit())return;
+  const email=document.getElementById('set-fb-email').value.trim();
+  const pw=document.getElementById('set-fb-pw').value;
+  if(!email||!pw){fbMsg('請輸入 Email 與密碼',false);return;}
+  if(pw.length<6){fbMsg('密碼至少 6 碼',false);return;}
+  fbMsg('建立帳號中…',true);
+  try{await fbAuth.createUserWithEmailAndPassword(email,pw);fbMsg('✅ 已建立帳號並登入：'+email,true);}
+  catch(e){fbMsg('⚠️ '+fbErr(e),false);}
+}
+async function fbSignOut(){
+  if(fbAuth){try{await fbAuth.signOut();}catch(e){}}
+  fbMsg('已登出',true);
+}
+function fbSyncNow(){
+  if(!fbUser||!fbDb)return Promise.reject(new Error('未登入'));
+  return fbDb.collection('lifespan').doc(fbUser.uid).set(fbClean({
+    profile:state.profile||null, history:state.history||[], habits:state.habits||{},
+    updatedAt:new Date().toISOString()
+  }),{merge:true});
+}
+async function fbPush(){
+  if(!fbUser){fbMsg('請先登入',false);return;}
+  fbMsg('上傳中…',true);
+  try{await fbSyncNow();fbMsg('✅ 已上傳 '+(state.history?state.history.length:0)+' 筆紀錄到雲端',true);toast('已上傳雲端');}
+  catch(e){fbMsg('⚠️ 上傳失敗：'+fbErr(e),false);}
+}
+async function fbPull(){
+  if(!fbUser){fbMsg('請先登入',false);return;}
+  fbMsg('拉取中…',true);
+  try{
+    const doc=await fbDb.collection('lifespan').doc(fbUser.uid).get();
+    if(!doc.exists){fbMsg('雲端尚無資料',false);return;}
+    const d=doc.data()||{};
+    const map={};
+    [...(state.history||[]),...((d.history)||[])].forEach(s=>{if(s&&s.id)map[s.id]=s;});
+    state.history=Object.values(map).sort((a,b)=>new Date(a.date)-new Date(b.date));
+    if(d.profile)state.profile=d.profile;
+    if(d.habits)state.habits=Object.assign({},state.habits,d.habits);
+    save();
+    fbMsg('✅ 已合併，共 '+state.history.length+' 筆紀錄',true);toast('已從雲端拉取');
+    if(document.getElementById('sec-trend').classList.contains('active'))renderTrend();
+  }catch(e){fbMsg('⚠️ 拉取失敗：'+fbErr(e),false);}
 }
 async function gasGet(action){
   const url=state.settings.gas+(state.settings.gas.includes('?')?'&':'?')+'action='+action;

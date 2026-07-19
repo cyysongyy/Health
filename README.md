@@ -26,7 +26,8 @@
 | ✅ 每日習慣 | 喝水、運動、蔬果、睡眠等每日打卡與連續天數 |
 | 💡 延壽行動清單 | 依影響程度排序的個人化建議（附預估延壽年數） |
 | 🤖 AI 健康顧問 | 選填：接 Gemini / OpenAI 取得個人化解讀與行動計畫 |
-| ☁️ 雲端後台 | 選填：Google Apps Script + 試算表，跨裝置同步、自動比對、每日/每週自動守護 Email |
+| 🔥 Firebase 雲端同步 | 選填：貼上 firebaseConfig + Email 登入即跨裝置同步，免部署伺服器、手機即可設定 |
+| ☁️ 雲端後台（進階）| 選填：Google Apps Script + 試算表，跨裝置同步、自動比對、每日/每週自動守護 Email（需電腦部署）|
 
 ---
 
@@ -73,9 +74,34 @@ README.md             ← 本說明文件
 
 ---
 
-## ☁️ 雲端後台與自動化（`health-backend.gs`）
+## 🔥 Firebase 雲端同步（推薦，手機即可設定）
 
-以 Google Apps Script + 試算表作為個人健康資料的雲端中心：儲存、比對、跨裝置同步，並可自動化。
+前端直接串接 Firebase（Firestore + Email/密碼登入），**免部署伺服器**，設定全程可在手機瀏覽器完成：
+
+1. 到 [Firebase 主控台](https://console.firebase.google.com/) 建立專案。
+2. 開啟 **Firestore Database**（地區建議 `asia-east1`）與 **Authentication → 電子郵件/密碼**。
+3. 專案設定 → 新增 Web App → 複製整段 `firebaseConfig`。
+4. 於 App「設定 → 🔥 Firebase 雲端同步」貼上 config、輸入 Email/密碼 → 註冊 → 登入。其他裝置用同帳密登入即同步。
+5. 於 Firestore「規則」貼上（只允許本人讀寫自己的資料）：
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /lifespan/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+  }
+}
+```
+
+> 資料存在你自己的 Firebase 專案；密碼僅用於登入，不會被上傳或儲存到雲端。
+
+---
+
+## ☁️ 雲端後台與自動化（進階，`health-backend.gs`）
+
+以 Google Apps Script + 試算表作為個人健康資料的雲端中心：儲存、比對、跨裝置同步，並可自動化。**部署步驟需在電腦上完成（手機無法建立 Apps Script）**，額外提供每日/每週自動 Email 守護。
 
 - `setupWeeklyTrigger()`：每週一早上 8 點自動產生健康週報並寄 Email。
 - `setupDailyWatch()`：每日早上 9 點自動執行警示引擎，偵測到危險門檻或惡化趨勢才主動寄警告信（無警示則不打擾）。
