@@ -140,6 +140,11 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;}
 .modal-box{background:#fff;border-radius:14px;padding:16px;max-width:440px;width:100%;max-height:88vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.3);}
 .lab-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;}
+.lab-alert{border-radius:10px;padding:11px 13px;margin-bottom:10px;font-size:.84rem;font-weight:600;display:flex;align-items:flex-start;gap:8px;line-height:1.5;}
+.lab-alert.crit{background:#fee2e2;border:1px solid #ef4444;color:#b91c1c;animation:pulseRed 1.4s ease-in-out infinite;}
+.lab-alert.warnlv{background:#fffbeb;border:1px solid #fde68a;color:#a16207;}
+@keyframes pulseRed{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}50%{box-shadow:0 0 0 4px rgba(239,68,68,.18)}}
+.sc.crit{animation:pulseRed 1.6s ease-in-out infinite;}
 
 /* ===== 足部訓練（scoped under #foot-app）===== */
 :root{
@@ -684,9 +689,11 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   <div id="labsContent" style="display:none;">
     <div class="card">
       <div class="ct">🧪 檢驗總覽 <span class="hint" id="labsCount"></span></div>
+      <div id="labsAlert"></div>
       <div id="labsSummary" class="disc" style="margin-bottom:10px;display:none;"></div>
       <div id="labsLatest" class="sg" style="grid-template-columns:repeat(2,1fr);"></div>
-      <div class="hint" style="margin-top:4px;">顏色：<span style="color:var(--ok);font-weight:700;">正常</span> · <span style="color:var(--warn);font-weight:700;">偏高／注意</span> · <span style="color:var(--err);font-weight:700;">過高</span>（僅供參考，非診斷）</div>
+      <div class="hint" style="margin-top:6px;">顏色：<span style="color:var(--ok);font-weight:700;">正常</span> · <span style="color:var(--warn);font-weight:700;">偏高／注意</span> · <span style="color:var(--err);font-weight:700;">過高 ⚠️</span> · <span style="color:#b91c1c;font-weight:700;">嚴重 🚨</span>（僅供參考，非診斷）</div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:.8rem;color:var(--g600);margin-top:8px;"><input type="checkbox" id="labSoundToggle" onchange="toggleLabSound()"> 🔔 偵測到嚴重異常時發出聲音提醒</label>
     </div>
     <div class="card">
       <div class="ct">🔍 資料檢視</div>
@@ -1373,22 +1380,44 @@ const LAB_META={
   hr:{label:'心率',unit:'bpm'}, height:{label:'身高',unit:'cm'}
 };
 const LAB_ORDER=['sbp','dbp','glucose','hba1c','chol','hdl','ldl','tg','waist','weight','hr','height'];
-const FLAG_COLOR={ok:'var(--ok)',warn:'var(--warn)',high:'var(--err)'};
+const FLAG_COLOR={ok:'var(--ok)',warn:'var(--warn)',high:'var(--err)',crit:'#b91c1c'};
+const FLAG_ICON={ok:'',warn:'',high:'⚠️',crit:'🚨'};
+const FLAG_TXT={ok:'正常',warn:'注意',high:'過高',crit:'嚴重異常'};
 const SRC_LABEL={image:'📷 圖片',pdf:'📄 PDF',nhi:'健保存摺',wearable:'穿戴',app:'App',manual:'手動',text:'📝 文字'};
 function labFlag(metric,v){
   const n=parseFloat(v); if(isNaN(n))return 'ok';
   switch(metric){
-    case 'sbp': return n>=140?'high':n>=130?'warn':'ok';
-    case 'dbp': return n>=90?'high':n>=85?'warn':'ok';
-    case 'glucose': return n>=126?'high':n>=100?'warn':'ok';
-    case 'hba1c': return n>=6.5?'high':n>=5.7?'warn':'ok';
-    case 'chol': return n>=240?'high':n>=200?'warn':'ok';
-    case 'hdl': return n<40?'high':n<50?'warn':'ok';
-    case 'ldl': return n>=160?'high':n>=130?'warn':'ok';
-    case 'tg': return n>=200?'high':n>=150?'warn':'ok';
-    case 'hr': return (n>100||n<50)?'warn':'ok';
+    case 'sbp': return n>=180?'crit':n>=140?'high':n>=130?'warn':(n<90?'high':'ok');
+    case 'dbp': return n>=120?'crit':n>=90?'high':n>=85?'warn':'ok';
+    case 'glucose': return n>=250?'crit':n>=126?'high':n>=100?'warn':(n<60?'high':'ok');
+    case 'hba1c': return n>=10?'crit':n>=6.5?'high':n>=5.7?'warn':'ok';
+    case 'chol': return n>=320?'crit':n>=240?'high':n>=200?'warn':'ok';
+    case 'hdl': return n<25?'crit':n<40?'high':n<50?'warn':'ok';
+    case 'ldl': return n>=190?'crit':n>=160?'high':n>=130?'warn':'ok';
+    case 'tg': return n>=500?'crit':n>=200?'high':n>=150?'warn':'ok';
+    case 'hr': return (n>=130||n<=40)?'crit':(n>100||n<50)?'warn':'ok';
     default: return 'ok';
   }
+}
+function beep(times){
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext; if(!AC)return;
+    const ctx=beep._c||(beep._c=new AC());
+    if(ctx.state==='suspended')ctx.resume();
+    let t=ctx.currentTime;
+    for(let i=0;i<(times||3);i++){
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.type='sine';o.frequency.value=880;o.connect(g);g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.35,t+0.02);g.gain.exponentialRampToValueAtTime(0.0001,t+0.2);
+      o.start(t);o.stop(t+0.22);t+=0.3;
+    }
+  }catch(e){}
+}
+function labSoundOn(){try{return localStorage.getItem('labSound')!=='0';}catch(e){return true;}}
+function toggleLabSound(){
+  const on=document.getElementById('labSoundToggle').checked;
+  try{localStorage.setItem('labSound',on?'1':'0');}catch(e){}
+  if(on)beep(1);
 }
 const LAB_GOOD={sbp:'down',dbp:'down',glucose:'down',hba1c:'down',chol:'down',ldl:'down',tg:'down',waist:'down',weight:'down',hdl:'up'};
 let curLab=null, labView='overall', labSingleId=null;
@@ -1435,18 +1464,35 @@ function renderLabs(){
   labs.forEach(e=>{const t=new Date(e.date).getTime();Object.keys(e.values||{}).forEach(k=>{if(!latest[k]||t>=latest[k].t)latest[k]={v:e.values[k],t,date:e.date};});});
   const present=LAB_ORDER.filter(k=>latest[k]!==undefined);
   document.getElementById('labsLatest').innerHTML=present.map(k=>{
-    const m=LAB_META[k],col=FLAG_COLOR[labFlag(k,latest[k].v)];
-    return `<div class="sc" style="border-left-color:${col};"><div class="sv" style="color:${col};">${latest[k].v}<small> ${m.unit}</small></div><div class="sl">${m.label} · ${new Date(latest[k].date).toLocaleDateString('zh-TW')}</div></div>`;
+    const m=LAB_META[k],fl=labFlag(k,latest[k].v),col=FLAG_COLOR[fl],ic=FLAG_ICON[fl];
+    return `<div class="sc${fl==='crit'?' crit':''}" style="border-left-color:${col};"><div class="sv" style="color:${col};">${ic?ic+' ':''}${latest[k].v}<small> ${m.unit}</small></div><div class="sl">${m.label} · ${new Date(latest[k].date).toLocaleDateString('zh-TW')}</div></div>`;
   }).join('');
+  // 異常警示：嚴重(crit) / 過高(high)
+  const critList=present.filter(k=>labFlag(k,latest[k].v)==='crit');
+  const highList=present.filter(k=>labFlag(k,latest[k].v)==='high');
+  const alertEl=document.getElementById('labsAlert');
+  if(critList.length){
+    alertEl.innerHTML=`<div class="lab-alert crit">🚨 <span>偵測到 <b>${critList.length}</b> 項數值<b>嚴重異常</b>：${critList.map(k=>LAB_META[k].label+' '+latest[k].v).join('、')}。與標準值差距大，建議儘速諮詢醫師／就醫。</span></div>`;
+  }else if(highList.length){
+    alertEl.innerHTML=`<div class="lab-alert warnlv">⚠️ <span>有 <b>${highList.length}</b> 項數值偏高：${highList.map(k=>LAB_META[k].label).join('、')}。請留意並考慮就醫追蹤。</span></div>`;
+  }else{ alertEl.innerHTML=''; }
+  // 聲音提醒（僅嚴重異常，且該組合首次出現時；需開啟）
+  const st2=document.getElementById('labSoundToggle'); if(st2)st2.checked=labSoundOn();
+  if(critList.length){
+    const sig=critList.map(k=>k+':'+latest[k].v).join(',');
+    if(labSoundOn() && renderLabs._lastCrit!==sig){ beep(3); }
+    renderLabs._lastCrit=sig;
+  }else{ renderLabs._lastCrit=''; }
   // 總覽摘要：改善 / 惡化 / 需注意
-  let improved=0,worsened=0,attention=0;
-  present.forEach(k=>{const st=labStats(k);if(st){if(st.dir==='better')improved++;if(st.dir==='worse')worsened++;}if(labFlag(k,latest[k].v)!=='ok')attention++;});
+  let improved=0,worsened=0;
+  present.forEach(k=>{const st=labStats(k);if(st){if(st.dir==='better')improved++;if(st.dir==='worse')worsened++;}});
   const sumEl=document.getElementById('labsSummary');
   sumEl.style.display='block';
   sumEl.innerHTML=`共 <b>${present.length}</b> 項檢驗｜`+
     `<span style="color:var(--ok);font-weight:700;">▼ 改善 ${improved}</span>　`+
     `<span style="color:var(--err);font-weight:700;">▲ 惡化 ${worsened}</span>　`+
-    `<span style="color:var(--warn);font-weight:700;">⚠ 目前偏高／過高 ${attention}</span>`;
+    `<span style="color:#b91c1c;font-weight:700;">🚨 嚴重 ${critList.length}</span>　`+
+    `<span style="color:var(--warn);font-weight:700;">⚠️ 偏高 ${highList.length}</span>`;
   // 檢視模式切換
   const vseg=document.getElementById('labViewSeg');vseg.innerHTML='';
   [['overall','📊 總體分析'],['single','📋 單筆檢視']].forEach(([v,lbl])=>{
@@ -1473,7 +1519,7 @@ function renderLabs(){
   }else{wrap.style.display='none';}
   document.getElementById('labHistTable').innerHTML=
     '<tr><th>日期</th><th>'+LAB_META[curLab].label+'（'+LAB_META[curLab].unit+'）</th><th>狀態</th></tr>'+
-    [...series].reverse().map(s=>{const fl=labFlag(curLab,s.value);return `<tr><td>${new Date(s.date).toLocaleDateString('zh-TW')}</td><td class="num" style="color:${FLAG_COLOR[fl]};">${s.value}</td><td style="color:${FLAG_COLOR[fl]};font-size:.72rem;">${fl==='high'?'過高':fl==='warn'?'注意':'正常'}</td></tr>`;}).join('');
+    [...series].reverse().map(s=>{const fl=labFlag(curLab,s.value);return `<tr><td>${new Date(s.date).toLocaleDateString('zh-TW')}</td><td class="num" style="color:${FLAG_COLOR[fl]};">${s.value}</td><td style="color:${FLAG_COLOR[fl]};font-size:.72rem;">${FLAG_ICON[fl]?FLAG_ICON[fl]+' ':''}${FLAG_TXT[fl]}</td></tr>`;}).join('');
   // 全部紀錄
   let head='<tr><th>日期</th><th>來源</th>'+present.map(k=>'<th>'+LAB_META[k].label+'</th>').join('')+'<th>操作</th></tr>';
   const body=[...labs].reverse().map(e=>'<tr><td>'+new Date(e.date).toLocaleDateString('zh-TW')+'</td><td style="font-size:.72rem;">'+(SRC_LABEL[e.source]||e.source||'—')+'</td>'+
@@ -1492,7 +1538,7 @@ function renderLabAnalysis(present){
     const chg=st.n>=2?`${st.first.value} → ${st.last.value}<br><span style="font-size:.68rem;">${arrow}${Math.abs(st.delta)}</span>`:'—';
     const trend=st.n>=2?`<span style="color:${dirCol[st.dir]};font-weight:700;font-size:.72rem;">${dirTxt[st.dir]||'—'}</span>`:'<span class="hint">單筆</span>';
     html+=`<tr><td>${m.label}<br><span class="hint">${m.unit}</span></td>`+
-      `<td class="num" style="color:${FLAG_COLOR[fl]};font-weight:700;">${st.last.value}</td>`+
+      `<td class="num" style="color:${FLAG_COLOR[fl]};font-weight:700;">${FLAG_ICON[fl]?FLAG_ICON[fl]+' ':''}${st.last.value}</td>`+
       `<td class="num" style="font-size:.74rem;">${chg}</td>`+
       `<td>${trend}</td>`+
       `<td class="num" style="font-size:.72rem;">${st.min}–${st.max}<br>平均 ${st.avg}</td>`+
@@ -1510,7 +1556,7 @@ function renderLabSingle(labs){
   if(!rec){t.innerHTML='';return;}
   const keys=LAB_ORDER.filter(k=>rec.values&&rec.values[k]!=null);
   t.innerHTML='<tr><th>項目</th><th>數值</th><th>狀態</th></tr>'+
-    keys.map(k=>{const v=rec.values[k],fl=labFlag(k,v);return `<tr><td>${LAB_META[k].label}</td><td class="num" style="color:${FLAG_COLOR[fl]};font-weight:700;">${v} <span class="hint">${LAB_META[k].unit}</span></td><td style="color:${FLAG_COLOR[fl]};font-size:.72rem;">${fl==='high'?'過高':fl==='warn'?'注意':'正常'}</td></tr>`;}).join('')+
+    keys.map(k=>{const v=rec.values[k],fl=labFlag(k,v);return `<tr><td>${LAB_META[k].label}</td><td class="num" style="color:${FLAG_COLOR[fl]};font-weight:700;">${v} <span class="hint">${LAB_META[k].unit}</span></td><td style="color:${FLAG_COLOR[fl]};font-size:.72rem;">${FLAG_ICON[fl]?FLAG_ICON[fl]+' ':''}${FLAG_TXT[fl]}</td></tr>`;}).join('')+
     `<tr><td colspan="3" class="hint" style="padding-top:8px;">來源：${SRC_LABEL[rec.source]||rec.source||'—'}　·　時間：${new Date(rec.date).toLocaleString('zh-TW')}</td></tr>`;
 }
 function labPickRecord(id){ labSingleId=id; renderLabSingle(state.labs||[]); }
@@ -1644,7 +1690,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.19-owner-cloud';
+const APP_VERSION='2026.07.19-lab-alert';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
