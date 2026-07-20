@@ -83,7 +83,7 @@ README.md             ← 本說明文件
 1. 到 [Firebase 主控台](https://console.firebase.google.com/) 建立專案。
 2. 開啟 **Firestore Database**（地區建議 `asia-east1`）與 **Authentication → 電子郵件/密碼**。
 3. 專案設定 → 新增 Web App → 複製整段 `firebaseConfig`。
-4. 於 App「設定 → 🔥 Firebase 雲端同步」貼上 config、輸入 Email/密碼 → 註冊 → 登入。其他裝置用同帳密登入即同步。
+4. 於 App「設定 → 🔥 Firebase 雲端同步」輸入 Email/密碼 → 註冊 → 登入即可（App 已內建預設 Firebase 設定；若要改用自己的專案，於「進階」貼上 config）。其他裝置用同帳密登入即同步。
 5. 於 Firestore「規則」貼上（只允許本人讀寫自己的資料）：
 
 ```

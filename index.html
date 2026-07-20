@@ -730,10 +730,15 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   <div class="card">
     <div class="ct">🔥 Firebase 雲端同步 <span class="hint">（手機即可設定）</span></div>
     <div class="hint" style="line-height:1.6;margin-bottom:10px;">
-      免部署伺服器：貼上 Firebase 設定並登入，即可跨裝置自動同步健康紀錄與個人檔案。資料存在<b>你自己的</b> Firebase 專案，本 App 不經任何第三方伺服器。
+      <b>✅ 已內建 Firebase 設定，直接輸入 Email／密碼登入或註冊即可</b>，跨裝置自動同步健康紀錄、檢驗數據與個人檔案。首次請按「🆕 註冊新帳號」，之後其他裝置用同帳密登入即同步。
     </div>
-    <div class="fg"><label class="fl">Firebase 設定（firebaseConfig）</label>
-      <textarea class="fi" id="set-fb" rows="5" placeholder="貼上 Firebase 主控台給的整段：&#10;const firebaseConfig = {&#10;  apiKey: &quot;...&quot;, authDomain: &quot;...&quot;,&#10;  projectId: &quot;...&quot;, appId: &quot;...&quot;&#10;};"></textarea></div>
+    <details class="guide">
+      <summary>⚙️ 進階：自訂 Firebase 設定（一般免填）</summary>
+      <div class="guide-body">
+        <div class="hint" style="margin-bottom:6px;">若要改用你自己的另一個 Firebase 專案，貼上其 firebaseConfig；留空則使用內建設定。</div>
+        <textarea class="fi" id="set-fb" rows="5" placeholder="留空＝使用內建設定；或貼上 const firebaseConfig = { … }"></textarea>
+      </div>
+    </details>
     <div class="fr">
       <div class="fg"><label class="fl">Email</label><input class="fi" id="set-fb-email" type="email" autocomplete="username" placeholder="you@example.com"></div>
       <div class="fg"><label class="fl">密碼</label><input class="fi" id="set-fb-pw" type="password" autocomplete="current-password" placeholder="至少 6 碼"></div>
@@ -1639,7 +1644,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.19-lab-crud';
+const APP_VERSION='2026.07.19-fb-builtin';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -1671,7 +1676,7 @@ function init(){
   document.getElementById('set-fb-email').value=state.settings.fbEmail||'';
   refreshAiBadge();refreshCloudBadge();
   const bt=document.getElementById('buildTag');if(bt)bt.textContent=APP_VERSION;
-  if(state.settings.fb) fbInit();   // 還原登入狀態
+  fbInit();   // 內建預設設定，載入即初始化並還原登入狀態
   renderDash();
 }
 
@@ -1695,12 +1700,22 @@ function fbErr(e){
   return (e&&(m[e.code]||e.message))||'未知錯誤';
 }
 function fbClean(o){try{return JSON.parse(JSON.stringify(o));}catch(e){return o;}}
+// 內建預設 Firebase 設定（已實測可用）；使用者可於設定欄自訂覆蓋
+const DEFAULT_FB={
+  apiKey:"AIzaSyBi86d00pkdWZVVr4LsYUlywdOp8EvX6vU",
+  authDomain:"finance-management-ff77a.firebaseapp.com",
+  projectId:"finance-management-ff77a",
+  storageBucket:"finance-management-ff77a.firebasestorage.app",
+  messagingSenderId:"447515382796",
+  appId:"1:447515382796:web:00583c53a54a0dc0a78a29"
+};
 function fbGetConfig(){
-  const raw=(state.settings.fb||document.getElementById('set-fb').value||'').trim();
-  if(!raw)return null;
+  const el=document.getElementById('set-fb');
+  const raw=(state.settings.fb||(el&&el.value)||'').trim();
+  if(!raw)return DEFAULT_FB;
   const m=raw.match(/\{[\s\S]*\}/);
   const txt=m?m[0]:raw;
-  try{return (new Function('return ('+txt+')'))();}catch(e){return null;}
+  try{return (new Function('return ('+txt+')'))();}catch(e){return DEFAULT_FB;}
 }
 function fbInit(){
   if(typeof firebase==='undefined'){fbMsg('Firebase 元件尚未載入，請確認網路後重整頁面',false);return false;}
