@@ -1379,10 +1379,13 @@ const LAB_META={
   cr:{label:'肌酸酐 Cr',unit:'mg/dL'}, egfr:{label:'腎絲球過濾率 eGFR',unit:'mL/min'},
   bun:{label:'尿素氮 BUN',unit:'mg/dL'}, ua:{label:'尿酸 UA',unit:'mg/dL'},
   ast:{label:'肝功能 GOT/AST',unit:'U/L'}, alt:{label:'肝功能 GPT/ALT',unit:'U/L'},
+  ggt:{label:'γ-GT',unit:'U/L'}, tbil:{label:'總膽紅素',unit:'mg/dL'}, alb:{label:'白蛋白',unit:'g/dL'},
+  wbc:{label:'白血球 WBC',unit:'×10³/µL'}, hb:{label:'血紅素 Hb',unit:'g/dL'}, plt:{label:'血小板 PLT',unit:'×10³/µL'},
+  na:{label:'鈉 Na',unit:'mmol/L'}, k:{label:'鉀 K',unit:'mmol/L'}, tsh:{label:'甲狀腺 TSH',unit:'mIU/L'},
   waist:{label:'腰圍',unit:'cm'}, weight:{label:'體重',unit:'kg'},
   hr:{label:'心率',unit:'bpm'}, height:{label:'身高',unit:'cm'}
 };
-const LAB_ORDER=['sbp','dbp','glucose','hba1c','chol','hdl','ldl','tg','cr','egfr','bun','ua','ast','alt','waist','weight','hr','height'];
+const LAB_ORDER=['sbp','dbp','glucose','hba1c','chol','hdl','ldl','tg','cr','egfr','bun','ua','ast','alt','ggt','tbil','alb','wbc','hb','plt','na','k','tsh','waist','weight','hr','height'];
 const FLAG_COLOR={ok:'var(--ok)',warn:'var(--warn)',high:'var(--err)',crit:'#b91c1c'};
 const FLAG_ICON={ok:'',warn:'',high:'⚠️',crit:'🚨'};
 const FLAG_TXT={ok:'正常',warn:'注意',high:'過高',crit:'嚴重異常'};
@@ -1404,6 +1407,15 @@ function labFlag(metric,v){
     case 'ua': return n>=12?'crit':n>=9?'high':n>=7.2?'warn':'ok';
     case 'ast': return n>=300?'crit':n>=120?'high':n>=40?'warn':'ok';
     case 'alt': return n>=300?'crit':n>=120?'high':n>=40?'warn':'ok';
+    case 'ggt': return n>=600?'crit':n>=200?'high':n>=60?'warn':'ok';
+    case 'tbil': return n>=12?'crit':n>=3?'high':n>=1.2?'warn':'ok';
+    case 'alb': return n<2?'crit':n<2.8?'high':n<3.5?'warn':'ok';
+    case 'wbc': return (n<1.5||n>30)?'crit':(n<2.5||n>15)?'high':(n<3.5||n>11)?'warn':'ok';
+    case 'hb': return n<7?'crit':(n<10||n>18.5)?'high':(n<12||n>17)?'warn':'ok';
+    case 'plt': return (n<20||n>1000)?'crit':(n<50||n>600)?'high':(n<150||n>450)?'warn':'ok';
+    case 'na': return (n<120||n>160)?'crit':(n<125||n>155)?'high':(n<135||n>145)?'warn':'ok';
+    case 'k': return (n<2.5||n>6.5)?'crit':(n<3||n>6)?'high':(n<3.5||n>5.1)?'warn':'ok';
+    case 'tsh': return (n<0.05||n>20)?'crit':(n<0.1||n>10)?'high':(n<0.4||n>4)?'warn':'ok';
     case 'hr': return (n>=130||n<=40)?'crit':(n>100||n<50)?'warn':'ok';
     default: return 'ok';
   }
@@ -1428,7 +1440,7 @@ function toggleLabSound(){
   try{localStorage.setItem('labSound',on?'1':'0');}catch(e){}
   if(on)beep(1);
 }
-const LAB_GOOD={sbp:'down',dbp:'down',glucose:'down',hba1c:'down',chol:'down',ldl:'down',tg:'down',waist:'down',weight:'down',hdl:'up',cr:'down',bun:'down',ua:'down',ast:'down',alt:'down',egfr:'up'};
+const LAB_GOOD={sbp:'down',dbp:'down',glucose:'down',hba1c:'down',chol:'down',ldl:'down',tg:'down',waist:'down',weight:'down',hdl:'up',cr:'down',bun:'down',ua:'down',ast:'down',alt:'down',egfr:'up',ggt:'down',tbil:'down',alb:'up'};
 let curLab=null, labView='overall', labSingleId=null;
 function labStats(metric){
   const s=labSeries(metric);
@@ -1699,7 +1711,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.20-more-labs';
+const APP_VERSION='2026.07.20-labs-panel';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -2114,11 +2126,11 @@ function resizeImage(file,maxDim,quality){
 }
 const VISION_PROMPT=`你是醫療檢驗報告的資料擷取助手。以下是一份健康檢查／檢驗報告（可能包含多張圖片或多頁）。請彙整其中的檢驗數值，只回傳 JSON、不要任何多餘文字或說明。
 JSON 格式：
-{"fields":{"sbp":收縮壓,"dbp":舒張壓,"glucose":空腹血糖,"chol":總膽固醇,"hdl":HDL,"ldl":LDL,"tg":三酸甘油酯,"hba1c":糖化血色素,"cr":肌酸酐,"egfr":eGFR腎絲球過濾率,"bun":尿素氮BUN,"ua":尿酸,"ast":GOT或AST,"alt":GPT或ALT,"weight":體重,"height":身高,"waist":腰圍,"hr":心率},"notes":["補充說明或異常標記，以及你有看到但不在上列欄位的其他檢驗項目與數值"]}
+{"fields":{"sbp":收縮壓,"dbp":舒張壓,"glucose":空腹血糖,"chol":總膽固醇,"hdl":HDL,"ldl":LDL,"tg":三酸甘油酯,"hba1c":糖化血色素,"cr":肌酸酐,"egfr":eGFR,"bun":BUN,"ua":尿酸,"ast":GOT或AST,"alt":GPT或ALT,"ggt":γ-GT,"tbil":總膽紅素,"alb":白蛋白,"wbc":白血球,"hb":血紅素,"plt":血小板,"na":鈉,"k":鉀,"tsh":TSH,"weight":體重,"height":身高,"waist":腰圍,"hr":心率},"notes":["補充說明或異常標記，以及不在上列欄位的其他檢驗項目與數值"]}
 規則：
 - 只放你在圖片中實際看到的數值；找不到的欄位直接省略，不要猜測或填 0。
-- 數值只放數字（去掉單位）。單位換算：血糖／膽固醇／HDL／LDL／TG／肌酸酐／BUN／尿酸 用 mg/dL；eGFR 用 mL/min；GOT／GPT 用 U/L；體重 kg；身高／腰圍 cm；HbA1c 用 %。
-- 上列欄位以外的檢驗項目（例如白血球、血紅素、TSH 等），請整理進 notes（項目名＋數值），不要硬塞進 fields。
+- 數值只放數字（去掉單位）。單位換算：血糖／膽固醇／HDL／LDL／TG／肌酸酐／BUN／尿酸／總膽紅素 用 mg/dL；eGFR mL/min；GOT／GPT／γ-GT U/L；白蛋白 g/dL；白血球／血小板 ×10³/µL；血紅素 g/dL；鈉／鉀 mmol/L；TSH mIU/L；體重 kg；身高／腰圍 cm；HbA1c %。
+- 上列欄位以外的檢驗項目，請整理進 notes（項目名＋數值），不要硬塞進 fields。
 - 若同一項目有多筆，取最新一次或有標註參考值那筆。
 - notes 用繁體中文，列出無法確定或超出參考範圍的項目。`;
 async function visionExtract(images){
@@ -2157,7 +2169,7 @@ function parseVisionJSON(raw){
   try{return JSON.parse(t);}catch(e){return {};}
 }
 function cleanLabFields(obj){
-  const allow=['sbp','dbp','glucose','chol','hdl','ldl','tg','hba1c','cr','egfr','bun','ua','ast','alt','weight','height','waist','hr'];
+  const allow=['sbp','dbp','glucose','chol','hdl','ldl','tg','hba1c','cr','egfr','bun','ua','ast','alt','ggt','tbil','alb','wbc','hb','plt','na','k','tsh','weight','height','waist','hr'];
   const out={};
   allow.forEach(k=>{if(obj[k]!==undefined&&obj[k]!==null&&obj[k]!==''){const n=toNum(obj[k]);if(n!==null)out[k]=n;}});
   return out;
@@ -2166,8 +2178,8 @@ function cleanLabFields(obj){
 /* ---- 純文字辨識（貼上文字／JSON） ---- */
 const TEXT_PROMPT=`你是醫療檢驗報告的資料擷取助手。以下是使用者貼上的檢驗報告或數值文字。請擷取其中的檢驗數值，只回傳 JSON、不要任何多餘文字或說明。
 JSON 格式：
-{"fields":{"sbp":收縮壓,"dbp":舒張壓,"glucose":空腹血糖,"chol":總膽固醇,"hdl":HDL,"ldl":LDL,"tg":三酸甘油酯,"hba1c":糖化血色素,"cr":肌酸酐,"egfr":eGFR,"bun":BUN,"ua":尿酸,"ast":GOT,"alt":GPT,"weight":體重,"height":身高,"waist":腰圍,"hr":心率},"notes":["補充說明，以及不在上列欄位的其他檢驗項目與數值"]}
-規則：只放實際出現的數值，找不到的省略；數值只放數字（血糖/膽固醇/HDL/LDL/TG/肌酸酐/BUN/尿酸 mg/dL、eGFR mL/min、GOT/GPT U/L、體重 kg、身高/腰圍 cm、HbA1c %、血壓 mmHg、心率 bpm）；上列以外的項目放進 notes；notes 用繁體中文。`;
+{"fields":{"sbp":收縮壓,"dbp":舒張壓,"glucose":空腹血糖,"chol":總膽固醇,"hdl":HDL,"ldl":LDL,"tg":三酸甘油酯,"hba1c":糖化血色素,"cr":肌酸酐,"egfr":eGFR,"bun":BUN,"ua":尿酸,"ast":GOT,"alt":GPT,"ggt":γ-GT,"tbil":總膽紅素,"alb":白蛋白,"wbc":白血球,"hb":血紅素,"plt":血小板,"na":鈉,"k":鉀,"tsh":TSH,"weight":體重,"height":身高,"waist":腰圍,"hr":心率},"notes":["補充說明，以及不在上列欄位的其他檢驗項目與數值"]}
+規則：只放實際出現的數值，找不到的省略；數值只放數字（血糖/膽固醇/HDL/LDL/TG/肌酸酐/BUN/尿酸/總膽紅素 mg/dL、eGFR mL/min、GOT/GPT/γ-GT U/L、白蛋白 g/dL、白血球/血小板 ×10³/µL、血紅素 g/dL、鈉/鉀 mmol/L、TSH mIU/L、體重 kg、身高/腰圍 cm、HbA1c %、血壓 mmHg、心率 bpm）；上列以外的項目放進 notes；notes 用繁體中文。`;
 async function textExtract(text){
   const s=state.settings;
   const useGemini=s.engine==='gemini'||(s.engine!=='openai'&&s.gemini);
