@@ -311,6 +311,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   <div class="nt" data-sec="labs">🧪 檢驗數據庫</div>
   <div class="nt" data-sec="habit">✅ 每日習慣</div>
   <div class="nt" data-sec="advice">💡 建議 & AI</div>
+  <div class="nt" data-sec="report">📋 綜合報告</div>
   <div class="nt" data-sec="foot">🦶 足部訓練</div>
   <div class="nt" data-sec="settings">⚙️ 設定</div>
 </div>
@@ -679,6 +680,30 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   </div>
 </div>
 
+<!-- ========== INTEGRATED REPORT ========== -->
+<div class="sec" id="sec-report">
+  <div class="disc">📋 <b>綜合健康報告：</b>整合你的健康評估、檢驗數據庫、風險、每日習慣與趨勢，交叉分析後給出重點與最佳行動建議。所有分析在本機完成；AI 綜合解讀為選填。</div>
+  <div id="reportEmpty" class="card empty">
+    <div class="em">📋</div>
+    <div>目前資料還不足以產生報告。請先完成 <a class="link" onclick="go('assess')">健康評估</a> 或於 <a class="link" onclick="go('connect')">匯入串接</a> 加入檢驗數據。</div>
+  </div>
+  <div id="reportContent" style="display:none;">
+    <div class="card"><div class="ct">🎯 整體摘要</div><div id="repSummary"></div></div>
+    <div class="card"><div class="ct">🧪 檢驗重點 <span class="hint">異常與趨勢</span></div><div id="repLabs"></div></div>
+    <div class="card"><div class="ct">🔗 交叉洞察 <span class="hint">資料互相關聯</span></div><div id="repInsights"></div></div>
+    <div class="card"><div class="ct">✅ 優先行動建議</div><div id="repActions"></div></div>
+    <div class="card">
+      <div class="ct">🤖 AI 綜合解讀 <span class="hint">（選填，需 API Key）</span></div>
+      <div class="hint" style="margin-bottom:10px;">把上述整合資料交給 AI，產出一段個人化的整體解讀與本週行動計畫。</div>
+      <div class="row-btn">
+        <button class="btn bp" id="aiReportBtn" onclick="aiReport()">✨ 產生 AI 綜合解讀</button>
+        <button class="btn bg" onclick="copyReport()">📋 複製報告文字</button>
+      </div>
+      <div id="repAiOut" class="ai-out" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ========== LAB DATABASE ========== -->
 <div class="sec" id="sec-labs">
   <div id="labsEmpty" class="card empty">
@@ -881,6 +906,7 @@ function go(sec){
   window.scrollTo(0,0);
   if(sec==='trend')renderTrend();
   if(sec==='labs')renderLabs();
+  if(sec==='report')renderReport();
   if(sec==='habit')renderHabits();
   if(sec==='dash')renderDash();
   if(sec==='risk')renderRisk();
@@ -1285,6 +1311,117 @@ function genRecs(p,r){
   // 排序：優先級 → 延壽年數
   recs.sort((a,b)=>a.pri-b.pri || (b.gain||0)-(a.gain||0));
   return recs;
+}
+
+/* ============ 綜合報告（整合各面向） ============ */
+function labLatest(){
+  const latest={};
+  (state.labs||[]).forEach(e=>{const t=new Date(e.date).getTime();Object.keys(e.values||{}).forEach(k=>{if(!latest[k]||t>=latest[k].t)latest[k]={v:e.values[k],t,date:e.date};});});
+  return latest;
+}
+function renderReport(){
+  const r=state.result, p=state.profile||{}, L=labLatest();
+  const hasLabs=Object.keys(L).length>0, has=r||hasLabs;
+  document.getElementById('reportEmpty').style.display=has?'none':'block';
+  document.getElementById('reportContent').style.display=has?'block':'none';
+  if(!has)return;
+  // 摘要
+  let sum='';
+  if(r){
+    sum+=`<div class="sg" style="grid-template-columns:repeat(2,1fr);">`+
+      `<div class="sc"><div class="sv">${r.score}</div><div class="sl">綜合健康分</div></div>`+
+      `<div class="sc p"><div class="sv">${r.bio}<small> 歲</small></div><div class="sl">生理年齡（實際 ${r.chrono||p.age||'--'}）</div></div>`+
+      `<div class="sc b"><div class="sv">${r.life}<small> 歲</small></div><div class="sl">預期壽命估</div></div>`+
+      `<div class="sc o"><div class="sv">${r.potential||0}<small> 年</small></div><div class="sl">可再爭取</div></div></div>`+
+      `<div style="margin-top:8px;font-size:.82rem;">風險：心血管 <b>${LEVEL_TXT[r.risks.cvd.level]}</b>・糖尿病 <b>${LEVEL_TXT[r.risks.dm.level]}</b>・代謝症候群 <b>${r.risks.mets.count}/5</b> 項</div>`;
+  }else sum='<div class="hint">尚未做健康評估（僅有檢驗數據）。完成評估可加入生理年齡、風險與延壽估算。</div>';
+  document.getElementById('repSummary').innerHTML=sum;
+  // 檢驗重點
+  const order=LAB_ORDER.filter(k=>L[k]!==undefined);
+  const abn=order.map(k=>({k,v:L[k].v,fl:labFlag(k,L[k].v)})).filter(x=>x.fl!=='ok').sort((a,b)=>({crit:0,high:1,warn:2}[a.fl]-{crit:0,high:1,warn:2}[b.fl]));
+  let labsH;
+  if(!hasLabs)labsH='<div class="hint">尚無檢驗數據。到「匯入串接」拍照／貼上報告即可納入。</div>';
+  else if(!abn.length)labsH='<div class="hint" style="color:var(--ok);font-weight:600;">✅ 目前檢驗項目都在標準範圍內。</div>';
+  else labsH=abn.map(x=>{const st=labStats(x.k);const tr=st&&st.n>=2?(st.dir==='worse'?' <span style="color:var(--err);">↑惡化</span>':st.dir==='better'?' <span style="color:var(--ok);">↓改善</span>':''):'';return `<div class="hb"><div class="hb-l"><span>${FLAG_ICON[x.fl]||'•'} ${LAB_META[x.k].label}</span></div><div style="font-weight:700;color:${FLAG_COLOR[x.fl]};">${x.v} ${LAB_META[x.k].unit}${tr}</div></div>`;}).join('');
+  document.getElementById('repLabs').innerHTML=labsH;
+  // 交叉洞察
+  const ins=crossInsights(L,r,p);
+  document.getElementById('repInsights').innerHTML=ins.length?ins.map(i=>`<div class="rec p${i.pri||2}"><div class="rec-icon">${i.icon||'🔗'}</div><div class="rec-body"><div class="rec-desc">${i.text}</div></div></div>`).join(''):'<div class="hint">目前各項資料之間未發現明顯的異常關聯。</div>';
+  // 優先行動（評估建議 + 檢驗驅動）
+  let recs=(r?genRecs(p,r).slice():[]).concat(genLabRecs(L));
+  const seen={}; recs=recs.filter(x=>{if(seen[x.title])return false;seen[x.title]=1;return true;}).sort((a,b)=>a.pri-b.pri);
+  document.getElementById('repActions').innerHTML=recs.length?recs.slice(0,12).map(rc=>`<div class="rec p${rc.pri}"><div class="rec-icon">${rc.icon}</div><div class="rec-body"><div class="rec-title">${rc.title}</div><div class="rec-desc">${rc.desc}</div></div></div>`).join(''):'<div class="hint">🎉 目前沒有需優先處理的項目，請維持良好習慣。</div>';
+}
+function crossInsights(L,r,p){
+  const out=[]; const v=k=>L[k]!=null?parseFloat(L[k].v):null;
+  const add=(icon,text,pri)=>out.push({icon,text,pri:pri||2});
+  const sbp=v('sbp')||p.sbp, glu=v('glucose')||p.glucose, hba1c=v('hba1c'), ldl=v('ldl'), chol=v('chol')||p.chol,
+    hdl=v('hdl')||p.hdl, tg=v('tg'), egfr=v('egfr'), cr=v('cr'), ua=v('ua'), alt=v('alt'), ast=v('ast'), ggt=v('ggt'),
+    k=v('k'), na=v('na'), hb=v('hb'), tsh=v('tsh');
+  const bmi=r&&r.bmi, waist=p.waist, male=p.sex==='male';
+  let metS=0;
+  if((waist&&(male?waist>=90:waist>=80))||(bmi&&bmi>=27))metS++;
+  if((glu&&glu>=100)||(hba1c&&hba1c>=5.7))metS++;
+  if(tg&&tg>=150)metS++;
+  if(hdl&&(male?hdl<40:hdl<50))metS++;
+  if(sbp&&sbp>=130)metS++;
+  if(metS>=3)add('🔥','多項代謝指標同時異常（腰圍／血糖／血脂／血壓），符合代謝症候群樣態，心血管與糖尿病風險上升。最有效的是整體生活型態介入：減重 5–10%＋每週 150 分鐘運動＋地中海飲食，可同時改善多項。',1);
+  if(((ldl&&ldl>=130)||(chol&&chol>=240))&&r&&(r.risks.cvd.level==='high'||r.risks.cvd.level==='vhigh'))add('❤️','血脂偏高且心血管風險評為偏高 → 優先控制 LDL：減少飽和／反式脂肪、增加運動，必要時與醫師討論用藥。',1);
+  if(((hba1c&&hba1c>=5.7)||(glu&&glu>=100))&&((bmi&&bmi>=27)||(waist&&(male?waist>=90:waist>=80))))add('🩸','血糖偏高且合併腹部肥胖／過重，兩者互相加乘糖尿病風險。減重與規律運動對降血糖最直接。');
+  if((egfr&&egfr<60)||(cr&&cr>=1.3)){let why=[];if(sbp&&sbp>=130)why.push('高血壓');if((glu&&glu>=126)||(hba1c&&hba1c>=6.5))why.push('高血糖');add('🫘','腎功能指標下降（eGFR／肌酸酐）'+(why.length?'，常與'+why.join('、')+'有關':'')+'。建議控制血壓血糖、避免不必要的止痛藥與顯影劑，並定期追蹤腎功能。',(egfr&&egfr<45)?1:2);}
+  if((alt&&alt>=40)||(ast&&ast>=40)||(ggt&&ggt>=50))add('🫀','肝功能指標偏高，常見於脂肪肝、飲酒或藥物。若合併過重／高血脂多為脂肪肝 → 減重、控糖、限酒可改善；持續異常請就醫。');
+  if(ua&&ua>=7)add('🦴','尿酸偏高，與痛風及代謝症候群相關。減少高普林食物（內臟、海鮮、酒）與含糖飲料，多喝水。');
+  if(hb&&hb<12)add('🩸','血紅素偏低（貧血傾向），建議查明原因（缺鐵、失血、慢性病等），必要時就醫。');
+  if(tsh&&(tsh<0.4||tsh>4))add('🦋','甲狀腺功能指標（TSH）異常，可能影響代謝、心率與體重，建議內分泌科追蹤。');
+  if((k&&(k<3||k>6))||(na&&(na<125||na>155)))add('⚠️','電解質（鉀／鈉）明顯異常，可能影響心臟與神經，建議儘速就醫確認。',1);
+  const worse=LAB_ORDER.filter(m=>{const st=labStats(m);return st&&st.n>=2&&st.dir==='worse';});
+  if(worse.length)add('📈','以下項目呈惡化趨勢，需留意：'+worse.map(m=>LAB_META[m].label).join('、')+'。建議檢視近期生活型態並持續追蹤。');
+  return out;
+}
+function genLabRecs(L){
+  const recs=[]; const v=k=>L[k]!=null?parseFloat(L[k].v):null;
+  const ldl=v('ldl'),tg=v('tg'),hba1c=v('hba1c'),ua=v('ua'),egfr=v('egfr'),alt=v('alt'),ast=v('ast'),ggt=v('ggt'),hb=v('hb'),tsh=v('tsh'),k=v('k');
+  if(ldl&&ldl>=160)recs.push({pri:1,icon:'🧈',title:'降低 LDL 膽固醇',desc:`LDL ${ldl} mg/dL 偏高。減少飽和脂肪與油炸，增加燕麥／堅果／蔬果與運動；明顯偏高請就醫評估用藥。`});
+  else if(ldl&&ldl>=130)recs.push({pri:2,icon:'🧈',title:'留意 LDL 膽固醇',desc:`LDL ${ldl} 略高，飲食與運動可改善。`});
+  if(tg&&tg>=200)recs.push({pri:2,icon:'🍟',title:'降三酸甘油酯',desc:`TG ${tg} 偏高，減少精緻糖／酒精、增加 omega-3 與運動。`});
+  if(hba1c&&hba1c>=6.5)recs.push({pri:1,icon:'🩸',title:'糖化血色素達糖尿病範圍',desc:`HbA1c ${hba1c}%，建議就醫確認並積極控糖。`});
+  else if(hba1c&&hba1c>=5.7)recs.push({pri:2,icon:'🩸',title:'血糖前期',desc:`HbA1c ${hba1c}%（前期），可透過減重、飲食與運動逆轉。`});
+  if(ua&&ua>=9)recs.push({pri:2,icon:'🦴',title:'尿酸過高',desc:`尿酸 ${ua}，注意痛風，限高普林與含糖飲料，必要時就醫。`});
+  if(egfr&&egfr<60)recs.push({pri:egfr<45?1:2,icon:'🫘',title:'追蹤腎功能',desc:`eGFR ${egfr}，建議控制血壓血糖、避免傷腎藥物並定期追蹤。`});
+  if((alt&&alt>=80)||(ast&&ast>=80)||(ggt&&ggt>=120))recs.push({pri:2,icon:'🫀',title:'肝功能追蹤',desc:'肝指標明顯偏高，建議減重限酒、檢查脂肪肝／肝炎並追蹤。'});
+  if(hb&&hb<11)recs.push({pri:2,icon:'🩸',title:'檢查貧血',desc:`血紅素 ${hb} 偏低，建議查明原因並就醫。`});
+  if(tsh&&(tsh<0.1||tsh>10))recs.push({pri:2,icon:'🦋',title:'甲狀腺追蹤',desc:'TSH 明顯異常，建議內分泌科進一步檢查。'});
+  if(k&&(k<3||k>6))recs.push({pri:1,icon:'⚠️',title:'電解質異常請就醫',desc:'血鉀明顯異常可能影響心臟，建議儘速就醫。'});
+  return recs;
+}
+function buildDigestText(){
+  const r=state.result,p=state.profile||{},L=labLatest();
+  let t='【健康評估】\n';
+  if(r)t+=`性別:${p.sex==='male'?'男':'女'} 年齡:${p.age} BMI:${r.bmi?r.bmi.toFixed(1):'NA'} 腰高比:${r.whtr?r.whtr.toFixed(2):'NA'}\n健康分:${r.score} 生理年齡:${r.bio}(實際${r.chrono||p.age}) 預期壽命估:${r.life} 可爭取:${r.potential}年\n風險：心血管 ${LEVEL_TXT[r.risks.cvd.level]}、糖尿病 ${LEVEL_TXT[r.risks.dm.level]}、代謝症候群 ${r.risks.mets.count}/5\n生活：吸菸 ${p.smoke} 運動 ${p.exercise||0}分/週 睡眠 ${p.sleep||'NA'}時 飲食 ${p.diet}/5 壓力 ${p.stress}/5 飲酒 ${p.alcohol||0}份/週\n`;
+  else t+='（尚未完成評估）\n';
+  const order=LAB_ORDER.filter(k=>L[k]!==undefined);
+  if(order.length){t+='\n【檢驗數據（最新）】\n';order.forEach(k=>{const fl=labFlag(k,L[k].v);const st=labStats(k);const tr=st&&st.n>=2?(st.dir==='worse'?' ↑惡化':st.dir==='better'?' ↓改善':''):'';t+=`${LAB_META[k].label}: ${L[k].v}${LAB_META[k].unit} ${FLAG_TXT[fl]}${tr}\n`;});}
+  const days=14,hb={};HABITS.forEach(h=>hb[h.id]=0);
+  for(let i=0;i<days;i++){const key=new Date(Date.now()-i*86400000).toISOString().slice(0,10);if(state.habits[key])HABITS.forEach(h=>{if(state.habits[key][h.id])hb[h.id]++;});}
+  t+='\n【近'+days+'天習慣達成】\n'+HABITS.map(h=>`${h.name}:${hb[h.id]}/${days}`).join('、')+'\n';
+  return t;
+}
+async function aiReport(){
+  const s=state.settings;
+  if(!s.gemini&&!s.openai){toast('請先到「設定」填入 API Key');go('settings');return;}
+  const btn=document.getElementById('aiReportBtn');btn.disabled=true;btn.textContent='思考中…';
+  const out=document.getElementById('repAiOut');out.style.display='block';out.textContent='AI 正在整合你的所有資料…';
+  const prompt=`你是一位整合型健康顧問。以下是使用者在健康 App 內的完整資料。請「整合」各面向（評估、檢驗、風險、習慣、趨勢），彼此連結後給出：\n1) 整體健康總評：最需優先關注的 2-3 件事，並說明數據之間的關聯（例如血糖×體重、血脂×心血管、腎功能×血壓）。\n2) 依優先順序、本週可執行的行動計畫。\n3) 需要就醫或進一步檢查的「紅旗」提醒。\n資料如下：\n${buildDigestText()}\n請用繁體中文、條理清楚、同理不恐嚇，控制在 500 字內。務必註明此為衛教參考、非醫療診斷；危急或明顯異常請就醫。`;
+  try{
+    let text;const useGemini=s.engine==='gemini'||(s.engine!=='openai'&&s.gemini);
+    if(useGemini&&s.gemini)text=await callGemini(s.gemini,prompt);else if(s.openai)text=await callOpenAI(s.openai,prompt);else text=await callGemini(s.gemini,prompt);
+    out.textContent=text;state._lastReport=text;
+  }catch(e){out.textContent='⚠️ AI 呼叫失敗：'+e.message+'\n請確認 API Key／額度，或網路是否可連到 AI 服務。';}
+  btn.disabled=false;btn.textContent='✨ 產生 AI 綜合解讀';
+}
+function copyReport(){
+  const t=buildDigestText()+(state._lastReport?('\n【AI 綜合解讀】\n'+state._lastReport):'');
+  try{navigator.clipboard.writeText(t).then(()=>toast('已複製報告文字')).catch(()=>toast('複製失敗，請手動選取'));}catch(e){toast('複製失敗，請手動選取');}
 }
 
 /* ============ AI 顧問 ============ */
@@ -1709,7 +1846,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.20-full-panel';
+const APP_VERSION='2026.07.20-report';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
