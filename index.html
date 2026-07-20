@@ -727,8 +727,8 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== SETTINGS ========== -->
 <div class="sec" id="sec-settings">
-  <div class="card">
-    <div class="ct">🔥 Firebase 雲端同步 <span class="hint">（手機即可設定）</span></div>
+  <div class="card" id="fbCard" style="display:none;">
+    <div class="ct">🔥 Firebase 雲端同步 <span class="hint">（僅擁有者）</span></div>
     <div class="hint" style="line-height:1.6;margin-bottom:10px;">
       <b>✅ 已內建 Firebase 設定，直接輸入 Email／密碼登入或註冊即可</b>，跨裝置自動同步健康紀錄、檢驗數據與個人檔案。首次請按「🆕 註冊新帳號」，之後其他裝置用同帳密登入即同步。
     </div>
@@ -1644,7 +1644,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.19-fb-builtin';
+const APP_VERSION='2026.07.19-owner-cloud';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -1676,8 +1676,26 @@ function init(){
   document.getElementById('set-fb-email').value=state.settings.fbEmail||'';
   refreshAiBadge();refreshCloudBadge();
   const bt=document.getElementById('buildTag');if(bt)bt.textContent=APP_VERSION;
-  fbInit();   // 內建預設設定，載入即初始化並還原登入狀態
+  setupCloudGate();
   renderDash();
+}
+/* 雲端同步預設隱藏（其他使用者一律本機）；擁有者以 ?cloud=1、已存旗標、或連點版本 5 下解鎖 */
+function cloudUnlocked(){
+  try{ if(/[?&]cloud=1/.test(location.search)){localStorage.setItem('ls_cloud','1');return true;}
+       return localStorage.getItem('ls_cloud')==='1'; }catch(e){ return /[?&]cloud=1/.test(location.search); }
+}
+function setupCloudGate(){
+  const on=cloudUnlocked();
+  const card=document.getElementById('fbCard');
+  const badge=document.getElementById('cloudBadge');
+  if(card)card.style.display=on?'block':'none';
+  if(badge)badge.style.display=on?'':'none';
+  if(on){ fbInit(); }
+  // 隱藏解鎖：連點版本號 5 下
+  const bt=document.getElementById('buildTag');
+  if(bt&&!bt._bound){ bt._bound=true; let n=0;
+    bt.onclick=()=>{ if(cloudUnlocked())return; if(++n>=5){ try{localStorage.setItem('ls_cloud','1');}catch(e){} setupCloudGate(); toast('已為此裝置啟用雲端同步'); go('settings'); } };
+  }
 }
 
 /* ============ 雲端後台 ============ */
