@@ -1344,6 +1344,28 @@ function labLatest(){
   (state.labs||[]).forEach(e=>{const t=new Date(e.date).getTime();Object.keys(e.values||{}).forEach(k=>{if(!latest[k]||t>=latest[k].t)latest[k]={v:e.values[k],t,date:e.date};});});
   return latest;
 }
+// 檢驗值變動 → 自動把最新生物指標帶入評估並重算（單一事實來源、資料連動）
+function autoSyncFromLabs(){
+  if(!state.profile) return false;   // 需先有評估基本資料才能重算
+  const L=labLatest();
+  const p={...state.profile}; let changed=false;
+  ['sbp','dbp','glucose','chol','hdl','hr','waist','weight','height'].forEach(k=>{
+    if(L[k]!=null){const n=toNum(L[k].v); if(n!==null&&p[k]!==n){p[k]=n;changed=true;}}
+  });
+  if(!changed) return false;
+  if(!p.age||!p.height||!p.weight) return false;
+  const r=compute(p);
+  state.profile=p; state.result={...r,date:new Date().toISOString()};
+  save();
+  refreshCurrentView();
+  return true;
+}
+function refreshCurrentView(){
+  const active=document.querySelector('.sec.active'); if(!active) return;
+  const id=active.id.replace('sec-','');
+  if(id==='dash')renderDash(); else if(id==='risk')renderRisk(); else if(id==='report')renderReport();
+  else if(id==='advice')renderAdvice(); else if(id==='smart')renderSmart();
+}
 function renderReport(){
   const r=state.result, p=state.profile||{}, L=labLatest();
   const hasLabs=Object.keys(L).length>0, has=r||hasLabs;
@@ -1625,6 +1647,7 @@ function recordLabEntry(fields,source){
     date:new Date().toISOString(), source:source||'app', values});
   if(state.labs.length>1000)state.labs.shift();
   save();
+  autoSyncFromLabs();   // 新檢驗值 → 自動更新評估/風險/報告
   if(document.getElementById('sec-labs').classList.contains('active'))renderLabs();
   return true;
 }
@@ -1762,7 +1785,7 @@ function labDelete(id){
   if(!confirm('確定刪除這一筆檢驗紀錄？此動作無法復原。'))return;
   state.labs=(state.labs||[]).filter(e=>e.id!==id);
   if(labSingleId===id)labSingleId=null;
-  labSyncMaybe();renderLabs();toast('已刪除該筆');
+  labSyncMaybe();autoSyncFromLabs();renderLabs();toast('已刪除該筆');
 }
 function labEditCurrent(){ if(labSingleId)openLabEditor(labSingleId); else toast('請先選擇一筆'); }
 function labDeleteCurrent(){ if(labSingleId)labDelete(labSingleId); else toast('請先選擇一筆'); }
@@ -1801,7 +1824,8 @@ function saveLabEditor(id){
     state.labs.push({id:'lab_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),date,source:'manual',values});
     if(state.labs.length>1000)state.labs.shift();
   }
-  labSyncMaybe();closeLabEditor();renderLabs();toast(id?'✅ 已更新該筆':'✅ 已新增一筆');
+  labSyncMaybe();const synced=autoSyncFromLabs();closeLabEditor();renderLabs();
+  toast((id?'✅ 已更新該筆':'✅ 已新增一筆')+(synced?'，並更新健康評估':''));
 }
 
 /* ============ 每日習慣 ============ */
@@ -1871,7 +1895,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.20-nav-menu';
+const APP_VERSION='2026.07.20-auto-sync';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
