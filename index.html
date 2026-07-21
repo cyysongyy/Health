@@ -2026,7 +2026,133 @@ function saveLabEditor(id){
 
 /* ============ 用藥紀錄（健保健康存摺整合） ============ */
 // 從 FHIR（MedicationRequest / MedicationDispense / MedicationStatement）解析用藥
+/* ===== 健保健康存摺「醫療類」bdata 專用解析（myhealthbank.bdata，rN.M 欄位）===== */
+function nhiBankData(data){
+  if(!data||typeof data!=='object')return null;
+  if(data.myhealthbank&&data.myhealthbank.bdata&&typeof data.myhealthbank.bdata==='object')return data.myhealthbank.bdata;
+  if(data.bdata&&typeof data.bdata==='object'&&Object.keys(data.bdata).some(k=>/^r\d+$/.test(k)))return data.bdata;
+  return null;
+}
+// 檢驗名稱（中／英）→ LAB_META key（specific 先於 general）
+const LAB_NAME_MAP=[
+  [/糖化血色素|糖化血紅素|hba1c|a1c/i,'hba1c'],
+  [/低密度脂蛋白|ldl/i,'ldl'],
+  [/高密度脂蛋白|hdl/i,'hdl'],
+  [/三酸甘油(酯|脂)|甘油三(酯|脂)|triglyceride/i,'tg'],
+  [/總膽固醇|膽固醇|cholesterol/i,'chol'],
+  [/空腹血糖|飯前血糖|血糖|葡萄糖|glucose/i,'glucose'],
+  [/肌酸酐|肌酐酸|creatinine/i,'cr'],
+  [/尿素氮|urea\s*nitrogen|\bbun\b/i,'bun'],
+  [/尿酸|uric\s*acid/i,'ua'],
+  [/腎絲球|絲球體?過濾|egfr|\bgfr\b/i,'egfr'],
+  [/球蛋白|globulin/i,'glob'],
+  [/白蛋白|albumin/i,'alb'],
+  [/總蛋白|total\s*protein/i,'tp'],
+  [/丙胺酸(轉)?胺基|alanine|\bgpt\b|\balt\b/i,'alt'],
+  [/天門冬胺酸|天(門)?冬|aspartate|\bgot\b|\bast\b/i,'ast'],
+  [/麩胺醯|gamma[-\s]?gt|γ-?gt|\bggt\b/i,'ggt'],
+  [/鹼性磷酸|alkaline\s*phosphat|\balp\b/i,'alp'],
+  [/直接膽紅素|direct\s*bilirubin/i,'dbil'],
+  [/膽紅素|bilirubin/i,'tbil'],
+  [/鈉|sodium/i,'na'],
+  [/鉀|potassium/i,'k'],
+  [/氯|chloride/i,'cl'],
+  [/血?鈣|calcium/i,'ca'],
+  [/磷酸鹽|無機磷|phosphor/i,'phos'],
+  [/鎂|magnesium/i,'mg'],
+  [/白血球|leukocyte|\bwbc\b/i,'wbc'],
+  [/紅血球|erythrocyte|\brbc\b/i,'rbc'],
+  [/血色素|血紅素|hemoglobin|haemoglobin|\bhgb\b/i,'hb'],
+  [/血球容積|血比容|hematocrit|\bhct\b/i,'hct'],
+  [/血小板|platelet/i,'plt'],
+  [/甲狀腺刺激素|thyroid\s*stimulating|\btsh\b/i,'tsh'],
+  [/游離.*甲狀腺素|free\s*t4|\bft4\b/i,'ft4'],
+  [/c[-\s]?反應蛋白|c[-\s]?reactive|\bcrp\b/i,'crp'],
+  [/甲型胎兒|甲種胎兒|alpha[-\s]?feto|\bafp\b/i,'afp'],
+  [/癌胚抗原|carcinoembryonic|\bcea\b/i,'cea'],
+  [/攝護腺特異|前列腺特異|prostate[-\s]?specific|\bpsa\b/i,'psa'],
+  [/收縮壓|systolic/i,'sbp'],
+  [/舒張壓|diastolic/i,'dbp']
+];
+function bankLabKey(name){ if(!name)return null; for(const[rx,k]of LAB_NAME_MAP){if(rx.test(name))return k;} return null; }
+// 各檢驗項的寬鬆生理範圍（用來剔除把「費用／代碼」誤當數值的情形，如膽固醇=14280）
+const LAB_RANGE={sbp:[50,300],dbp:[30,200],hr:[20,250],glucose:[20,900],hba1c:[3,20],chol:[40,1000],hdl:[5,200],ldl:[5,800],tg:[10,5000],
+  cr:[0.1,25],bun:[2,300],ua:[0.5,30],egfr:[1,200],na:[100,180],k:[1.5,9],cl:[70,140],ca:[4,16],phos:[0.5,15],mg:[0.5,8],
+  ast:[2,6000],alt:[2,6000],ggt:[2,6000],alp:[10,4000],tbil:[0.1,50],dbil:[0.05,40],tp:[2,12],alb:[1,7],glob:[0.5,8],
+  wbc:[0.1,300],rbc:[1,8],hb:[2,25],hct:[10,70],mcv:[50,140],mch:[15,45],mchc:[25,40],rdw:[8,30],plt:[5,2000],
+  neut:[0,100],lymph:[0,100],mono:[0,100],eos:[0,100],baso:[0,100],tsh:[0.001,100],ft4:[0.1,12],t4:[1,30],t3:[10,600],
+  crp:[0,500],afp:[0,100000],cea:[0,10000],psa:[0,10000],weight:[20,300],height:[50,250],waist:[30,200]};
+function bankLabInRange(key,v){ const r=LAB_RANGE[key]; return !r||(v>=r[0]&&v<=r[1]); }
+// 藥品代碼樣態（健保 10 碼藥品代碼：字母開頭＋英數）
+function looksLikeDrugCode(v){ return /^[A-Za-z][A-Za-z0-9]{6,11}$/.test(v)&&/\d/.test(v); }
+function bankVisitDate(visit,vk){
+  // 就醫日期通常在 .5；否則取第一個像日期的 YYYYMMDD 欄位
+  const prefer=visit[vk+'.5']||visit[vk+'.6'];
+  let d=parseFlexDate(prefer); if(d)return d;
+  for(const k of Object.keys(visit)){const v=visit[k];if(typeof v==='string'&&/^\d{8}$/.test(v)){d=parseFlexDate(v);if(d)return d;}}
+  return null;
+}
+function parseBankMeds(bd){
+  const meds=[];
+  Object.keys(bd).filter(k=>/^r\d+$/.test(k)).forEach(vk=>{
+    const visits=bd[vk]; if(!Array.isArray(visits))return;
+    visits.forEach(visit=>{
+      if(!visit||typeof visit!=='object')return;
+      const drugs=visit[vk+'_1']; if(!Array.isArray(drugs))return;   // 該次就醫的用藥明細
+      const date=bankVisitDate(visit,vk);
+      const hosp=(visit[vk+'.4']||'').toString().trim();
+      drugs.forEach(dObj=>{
+        if(!dObj||typeof dObj!=='object')return;
+        const vals=Object.keys(dObj).sort().map(k=>dObj[k]==null?'':String(dObj[k]).trim()).filter(Boolean);
+        let code='',days=null; const texts=[],others=[];
+        vals.forEach(v=>{
+          if(!code&&looksLikeDrugCode(v)){code=v;return;}
+          if(days==null&&/^\d{1,3}$/.test(v)&&+v>=1&&+v<=365){days=+v;return;}
+          if(/[A-Za-z一-鿿]/.test(v))texts.push(v); else others.push(v);
+        });
+        texts.sort((a,b)=>b.length-a.length);
+        const name=texts[0]||code; if(!name)return;
+        const usage=[...texts.slice(1),...others].join(' ').trim();
+        meds.push({name:code&&!name.includes(code)?name+' ('+code+')':name,
+          dose:usage,route:'',days,qty:'',date,status:'',kind:'NHIBank',prescriber:hosp});
+      });
+    });
+  });
+  return meds;
+}
+function parseBankLabs(bd){
+  const fields={},byDate={};
+  const isDate8=s=>/^\d{8}$/.test(s)&&+s.slice(0,4)>=1990&&+s.slice(0,4)<=2100;
+  Object.keys(bd).filter(k=>/^r\d+$/.test(k)).forEach(vk=>{
+    const rows=bd[vk]; if(!Array.isArray(rows)||!rows.length)return;
+    // 先蒐集這個區段的候選檢驗列，再用「命中比例」判斷此區段是否為檢驗結果區（避免把門診診斷＋費用誤判成檢驗）
+    const hits=[];
+    rows.forEach(row=>{
+      if(!row||typeof row!=='object')return;
+      const scalars=Object.keys(row).sort().map(k=>row[k]==null?'':String(row[k]).trim());
+      let key=null,val=null,date=null;
+      for(const s of scalars){ if(!key){const kk=bankLabKey(s); if(kk)key=kk;} }
+      if(!key)return;
+      for(const s of scalars){ if(val==null&&!isDate8(s)){const n=toNum(s); if(n!==null&&/^\s*[<>]?\s*-?\d/.test(s)&&s.replace(/[^\d]/g,'').length<=6&&bankLabInRange(key,n))val=n;} }
+      if(val==null)return;   // 值需落在該檢驗的合理生理範圍，否則多半是費用／代碼誤判
+      for(const s of scalars){ if(isDate8(s)){const d=parseFlexDate(s); if(d){date=d;break;}} }
+      hits.push({key,val,date});
+    });
+    // 至少要有數列命中，才視為檢驗結果區（避免門診診斷偶發命中）
+    if(hits.length<3)return;
+    hits.forEach(({key,val,date})=>{
+      const iso=date||new Date().toISOString(); const dk=iso.slice(0,10);
+      (byDate[dk]=byDate[dk]||{date:iso,values:{}}).values[key]=val;
+      pushField(fields,key,val);
+    });
+  });
+  const records=Object.values(byDate).sort((a,b)=>new Date(a.date)-new Date(b.date));
+  return {fields,records};
+}
 function parseMeds(data){
+  // 健保健康存摺 bdata 格式優先
+  const bd=nhiBankData(data);
+  if(bd)return parseBankMeds(bd);
   const out=[];
   // 先建立 Bundle 內 Medication 資源索引（供 medicationReference 解析）
   const medIndex={};
@@ -2284,7 +2410,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.21-import-diag2';
+const APP_VERSION='2026.07.21-nhi-bank';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -2924,8 +3050,8 @@ function jsonOutline(node,depth,keyName,acc){
   if(acc.n>300)return acc;
   const pad='  '.repeat(depth),label=(keyName!=null&&keyName!=='')?keyName+': ':'';
   if(node===null){acc.lines.push(pad+label+'null');acc.n++;return acc;}
-  if(Array.isArray(node)){acc.lines.push(pad+label+'Array('+node.length+')');acc.n++;if(node.length&&depth<6)jsonOutline(node[0],depth+1,'0',acc);return acc;}
-  if(typeof node==='object'){const ks=Object.keys(node);acc.lines.push(pad+label+'{ '+ks.length+' keys }');acc.n++;if(depth<6)ks.slice(0,60).forEach(k=>jsonOutline(node[k],depth+1,k,acc));return acc;}
+  if(Array.isArray(node)){acc.lines.push(pad+label+'Array('+node.length+')');acc.n++;if(node.length&&depth<8)jsonOutline(node[0],depth+1,'0',acc);return acc;}
+  if(typeof node==='object'){const ks=Object.keys(node);acc.lines.push(pad+label+'{ '+ks.length+' keys }');acc.n++;if(depth<8)ks.slice(0,60).forEach(k=>jsonOutline(node[k],depth+1,k,acc));return acc;}
   let v=String(node);if(v.length>20)v=v.slice(0,20)+'…';acc.lines.push(pad+label+JSON.stringify(v)+' <'+typeof node+'>');acc.n++;return acc;
 }
 function jsonOutlineText(data){try{return jsonOutline(data,0,null).lines.slice(0,200).join('\n');}catch(e){return '(無法產生結構大綱)';}}
@@ -3002,7 +3128,13 @@ function parseNHI(txt){
     if(res.component){res.component.forEach(comp=>{const cc=(comp.code&&comp.code.coding)||[];cc.forEach(c=>{if(LOINC[c.code]&&comp.valueQuantity)addDated(dt,LOINC[c.code],comp.valueQuantity.value);});});}
     if(key&&res.valueQuantity)addDated(dt,key,res.valueQuantity.value);
   };
-  if(data.resourceType==='Bundle'&&Array.isArray(data.entry)){
+  const bd=nhiBankData(data);
+  if(bd){
+    const bl=parseBankLabs(bd);
+    Object.assign(fields,bl.fields);
+    bl.records.forEach(r=>{const dk=r.date.slice(0,10);const t=byDate[dk]=byDate[dk]||{date:r.date,values:{}};Object.assign(t.values,r.values);});
+    notes.push('來源：健保健康存摺（醫療類 bdata）');
+  }else if(data.resourceType==='Bundle'&&Array.isArray(data.entry)){
     data.entry.forEach(en=>takeObs(en.resource));
     notes.push('來源：FHIR Bundle（'+data.entry.length+' 筆資源）');
   }else if(Array.isArray(data)){
