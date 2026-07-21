@@ -1951,7 +1951,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.21-connect';
+const APP_VERSION='2026.07.21-nhi-fhir';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -2188,9 +2188,27 @@ async function cloudPull(){
 /* ============ 匯入串接（健康存摺 / 穿戴 / App 檔案） ============ */
 let pendingImport=null;
 const LOINC={
-  '8480-6':'sbp','8462-4':'dbp','2339-0':'glucose','2345-7':'glucose','41653-7':'glucose',
-  '2093-3':'chol','2085-9':'hdl','29463-7':'weight','3141-9':'weight',
-  '8302-2':'height','8867-4':'hr','4548-4':'hba1c','4549-2':'hba1c','17856-6':'hba1c'
+  // 生命徵象 / 身體
+  '8480-6':'sbp','8462-4':'dbp','8867-4':'hr','29463-7':'weight','3141-9':'weight','8302-2':'height','8280-0':'waist','56086-2':'waist',
+  // 血糖 / 血脂
+  '2339-0':'glucose','2345-7':'glucose','41653-7':'glucose','1558-6':'glucose',
+  '4548-4':'hba1c','4549-2':'hba1c','17856-6':'hba1c',
+  '2093-3':'chol','2085-9':'hdl','2089-1':'ldl','13457-7':'ldl','18262-6':'ldl','2571-8':'tg',
+  // 腎功能 / 電解質 / 礦物質
+  '2160-0':'cr','3094-0':'bun','6299-2':'bun','3084-1':'ua',
+  '33914-3':'egfr','62238-1':'egfr','48642-3':'egfr','48643-1':'egfr','77147-7':'egfr','98979-8':'egfr',
+  '2951-2':'na','2947-0':'na','2823-3':'k','6298-4':'k','2075-0':'cl',
+  '17861-6':'ca','2000-8':'ca','2777-1':'phos','2601-3':'mg','19123-9':'mg',
+  // 肝膽 / 蛋白
+  '1920-8':'ast','1742-6':'alt','2324-2':'ggt','6768-6':'alp','1975-2':'tbil','1968-7':'dbil',
+  '2885-2':'tp','1751-7':'alb','10834-0':'glob',
+  // 血液常規 CBC
+  '6690-2':'wbc','26464-8':'wbc','789-8':'rbc','26453-1':'rbc','718-7':'hb','20509-6':'hb',
+  '4544-3':'hct','20570-8':'hct','787-2':'mcv','785-6':'mch','786-4':'mchc','788-0':'rdw',
+  '777-3':'plt','26515-7':'plt','770-8':'neut','736-9':'lymph','5905-5':'mono','713-8':'eos','706-2':'baso',
+  // 甲狀腺 / 發炎 / 腫瘤標記
+  '3016-3':'tsh','11579-0':'tsh','3024-7':'ft4','3026-2':'t4','3053-6':'t3',
+  '1988-5':'crp','30522-7':'crp','1834-1':'afp','83112-3':'afp','2039-6':'cea','2857-1':'psa'
 };
 const FIELD_LABEL={sbp:'收縮壓',dbp:'舒張壓',glucose:'空腹血糖',chol:'總膽固醇',hdl:'HDL',
   ldl:'LDL',tg:'三酸甘油酯',waist:'腰圍',
@@ -2205,7 +2223,7 @@ async function handleImport(e,kind){
   e.target.value='';
   try{
     const entries=await extractTextEntries(f);   // 自動解壓縮（.zip/.gz），回傳多個文字檔
-    const fields={};const notes=[];
+    const fields={};const notes=[];const records=[];
     let ok=0;
     entries.forEach(({name,text})=>{
       try{
@@ -2214,13 +2232,18 @@ async function handleImport(e,kind){
         else if(kind==='wearable')parsed=parseWearable(text,name);
         else parsed=parseAppFile(text,name);
         if(parsed&&parsed.fields){Object.assign(fields,parsed.fields);ok++;}
+        if(parsed&&parsed.records)parsed.records.forEach(r=>records.push(r));
         (parsed&&parsed.notes||[]).forEach(n=>notes.push(n));
       }catch(err){/* 略過無法解析的檔案 */}
     });
-    if(!Object.keys(fields).length){toast('未從檔案擷取到可用數值');return;}
+    // 健保帶日期的檢驗紀錄 → 直接併入檢驗數據庫（依原始日期）
+    const addedRec=records.length?ingestLabRecords(records,'nhi'):0;
+    if(!Object.keys(fields).length && !addedRec){toast('未從檔案擷取到可用數值');return;}
     if(entries.length>1)notes.unshift('已解壓縮並合併 '+ok+'/'+entries.length+' 個檔案');
+    if(addedRec)notes.unshift('✅ 已將 '+addedRec+' 筆健保檢驗紀錄（依原始日期）加入檢驗數據庫');
     pendingImport={kind,fields,notes};
-    renderImportResult();go('connect');toast('✅ 解析完成');
+    renderImportResult();go('connect');
+    toast(addedRec?('✅ 已匯入 '+addedRec+' 筆檢驗紀錄'):'✅ 解析完成');
   }catch(err){toast('解析失敗：'+err.message);}
 }
 // 讀檔並在需要時解壓縮：.zip → 取出內含 JSON/XML/CSV；.gz → 解 gzip；其他 → 純文字
@@ -2466,33 +2489,49 @@ function pushField(map,key,val){const n=toNum(val);if(n!==null)map[key]=n;}
 // 健康存摺：FHIR Bundle 或一般 JSON
 function parseNHI(txt){
   const data=JSON.parse(txt);
-  const fields={};const notes=[];
+  const fields={};const notes=[];const byDate={};   // dayKey -> {date(ISO), values}
+  const addDated=(dateStr,key,val)=>{
+    if(!key)return; const n=toNum(val); if(n===null)return;
+    pushField(fields,key,n);   // 供評估表帶入（最新一筆）
+    let iso=null; if(dateStr){const d=new Date(dateStr); if(!isNaN(d))iso=d.toISOString();}
+    if(iso){const dk=iso.slice(0,10);(byDate[dk]=byDate[dk]||{date:iso,values:{}}).values[key]=n;}
+  };
   const takeObs=(res)=>{
     if(!res||res.resourceType!=='Observation')return;
+    const dt=res.effectiveDateTime||res.issued||(res.effectivePeriod&&res.effectivePeriod.start)||null;
     const codes=(res.code&&res.code.coding)||[];
-    let key=null;
-    codes.forEach(c=>{if(LOINC[c.code])key=LOINC[c.code];});
-    // 血壓組合
-    if(res.component){
-      res.component.forEach(comp=>{
-        const cc=(comp.code&&comp.code.coding)||[];
-        cc.forEach(c=>{if(LOINC[c.code]&&comp.valueQuantity)pushField(fields,LOINC[c.code],comp.valueQuantity.value);});
-      });
-    }
-    if(key&&res.valueQuantity)pushField(fields,key,res.valueQuantity.value);
+    let key=null; codes.forEach(c=>{if(LOINC[c.code])key=LOINC[c.code];});
+    if(res.component){res.component.forEach(comp=>{const cc=(comp.code&&comp.code.coding)||[];cc.forEach(c=>{if(LOINC[c.code]&&comp.valueQuantity)addDated(dt,LOINC[c.code],comp.valueQuantity.value);});});}
+    if(key&&res.valueQuantity)addDated(dt,key,res.valueQuantity.value);
   };
   if(data.resourceType==='Bundle'&&Array.isArray(data.entry)){
     data.entry.forEach(en=>takeObs(en.resource));
     notes.push('來源：FHIR Bundle（'+data.entry.length+' 筆資源）');
   }else if(Array.isArray(data)){
-    data.forEach(takeObs);
-    // 也嘗試扁平鍵
-    data.forEach(o=>mapFlat(o,fields));
+    data.forEach(takeObs); data.forEach(o=>mapFlat(o,fields));
   }else{
-    takeObs(data);mapFlat(data,fields);
-    notes.push('來源：JSON');
+    takeObs(data);mapFlat(data,fields); notes.push('來源：JSON');
   }
-  return {fields,notes};
+  const records=Object.values(byDate).sort((a,b)=>new Date(a.date)-new Date(b.date));
+  return {fields,notes,records};
+}
+// 把「有原始日期」的健保檢驗紀錄併入檢驗數據庫（依日期、去重）
+function ingestLabRecords(records,source){
+  if(!records||!records.length)return 0;
+  state.labs=state.labs||[];
+  const sig=e=>((e.date||'').slice(0,10)+'|'+JSON.stringify(e.values||{}));
+  const seen=new Set(state.labs.map(sig));
+  let added=0;
+  records.forEach(r=>{
+    const values={};Object.keys(r.values||{}).forEach(k=>{if(LAB_META[k]){const n=toNum(r.values[k]);if(n!==null)values[k]=n;}});
+    if(!Object.keys(values).length)return;
+    const s=(r.date||'').slice(0,10)+'|'+JSON.stringify(values);
+    if(seen.has(s))return; seen.add(s);
+    state.labs.push({id:'lab_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),date:r.date||new Date().toISOString(),source:source||'nhi',values});
+    added++;
+  });
+  if(added){if(state.labs.length>2000)state.labs=state.labs.slice(-2000);save();autoSyncFromLabs();}
+  return added;
 }
 // 扁平 JSON 常見鍵對應
 function mapFlat(o,fields){
