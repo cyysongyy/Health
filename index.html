@@ -2,8 +2,17 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>LifeSpan 健康預測 · 個人健康管理系統</title>
+<meta name="description" content="個人健康管理與延壽系統：健康評估、檢驗數據庫、風險預測、足部復健，可安裝離線使用。">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0d9488">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LifeSpan">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.10.0/dist/tabler-icons.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
@@ -872,6 +881,20 @@ service cloud.firestore {
       <button class="btn bd" onclick="resetAll()">🗑️ 清除全部資料</button>
     </div>
     <input type="file" id="importFile" accept=".json" style="display:none;" onchange="importData(event)">
+  </div>
+  <div class="card">
+    <div class="ct">📲 安裝 App／離線使用</div>
+    <div style="font-size:.8rem;color:var(--g600);line-height:1.6;">
+      把 LifeSpan 安裝到手機主畫面，之後即使<b>沒有網路</b>也能開啟使用（健康評估、檢驗數據庫、足部復健、趨勢圖等本機功能皆可離線運作；雲端同步與 AI 辨識仍需連線）。
+      <ul style="margin:8px 0 4px 18px;">
+        <li><b>Android／Chrome：</b>按下方「安裝」，或右上選單 →「安裝應用程式／加到主畫面」。</li>
+        <li><b>iPhone／Safari：</b>點下方分享鈕 <span style="font-family:inherit;">⬆️</span> →「加入主畫面」。</li>
+      </ul>
+    </div>
+    <div class="row-btn" style="margin-top:10px;">
+      <button class="btn bp" id="pwaInstallBtn" onclick="pwaInstall()" style="display:none;">📲 安裝到主畫面</button>
+    </div>
+    <div class="hint" id="pwaStatus" style="margin-top:8px;">離線快取狀態檢查中…</div>
   </div>
   <div class="card">
     <div class="ct">ℹ️ 關於</div>
@@ -1951,7 +1974,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.21-nhi-fhir';
+const APP_VERSION='2026.07.21-pwa-offline';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -1984,7 +2007,55 @@ function init(){
   refreshAiBadge();refreshCloudBadge();
   const bt=document.getElementById('buildTag');if(bt)bt.textContent=APP_VERSION;
   setupCloudGate();
+  setupPWA();
   renderDash();
+}
+/* ============ PWA：安裝與離線快取 ============ */
+let deferredInstallPrompt=null;
+function setupPWA(){
+  // 註冊 Service Worker（僅在 https 或 localhost）
+  if('serviceWorker' in navigator){
+    window.addEventListener('load',()=>{
+      navigator.serviceWorker.register('sw.js').then(reg=>{
+        reg.addEventListener('updatefound',()=>{
+          const nw=reg.installing;
+          if(nw)nw.addEventListener('statechange',()=>{
+            if(nw.state==='installed'&&navigator.serviceWorker.controller) pwaSetStatus('🔄 有新版本，重新開啟即可套用。');
+          });
+        });
+      }).catch(()=>{ pwaSetStatus('⚠️ 離線快取註冊失敗（此環境可能不支援）。'); });
+    });
+    pwaSetStatus(navigator.onLine?'✅ 已可離線使用（本機功能）。':'📴 目前離線，使用已快取的版本。');
+  } else {
+    pwaSetStatus('⚠️ 此瀏覽器不支援離線快取。');
+  }
+  // 安裝提示（Android/Chrome）
+  window.addEventListener('beforeinstallprompt',(e)=>{
+    e.preventDefault();
+    deferredInstallPrompt=e;
+    const btn=document.getElementById('pwaInstallBtn');
+    if(btn)btn.style.display='';
+  });
+  window.addEventListener('appinstalled',()=>{
+    deferredInstallPrompt=null;
+    const btn=document.getElementById('pwaInstallBtn');
+    if(btn)btn.style.display='none';
+    pwaSetStatus('🎉 已安裝到主畫面，可離線開啟。');
+    toast('🎉 已安裝到主畫面');
+  });
+  window.addEventListener('online',()=>pwaSetStatus('✅ 已恢復連線。'));
+  window.addEventListener('offline',()=>pwaSetStatus('📴 目前離線，使用已快取的版本。'));
+  // 已以獨立視窗（standalone）開啟＝已安裝
+  if(window.matchMedia('(display-mode: standalone)').matches||navigator.standalone){
+    pwaSetStatus('✅ 已安裝，離線可用。');
+  }
+}
+function pwaSetStatus(t){ const el=document.getElementById('pwaStatus'); if(el)el.textContent=t; }
+function pwaInstall(){
+  if(!deferredInstallPrompt){ toast('請用瀏覽器選單的「安裝／加到主畫面」'); return; }
+  deferredInstallPrompt.prompt();
+  deferredInstallPrompt.userChoice.finally(()=>{ deferredInstallPrompt=null;
+    const btn=document.getElementById('pwaInstallBtn'); if(btn)btn.style.display='none'; });
 }
 /* 雲端同步預設隱藏（其他使用者一律本機）；擁有者以 ?cloud=1、已存旗標、或連點版本 5 下解鎖 */
 function cloudUnlocked(){
