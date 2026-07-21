@@ -334,6 +334,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== DASHBOARD ========== -->
 <div class="sec active" id="sec-dash">
+  <div id="dashReminders"></div>
   <div id="dashEmpty" class="card empty">
     <div class="em">🫀</div>
     <div style="font-weight:700;font-size:1rem;margin-bottom:6px;">歡迎使用 LifeSpan 健康預測</div>
@@ -705,7 +706,8 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
     <div class="card"><div class="ct">🎯 整體摘要</div><div id="repSummary"></div></div>
     <div class="card"><div class="ct">🧪 檢驗重點 <span class="hint">異常與趨勢</span></div><div id="repLabs"></div></div>
     <div class="card"><div class="ct">🔗 交叉洞察 <span class="hint">資料互相關聯</span></div><div id="repInsights"></div></div>
-    <div class="card"><div class="ct">✅ 優先行動建議</div><div id="repActions"></div></div>
+    <div class="card"><div class="ct">✅ 優先行動建議 <span class="hint">可一鍵加為每日習慣</span></div><div id="repActions"></div></div>
+    <div class="card"><div class="ct">📅 健康時間軸 <span class="hint">紀錄點＋檢驗合併</span></div><div id="repTimeline"></div></div>
     <div class="card">
       <div class="ct">🤖 AI 綜合解讀 <span class="hint">（選填，需 API Key）</span></div>
       <div class="hint" style="margin-bottom:10px;">把上述整合資料交給 AI，產出一段個人化的整體解讀與本週行動計畫。</div>
@@ -907,7 +909,7 @@ function load(){
   try{return JSON.parse(localStorage.getItem(LS_KEY))||defaults();}catch(e){return defaults();}
 }
 function defaults(){
-  return {profile:null, result:null, history:[], labs:[], habits:{}, settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:''}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:''}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));}
 
@@ -1189,6 +1191,7 @@ function barColor(v){return v>=75?'#10b981':v>=55?'#0d9488':v>=40?'#f59e0b':'#ef
 
 function renderDash(){
   const r=state.result;
+  renderReminders();   // 主動提醒／紅旗待辦（即使沒完成評估、只要有檢驗也顯示）
   document.getElementById('dashEmpty').style.display=r?'none':'block';
   document.getElementById('dashContent').style.display=r?'block':'none';
   if(!r)return;
@@ -1366,6 +1369,54 @@ function refreshCurrentView(){
   if(id==='dash')renderDash(); else if(id==='risk')renderRisk(); else if(id==='report')renderReport();
   else if(id==='advice')renderAdvice(); else if(id==='smart')renderSmart();
 }
+/* ---- 主動提醒 / 紅旗待辦 ---- */
+function buildReminders(){
+  const out=[],now=Date.now(),L=labLatest(),r=state.result;
+  const push=(lvl,icon,text)=>out.push({lvl,icon,text});
+  LAB_ORDER.forEach(k=>{if(L[k]==null)return;if(labFlag(k,L[k].v)==='crit')push('crit','🚨',`${LAB_META[k].label} ${L[k].v}${LAB_META[k].unit} 為嚴重異常，建議儘速就醫。`);});
+  const highs=LAB_ORDER.filter(k=>L[k]!=null&&labFlag(k,L[k].v)==='high');
+  if(highs.length)push('warn','⚠️',`有 ${highs.length} 項檢驗偏高：${highs.slice(0,5).map(k=>LAB_META[k].label).join('、')}${highs.length>5?'…':''}，建議追蹤。`);
+  const worse=LAB_ORDER.filter(m=>{const st=labStats(m);return st&&st.n>=2&&st.dir==='worse';});
+  if(worse.length)push('warn','📈',`惡化趨勢：${worse.map(k=>LAB_META[k].label).join('、')}，需留意。`);
+  if(r){if(r.risks.cvd.level==='vhigh')push('warn','❤️','心血管風險評為極高，建議諮詢醫師並積極改善可修正因子。');if(r.risks.dm.level==='vhigh')push('warn','🩸','糖尿病風險評為極高，建議檢查糖化血色素並控糖。');}
+  const dates=[];(state.labs||[]).forEach(e=>dates.push(new Date(e.date).getTime()));(state.history||[]).forEach(s=>dates.push(new Date(s.date).getTime()));
+  if(dates.length){const days=Math.floor((now-Math.max.apply(null,dates))/86400000);if(days>=90)push('info','⏰',`距上次健康資料更新已 ${days} 天，建議做一次檢驗或評估追蹤。`);}
+  else push('info','📝','尚無健康資料，先做一次「健康評估」或匯入檢驗報告吧。');
+  out.sort((a,b)=>({crit:0,warn:1,info:2}[a.lvl]-{crit:0,warn:1,info:2}[b.lvl]));
+  return out;
+}
+function renderReminders(){
+  const el=document.getElementById('dashReminders'); if(!el)return;
+  const rem=buildReminders();
+  if(!rem.length){el.innerHTML='';return;}
+  const col={crit:'var(--err)',warn:'var(--warn)',info:'var(--acc)'};
+  el.innerHTML=`<div class="card"><div class="ct">🚩 提醒與待辦 <span class="hint">${rem.length} 項</span></div>`+
+    rem.map(x=>`<div class="rec" style="border-left-color:${col[x.lvl]};background:${x.lvl==='crit'?'#fef2f2':x.lvl==='warn'?'#fffbeb':'#f0f9ff'};"><div class="rec-icon">${x.icon}</div><div class="rec-body"><div class="rec-desc">${x.text}</div></div></div>`).join('')+
+    `</div>`;
+}
+/* ---- 統一時間軸 ---- */
+function buildTimeline(){
+  const ev=[];
+  (state.history||[]).forEach(s=>ev.push({t:new Date(s.date).getTime(),date:s.date,icon:'📝',text:`健康評估：健康分 ${s.score}、生理年齡 ${s.bio}`+(s.sbp?`、血壓 ${s.sbp}/${s.dbp||'?'}`:'')+(s.glucose?`、血糖 ${s.glucose}`:'')}));
+  (state.labs||[]).forEach(e=>{const ks=Object.keys(e.values||{});const abn=ks.filter(k=>labFlag(k,e.values[k])!=='ok').length;ev.push({t:new Date(e.date).getTime(),date:e.date,icon:e.source==='pdf'?'📄':e.source==='image'?'📷':'🧪',text:`檢驗（${SRC_LABEL[e.source]||e.source||'—'}）：${ks.length} 項`+(abn?`，<span style="color:var(--err);">${abn} 項異常</span>`:'')});});
+  ev.sort((a,b)=>b.t-a.t);
+  return ev.slice(0,50);
+}
+/* ---- 自訂習慣（因果閉環：建議→習慣） ---- */
+function addCustomHabit(name,icon){
+  name=(name||'').trim(); if(!name)return;
+  state.customHabits=state.customHabits||[];
+  const all=HABITS.concat(state.customHabits);
+  if(all.some(h=>h.name===name)){toast('這個習慣已在清單中');go('habit');return;}
+  state.customHabits.push({id:'ch_'+Date.now().toString(36),icon:icon||'⭐',name,custom:true});
+  save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  toast('✅ 已加入每日習慣：'+name); go('habit');
+}
+function addRecHabit(title){ addCustomHabit(title,'🎯'); }
+function removeCustomHabit(id){
+  state.customHabits=(state.customHabits||[]).filter(h=>h.id!==id);
+  save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{}); renderHabits();
+}
 function renderReport(){
   const r=state.result, p=state.profile||{}, L=labLatest();
   const hasLabs=Object.keys(L).length>0, has=r||hasLabs;
@@ -1397,7 +1448,10 @@ function renderReport(){
   // 優先行動（評估建議 + 檢驗驅動）
   let recs=(r?genRecs(p,r).slice():[]).concat(genLabRecs(L));
   const seen={}; recs=recs.filter(x=>{if(seen[x.title])return false;seen[x.title]=1;return true;}).sort((a,b)=>a.pri-b.pri);
-  document.getElementById('repActions').innerHTML=recs.length?recs.slice(0,12).map(rc=>`<div class="rec p${rc.pri}"><div class="rec-icon">${rc.icon}</div><div class="rec-body"><div class="rec-title">${rc.title}</div><div class="rec-desc">${rc.desc}</div></div></div>`).join(''):'<div class="hint">🎉 目前沒有需優先處理的項目，請維持良好習慣。</div>';
+  document.getElementById('repActions').innerHTML=recs.length?recs.slice(0,12).map(rc=>`<div class="rec p${rc.pri}"><div class="rec-icon">${rc.icon}</div><div class="rec-body"><div class="rec-title">${rc.title}</div><div class="rec-desc">${rc.desc}</div>${rc.src?`<div class="rec-gain">🔗 觸發：${rc.src}</div>`:''}<div style="margin-top:6px;"><button class="btn bg" style="padding:4px 11px;font-size:.72rem;" onclick="addRecHabit('${(rc.habit||rc.title).replace(/'/g,'')}')">➕ 加為每日習慣</button></div></div></div>`).join(''):'<div class="hint">🎉 目前沒有需優先處理的項目，請維持良好習慣。</div>';
+  // 時間軸
+  const tl=buildTimeline();
+  document.getElementById('repTimeline').innerHTML=tl.length?tl.map(e=>`<div class="hb"><div class="hb-l"><span class="hb-icon">${e.icon}</span><span style="font-size:.8rem;">${e.text}</span></div><div class="hint" style="white-space:nowrap;">${new Date(e.date).toLocaleDateString('zh-TW')}</div></div>`).join(''):'<div class="hint">尚無紀錄。</div>';
 }
 function crossInsights(L,r,p){
   const out=[]; const v=k=>L[k]!=null?parseFloat(L[k].v):null;
@@ -1428,17 +1482,17 @@ function crossInsights(L,r,p){
 function genLabRecs(L){
   const recs=[]; const v=k=>L[k]!=null?parseFloat(L[k].v):null;
   const ldl=v('ldl'),tg=v('tg'),hba1c=v('hba1c'),ua=v('ua'),egfr=v('egfr'),alt=v('alt'),ast=v('ast'),ggt=v('ggt'),hb=v('hb'),tsh=v('tsh'),k=v('k');
-  if(ldl&&ldl>=160)recs.push({pri:1,icon:'🧈',title:'降低 LDL 膽固醇',desc:`LDL ${ldl} mg/dL 偏高。減少飽和脂肪與油炸，增加燕麥／堅果／蔬果與運動；明顯偏高請就醫評估用藥。`});
-  else if(ldl&&ldl>=130)recs.push({pri:2,icon:'🧈',title:'留意 LDL 膽固醇',desc:`LDL ${ldl} 略高，飲食與運動可改善。`});
-  if(tg&&tg>=200)recs.push({pri:2,icon:'🍟',title:'降三酸甘油酯',desc:`TG ${tg} 偏高，減少精緻糖／酒精、增加 omega-3 與運動。`});
-  if(hba1c&&hba1c>=6.5)recs.push({pri:1,icon:'🩸',title:'糖化血色素達糖尿病範圍',desc:`HbA1c ${hba1c}%，建議就醫確認並積極控糖。`});
-  else if(hba1c&&hba1c>=5.7)recs.push({pri:2,icon:'🩸',title:'血糖前期',desc:`HbA1c ${hba1c}%（前期），可透過減重、飲食與運動逆轉。`});
-  if(ua&&ua>=9)recs.push({pri:2,icon:'🦴',title:'尿酸過高',desc:`尿酸 ${ua}，注意痛風，限高普林與含糖飲料，必要時就醫。`});
-  if(egfr&&egfr<60)recs.push({pri:egfr<45?1:2,icon:'🫘',title:'追蹤腎功能',desc:`eGFR ${egfr}，建議控制血壓血糖、避免傷腎藥物並定期追蹤。`});
-  if((alt&&alt>=80)||(ast&&ast>=80)||(ggt&&ggt>=120))recs.push({pri:2,icon:'🫀',title:'肝功能追蹤',desc:'肝指標明顯偏高，建議減重限酒、檢查脂肪肝／肝炎並追蹤。'});
-  if(hb&&hb<11)recs.push({pri:2,icon:'🩸',title:'檢查貧血',desc:`血紅素 ${hb} 偏低，建議查明原因並就醫。`});
-  if(tsh&&(tsh<0.1||tsh>10))recs.push({pri:2,icon:'🦋',title:'甲狀腺追蹤',desc:'TSH 明顯異常，建議內分泌科進一步檢查。'});
-  if(k&&(k<3||k>6))recs.push({pri:1,icon:'⚠️',title:'電解質異常請就醫',desc:'血鉀明顯異常可能影響心臟，建議儘速就醫。'});
+  if(ldl&&ldl>=160)recs.push({pri:1,icon:'🧈',title:'降低 LDL 膽固醇',desc:`LDL ${ldl} mg/dL 偏高。減少飽和脂肪與油炸，增加燕麥／堅果／蔬果與運動；明顯偏高請就醫評估用藥。`,src:`LDL ${ldl}`,habit:'少油炸與飽和脂肪'});
+  else if(ldl&&ldl>=130)recs.push({pri:2,icon:'🧈',title:'留意 LDL 膽固醇',desc:`LDL ${ldl} 略高，飲食與運動可改善。`,src:`LDL ${ldl}`,habit:'少油炸與飽和脂肪'});
+  if(tg&&tg>=200)recs.push({pri:2,icon:'🍟',title:'降三酸甘油酯',desc:`TG ${tg} 偏高，減少精緻糖／酒精、增加 omega-3 與運動。`,src:`TG ${tg}`,habit:'不喝含糖飲料'});
+  if(hba1c&&hba1c>=6.5)recs.push({pri:1,icon:'🩸',title:'糖化血色素達糖尿病範圍',desc:`HbA1c ${hba1c}%，建議就醫確認並積極控糖。`,src:`HbA1c ${hba1c}%`,habit:'餐後散步 15 分鐘'});
+  else if(hba1c&&hba1c>=5.7)recs.push({pri:2,icon:'🩸',title:'血糖前期',desc:`HbA1c ${hba1c}%（前期），可透過減重、飲食與運動逆轉。`,src:`HbA1c ${hba1c}%`,habit:'餐後散步 15 分鐘'});
+  if(ua&&ua>=9)recs.push({pri:2,icon:'🦴',title:'尿酸過高',desc:`尿酸 ${ua}，注意痛風，限高普林與含糖飲料，必要時就醫。`,src:`尿酸 ${ua}`,habit:'每日多喝水 2000cc'});
+  if(egfr&&egfr<60)recs.push({pri:egfr<45?1:2,icon:'🫘',title:'追蹤腎功能',desc:`eGFR ${egfr}，建議控制血壓血糖、避免傷腎藥物並定期追蹤。`,src:`eGFR ${egfr}`,habit:'少鹽並記錄血壓'});
+  if((alt&&alt>=80)||(ast&&ast>=80)||(ggt&&ggt>=120))recs.push({pri:2,icon:'🫀',title:'肝功能追蹤',desc:'肝指標明顯偏高，建議減重限酒、檢查脂肪肝／肝炎並追蹤。',src:`GPT ${alt||'-'} / γ-GT ${ggt||'-'}`,habit:'今日不飲酒'});
+  if(hb&&hb<11)recs.push({pri:2,icon:'🩸',title:'檢查貧血',desc:`血紅素 ${hb} 偏低，建議查明原因並就醫。`,src:`Hb ${hb}`});
+  if(tsh&&(tsh<0.1||tsh>10))recs.push({pri:2,icon:'🦋',title:'甲狀腺追蹤',desc:'TSH 明顯異常，建議內分泌科進一步檢查。',src:`TSH ${tsh}`});
+  if(k&&(k<3||k>6))recs.push({pri:1,icon:'⚠️',title:'電解質異常請就醫',desc:'血鉀明顯異常可能影響心臟，建議儘速就醫。',src:`K ${k}`});
   return recs;
 }
 function buildDigestText(){
@@ -1835,17 +1889,19 @@ function renderHabits(){
   const tk=todayKey();
   const today=state.habits[tk]||{};
   const list=document.getElementById('habitList');list.innerHTML='';
-  HABITS.forEach(h=>{
+  HABITS.concat(state.customHabits||[]).forEach(h=>{
     const on=!!today[h.id];
     const streak=calcStreak(h.id);
     const row=document.createElement('div');row.className='hb';
     row.innerHTML=`<div class="hb-l"><span class="hb-icon">${h.icon}</span><span>${h.name}</span>
-      ${streak>1?`<span class="streak">🔥${streak}天</span>`:''}</div>`;
+      ${h.custom?'<span class="hint" style="font-size:.62rem;">自訂</span>':''}
+      ${streak>1?`<span class="streak">🔥${streak}天</span>`:''}
+      ${h.custom?`<span onclick="removeCustomHabit('${h.id}')" style="cursor:pointer;color:var(--g400);font-size:.9rem;margin-left:4px;">✕</span>`:''}</div>`;
     const chk=document.createElement('div');chk.className='check'+(on?' on':'');chk.textContent='✓';
     chk.onclick=()=>{
       if(!state.habits[tk])state.habits[tk]={};
       state.habits[tk][h.id]=!state.habits[tk][h.id];
-      save();renderHabits();
+      save();if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});renderHabits();
     };
     row.appendChild(chk);list.appendChild(row);
   });
@@ -1895,7 +1951,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.20-auto-sync';
+const APP_VERSION='2026.07.21-connect';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -2047,7 +2103,7 @@ function fbDoc(){
 function fbSyncNow(){
   if(!fbUser||!fbDb)return Promise.reject(new Error('未登入'));
   return fbDoc().set(fbClean({
-    profile:state.profile||null, history:state.history||[], labs:state.labs||[], habits:state.habits||{},
+    profile:state.profile||null, history:state.history||[], labs:state.labs||[], habits:state.habits||{}, customHabits:state.customHabits||[],
     updatedAt:new Date().toISOString()
   }),{merge:true});
 }
@@ -2073,6 +2129,7 @@ async function fbPull(){
     }
     if(d.profile)state.profile=d.profile;
     if(d.habits)state.habits=Object.assign({},state.habits,d.habits);
+    if(Array.isArray(d.customHabits)){const cm={};[...(state.customHabits||[]),...d.customHabits].forEach(x=>{if(x&&x.id)cm[x.id]=x;});state.customHabits=Object.values(cm);}
     save();
     fbMsg('✅ 已合併，共 '+state.history.length+' 筆紀錄、'+(state.labs?state.labs.length:0)+' 筆檢驗',true);toast('已從雲端拉取');
     if(document.getElementById('sec-trend').classList.contains('active'))renderTrend();
