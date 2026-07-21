@@ -332,6 +332,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   <div class="nt" data-sec="smart">🚨 智慧預警</div>
   <div class="nt" data-sec="trend">📈 趨勢追蹤</div>
   <div class="nt" data-sec="labs">🧪 檢驗數據庫</div>
+  <div class="nt" data-sec="meds">💊 用藥紀錄</div>
   <div class="nt" data-sec="habit">✅ 每日習慣</div>
   <div class="nt" data-sec="advice">💡 建議 & AI</div>
   <div class="nt" data-sec="report">📋 綜合報告</div>
@@ -494,7 +495,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
     <div class="ct">🏥 健康存摺（My Health Bank）</div>
     <div class="hint" style="line-height:1.6;margin-bottom:10px;">
       步驟：健保快易通 App 或 <a class="link" href="https://myhealthbank.nhi.gov.tw/" target="_blank">健康存摺網站</a> → 登入 → 下載／匯出（FHIR 或 JSON）→ 於此上傳。<br>
-      自動擷取：血壓、空腹血糖、糖化血色素、總膽固醇、HDL、體重、身高、心率等。<br>
+      自動擷取：血壓、空腹血糖、糖化血色素、總膽固醇、HDL、體重、身高、心率等檢驗值，並自動解析<b>用藥紀錄</b>（處方／調劑）整理到「💊 用藥紀錄」。<br>
       支援 <b>FHIR／JSON、.zip／.gz 壓縮檔</b>（本機解析）；若上傳的是 <b>PDF 報告</b>，會改用 AI 視覺辨識（需 AI 金鑰，報告會傳送至 AI 服務判讀）。
     </div>
     <button class="btn bp" onclick="document.getElementById('fileFhir').click()">📥 上傳健康存摺檔案（JSON／壓縮檔／PDF）</button>
@@ -777,6 +778,35 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   </div>
 </div>
 
+<!-- ========== MEDICATIONS ========== -->
+<div class="sec" id="sec-meds">
+  <div id="medsEmpty" class="card empty">
+    <div class="em">💊</div>
+    <div>尚無用藥紀錄。到「🔗 匯入串接」匯入健保「健康存摺」的用藥資料（FHIR／JSON，含 MedicationRequest／MedicationDispense），系統會自動整理成一份用藥清單；也可在下方手動新增。</div>
+    <div class="row-btn" style="margin-top:12px;justify-content:center;">
+      <button class="btn bp" onclick="go('connect')">🔗 前往匯入</button>
+      <button class="btn bg" onclick="openMedEditor()">➕ 手動新增</button>
+    </div>
+  </div>
+  <div id="medsContent" style="display:none;">
+    <div class="card">
+      <div class="ct">💊 用藥總覽 <span class="hint" id="medsCount"></span></div>
+      <div id="medsAlert"></div>
+      <div id="medsSummary" class="disc" style="margin-bottom:10px;"></div>
+    </div>
+    <div class="card">
+      <div class="ct">🗂️ 用藥清單 <span class="hint">依日期排序（新→舊）</span></div>
+      <div style="overflow-x:auto;"><table id="medsTable"></table></div>
+      <div class="row-btn" style="margin-top:10px;">
+        <button class="btn bp" onclick="openMedEditor()">➕ 新增用藥</button>
+        <button class="btn bg" onclick="exportMeds()">📤 匯出 CSV</button>
+        <button class="btn bd" onclick="clearMeds()">🗑️ 清除全部</button>
+      </div>
+      <div class="hint" style="margin-top:8px;">⚠️ 用藥紀錄僅供自我管理與就醫時參考，請勿自行調整處方；用藥問題請諮詢醫師或藥師。</div>
+    </div>
+  </div>
+</div>
+
 <!-- ========== FOOT TRAINING ========== -->
 <div class="sec" id="sec-foot">
   <div id="foot-app"><div class="app" id="foot-root"></div></div>
@@ -932,7 +962,7 @@ function load(){
   try{return JSON.parse(localStorage.getItem(LS_KEY))||defaults();}catch(e){return defaults();}
 }
 function defaults(){
-  return {profile:null, result:null, history:[], labs:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:''}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], meds:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:''}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));}
 
@@ -956,6 +986,7 @@ function go(sec){
   window.scrollTo(0,0);
   if(sec==='trend')renderTrend();
   if(sec==='labs')renderLabs();
+  if(sec==='meds')renderMeds();
   if(sec==='report')renderReport();
   if(sec==='habit')renderHabits();
   if(sec==='dash')renderDash();
@@ -1905,6 +1936,177 @@ function saveLabEditor(id){
   toast((id?'✅ 已更新該筆':'✅ 已新增一筆')+(synced?'，並更新健康評估':''));
 }
 
+/* ============ 用藥紀錄（健保健康存摺整合） ============ */
+// 從 FHIR（MedicationRequest / MedicationDispense / MedicationStatement）解析用藥
+function parseMeds(data){
+  const out=[];
+  // 先建立 Bundle 內 Medication 資源索引（供 medicationReference 解析）
+  const medIndex={};
+  const collect=(res,fullUrl)=>{
+    if(res&&res.resourceType==='Medication'){
+      const nm=medName(res.code)||'';
+      if(res.id)medIndex['Medication/'+res.id]=nm;
+      if(fullUrl)medIndex[fullUrl]=nm;
+    }
+  };
+  let resources=[];
+  if(data&&data.resourceType==='Bundle'&&Array.isArray(data.entry)){
+    data.entry.forEach(en=>{collect(en.resource,en.fullUrl);});
+    resources=data.entry.map(en=>en.resource).filter(Boolean);
+  }else if(Array.isArray(data)){ resources=data; data.forEach(r=>collect(r)); }
+  else if(data){ resources=[data]; collect(data); if(data.contained)data.contained.forEach(c=>collect(c)); }
+  resources.forEach(res=>{
+    if(!res)return;
+    (res.contained||[]).forEach(c=>collect(c));
+    const rt=res.resourceType;
+    if(rt!=='MedicationRequest'&&rt!=='MedicationDispense'&&rt!=='MedicationStatement')return;
+    let name=medName(res.medicationCodeableConcept);
+    if(!name&&res.medicationReference){name=medIndex[res.medicationReference.reference]||res.medicationReference.display||'';}
+    if(!name)name='（未命名藥品）';
+    // 日期
+    const dt=res.authoredOn||res.whenHandedOver||res.whenPrepared||res.effectiveDateTime||
+      (res.effectivePeriod&&res.effectivePeriod.start)||(res.dispenseRequest&&res.dispenseRequest.validityPeriod&&res.dispenseRequest.validityPeriod.start)||null;
+    // 用法用量
+    const di=(res.dosageInstruction&&res.dosageInstruction[0])||(res.dosage&&res.dosage[0])||null;
+    let dose=di&&di.text?di.text:'';
+    if(!dose&&di){
+      const dr=di.doseAndRate&&di.doseAndRate[0];
+      const dq=dr&&dr.doseQuantity;
+      if(dq)dose=(dq.value!=null?dq.value:'')+(dq.unit||dq.code||'');
+      const tim=di.timing&&di.timing.code&&(di.timing.code.text||(di.timing.code.coding&&di.timing.code.coding[0]&&di.timing.code.coding[0].display));
+      if(tim)dose=(dose?dose+' ':'')+tim;
+    }
+    const route=di&&di.route?(di.route.text||(di.route.coding&&di.route.coding[0]&&di.route.coding[0].display)||''):'';
+    // 天數 / 數量
+    let days=null;
+    if(res.dispenseRequest&&res.dispenseRequest.expectedSupplyDuration&&res.dispenseRequest.expectedSupplyDuration.value!=null)days=res.dispenseRequest.expectedSupplyDuration.value;
+    if(res.daysSupply&&res.daysSupply.value!=null)days=res.daysSupply.value;
+    let qty=null;
+    const q=res.quantity||(res.dispenseRequest&&res.dispenseRequest.quantity);
+    if(q&&q.value!=null)qty=q.value+(q.unit||q.code||'');
+    const prescriber=(res.requester&&(res.requester.display||(res.requester.agent&&res.requester.agent.display)))||'';
+    out.push({name,dose:(dose||'').trim(),route:(route||'').trim(),days,qty,date:dt,
+      status:res.status||'',kind:rt,prescriber:(prescriber||'').trim()});
+  });
+  return out;
+}
+function medName(cc){
+  if(!cc)return '';
+  if(cc.text)return cc.text;
+  const c=cc.coding&&cc.coding[0];
+  return (c&&(c.display||c.code))||'';
+}
+// 併入 state.meds，依（名稱＋日期）去重
+function ingestMeds(meds,source){
+  if(!meds||!meds.length)return 0;
+  state.meds=state.meds||[];
+  const sig=m=>((m.date||'').slice(0,10)+'|'+(m.name||'')+'|'+(m.dose||''));
+  const seen=new Set(state.meds.map(sig));
+  let added=0;
+  meds.forEach(m=>{
+    const s=sig(m); if(seen.has(s))return; seen.add(s);
+    let iso=null; if(m.date){const d=new Date(m.date);if(!isNaN(d))iso=d.toISOString();}
+    state.meds.push({id:'med_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),
+      date:iso||m.date||null,name:m.name,dose:m.dose||'',route:m.route||'',days:m.days!=null?m.days:null,
+      qty:m.qty||'',status:m.status||'',kind:m.kind||'',prescriber:m.prescriber||'',source:source||'nhi'});
+    added++;
+  });
+  if(added){ if(state.meds.length>3000)state.meds=state.meds.slice(-3000); save();
+    if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{}); }
+  return added;
+}
+const MED_KIND_LABEL={MedicationRequest:'處方',MedicationDispense:'調劑',MedicationStatement:'用藥'};
+function renderMeds(){
+  const meds=(state.meds||[]).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+  const empty=document.getElementById('medsEmpty'),content=document.getElementById('medsContent');
+  if(!meds.length){ if(empty)empty.style.display='block'; if(content)content.style.display='none'; return; }
+  if(empty)empty.style.display='none'; if(content)content.style.display='block';
+  document.getElementById('medsCount').textContent='共 '+meds.length+' 筆';
+  // 摘要：不重複藥品數、最近日期、近 90 天用藥
+  const uniq=new Set(meds.map(m=>m.name)).size;
+  const latest=meds[0].date?new Date(meds[0].date).toLocaleDateString('zh-TW'):'—';
+  const cut=Date.now()-90*864e5;
+  const recent=meds.filter(m=>m.date&&new Date(m.date).getTime()>=cut);
+  const recentNames=[...new Set(recent.map(m=>m.name))];
+  document.getElementById('medsSummary').innerHTML=
+    `共 <b>${meds.length}</b> 筆用藥紀錄、<b>${uniq}</b> 種藥品，最近一筆 ${latest}。`+
+    (recentNames.length?`<br>近 90 天內用藥：${recentNames.slice(0,12).map(n=>'<span class="pill mod">'+esc(n)+'</span>').join(' ')}${recentNames.length>12?' …':''}`:'');
+  // 交互作用/重複用藥的溫和提醒：同名藥品多次或近期多種藥品
+  const alert=document.getElementById('medsAlert');
+  const many=recentNames.length>=5;
+  alert.innerHTML=many?`<div class="disc" style="border-left:3px solid var(--warn);background:#fffbeb;color:#92400e;margin-bottom:10px;">⚠️ 近 90 天內用藥種類較多（${recentNames.length} 種），就醫時建議主動告知醫師目前所有用藥，避免重複或交互作用。</div>`:'';
+  const t=document.getElementById('medsTable');
+  t.innerHTML='<tr><th>日期</th><th>藥品</th><th>用法用量</th><th>天數/數量</th><th>來源</th><th></th></tr>'+
+    meds.map(m=>{
+      const d=m.date?new Date(m.date).toLocaleDateString('zh-TW'):'—';
+      const dq=[m.days!=null?m.days+' 天':'',m.qty||''].filter(Boolean).join(' / ')||'—';
+      const src=m.source==='nhi'?('健保'+(MED_KIND_LABEL[m.kind]?'·'+MED_KIND_LABEL[m.kind]:'')):(m.source==='manual'?'手動':(m.source||''));
+      const info=[m.dose,m.route].filter(Boolean).join('，')||'—';
+      return `<tr><td style="white-space:nowrap;">${d}</td><td><b>${esc(m.name)}</b>${m.prescriber?'<br><span class="hint">'+esc(m.prescriber)+'</span>':''}</td>`+
+        `<td>${esc(info)}</td><td style="white-space:nowrap;">${esc(dq)}</td><td class="hint" style="white-space:nowrap;">${esc(src)}</td>`+
+        `<td style="white-space:nowrap;"><span onclick="openMedEditor('${m.id}')" style="cursor:pointer;color:var(--acc);">✏️</span> <span onclick="medDelete('${m.id}')" style="cursor:pointer;color:var(--err);">🗑️</span></td></tr>`;
+    }).join('');
+}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function openMedEditor(id){
+  const editing=id?((state.meds||[]).find(m=>m.id===id)):null;
+  const dateVal=editing&&editing.date?new Date(editing.date).toISOString().slice(0,10):todayKey();
+  let m=document.getElementById('medModal');
+  if(!m){m=document.createElement('div');m.id='medModal';m.className='modal-overlay';document.body.appendChild(m);}
+  const e=editing||{};
+  m.innerHTML=`<div class="modal-box">
+    <div class="ct">${editing?'✏️ 編輯用藥':'➕ 新增用藥'}</div>
+    <div class="fg"><label class="fl">日期</label><input class="fi" type="date" id="medIn_date" value="${dateVal}"></div>
+    <div class="fg"><label class="fl">藥品名稱 <span class="hint">必填</span></label><input class="fi" id="medIn_name" value="${esc(e.name||'')}" placeholder="例：Amlodipine 5mg"></div>
+    <div class="fg"><label class="fl">用法用量</label><input class="fi" id="medIn_dose" value="${esc(e.dose||'')}" placeholder="例：每日一次一顆"></div>
+    <div class="fg"><label class="fl">給藥途徑</label><input class="fi" id="medIn_route" value="${esc(e.route||'')}" placeholder="例：口服"></div>
+    <div class="fg"><label class="fl">天數</label><input class="fi" type="number" inputmode="numeric" id="medIn_days" value="${e.days!=null?e.days:''}" placeholder="例：28"></div>
+    <div class="fg"><label class="fl">開立/來源</label><input class="fi" id="medIn_prescriber" value="${esc(e.prescriber||'')}" placeholder="例：某某醫院"></div>
+    <div class="row-btn" style="margin-top:14px;">
+      <button class="btn bp" onclick="saveMedEditor('${editing?editing.id:''}')">💾 儲存</button>
+      <button class="btn bg" onclick="closeMedEditor()">取消</button>
+    </div></div>`;
+  m.style.display='flex';
+}
+function closeMedEditor(){const m=document.getElementById('medModal');if(m){m.style.display='none';m.innerHTML='';}}
+function saveMedEditor(id){
+  const name=(document.getElementById('medIn_name').value||'').trim();
+  if(!name){toast('請填入藥品名稱');return;}
+  const ds=document.getElementById('medIn_date').value;
+  const date=ds?new Date(ds+'T00:00:00').toISOString():null;
+  const dose=(document.getElementById('medIn_dose').value||'').trim();
+  const route=(document.getElementById('medIn_route').value||'').trim();
+  const daysV=document.getElementById('medIn_days').value;
+  const days=daysV!==''&&!isNaN(+daysV)?+daysV:null;
+  const prescriber=(document.getElementById('medIn_prescriber').value||'').trim();
+  state.meds=state.meds||[];
+  if(id){const m=state.meds.find(x=>x.id===id); if(m){Object.assign(m,{date,name,dose,route,days,prescriber,edited:true});}}
+  else{ state.meds.push({id:'med_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),date,name,dose,route,days,prescriber,qty:'',status:'',kind:'',source:'manual'}); }
+  save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  closeMedEditor();renderMeds();toast(id?'✅ 已更新':'✅ 已新增');
+}
+function medDelete(id){
+  if(!confirm('確定刪除這一筆用藥紀錄？'))return;
+  state.meds=(state.meds||[]).filter(m=>m.id!==id);
+  save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  renderMeds();toast('已刪除');
+}
+function exportMeds(){
+  const meds=state.meds||[]; if(!meds.length){toast('沒有可匯出的用藥紀錄');return;}
+  const head=['date','name','dose','route','days','qty','source','kind','prescriber'];
+  const rows=meds.map(m=>[m.date?new Date(m.date).toISOString():'',m.name||'',m.dose||'',m.route||'',m.days!=null?m.days:'',m.qty||'',m.source||'',m.kind||'',m.prescriber||'']
+    .map(x=>/[",\n]/.test(String(x))?'"'+String(x).replace(/"/g,'""')+'"':x));
+  const csv=[head.join(','),...rows.map(r=>r.join(','))].join('\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='lifespan-meds-'+todayKey()+'.csv';a.click();
+}
+function clearMeds(){
+  if(confirm('確定清除所有用藥紀錄？此動作無法復原。')){
+    state.meds=[];save();renderMeds();toast('已清除用藥紀錄');
+    if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  }
+}
+
 /* ============ 每日習慣 ============ */
 function todayKey(){return new Date().toISOString().slice(0,10);}
 function renderHabits(){
@@ -1974,7 +2176,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.21-pwa-offline';
+const APP_VERSION='2026.07.21-meds';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -2174,7 +2376,7 @@ function fbDoc(){
 function fbSyncNow(){
   if(!fbUser||!fbDb)return Promise.reject(new Error('未登入'));
   return fbDoc().set(fbClean({
-    profile:state.profile||null, history:state.history||[], labs:state.labs||[], habits:state.habits||{}, customHabits:state.customHabits||[],
+    profile:state.profile||null, history:state.history||[], labs:state.labs||[], meds:state.meds||[], habits:state.habits||{}, customHabits:state.customHabits||[],
     updatedAt:new Date().toISOString()
   }),{merge:true});
 }
@@ -2198,13 +2400,18 @@ async function fbPull(){
       const lm={};[...(state.labs||[]),...d.labs].forEach(x=>{if(x&&x.id)lm[x.id]=x;});
       state.labs=Object.values(lm).sort((a,b)=>new Date(a.date)-new Date(b.date));
     }
+    if(Array.isArray(d.meds)){
+      const mm={};[...(state.meds||[]),...d.meds].forEach(x=>{if(x&&x.id)mm[x.id]=x;});
+      state.meds=Object.values(mm).sort((a,b)=>new Date(a.date||0)-new Date(b.date||0));
+    }
     if(d.profile)state.profile=d.profile;
     if(d.habits)state.habits=Object.assign({},state.habits,d.habits);
     if(Array.isArray(d.customHabits)){const cm={};[...(state.customHabits||[]),...d.customHabits].forEach(x=>{if(x&&x.id)cm[x.id]=x;});state.customHabits=Object.values(cm);}
     save();
-    fbMsg('✅ 已合併，共 '+state.history.length+' 筆紀錄、'+(state.labs?state.labs.length:0)+' 筆檢驗',true);toast('已從雲端拉取');
+    fbMsg('✅ 已合併，共 '+state.history.length+' 筆紀錄、'+(state.labs?state.labs.length:0)+' 筆檢驗、'+(state.meds?state.meds.length:0)+' 筆用藥',true);toast('已從雲端拉取');
     if(document.getElementById('sec-trend').classList.contains('active'))renderTrend();
     if(document.getElementById('sec-labs').classList.contains('active'))renderLabs();
+    if(document.getElementById('sec-meds').classList.contains('active'))renderMeds();
   }catch(e){fbMsg('⚠️ 拉取失敗：'+fbErr(e),false);}
 }
 async function gasGet(action){
@@ -2294,12 +2501,12 @@ async function handleImport(e,kind){
   e.target.value='';
   try{
     const entries=await extractTextEntries(f);   // 自動解壓縮（.zip/.gz），回傳多個文字檔
-    const fields={};const notes=[];const records=[];
+    const fields={};const notes=[];const records=[];const meds=[];
     let ok=0;
     entries.forEach(({name,text})=>{
       try{
         let parsed;
-        if(kind==='nhi')parsed=parseNHI(text);
+        if(kind==='nhi'){ parsed=parseNHI(text); try{ parseMeds(JSON.parse(text)).forEach(m=>meds.push(m)); }catch(e){} }
         else if(kind==='wearable')parsed=parseWearable(text,name);
         else parsed=parseAppFile(text,name);
         if(parsed&&parsed.fields){Object.assign(fields,parsed.fields);ok++;}
@@ -2309,12 +2516,15 @@ async function handleImport(e,kind){
     });
     // 健保帶日期的檢驗紀錄 → 直接併入檢驗數據庫（依原始日期）
     const addedRec=records.length?ingestLabRecords(records,'nhi'):0;
-    if(!Object.keys(fields).length && !addedRec){toast('未從檔案擷取到可用數值');return;}
+    const addedMed=meds.length?ingestMeds(meds,'nhi'):0;
+    if(!Object.keys(fields).length && !addedRec && !addedMed){toast('未從檔案擷取到可用數值');return;}
     if(entries.length>1)notes.unshift('已解壓縮並合併 '+ok+'/'+entries.length+' 個檔案');
     if(addedRec)notes.unshift('✅ 已將 '+addedRec+' 筆健保檢驗紀錄（依原始日期）加入檢驗數據庫');
+    if(addedMed)notes.unshift('💊 已將 '+addedMed+' 筆用藥紀錄加入「用藥紀錄」');
     pendingImport={kind,fields,notes};
     renderImportResult();go('connect');
-    toast(addedRec?('✅ 已匯入 '+addedRec+' 筆檢驗紀錄'):'✅ 解析完成');
+    const bits=[]; if(addedRec)bits.push(addedRec+' 筆檢驗'); if(addedMed)bits.push(addedMed+' 筆用藥');
+    toast(bits.length?('✅ 已匯入 '+bits.join('、')):'✅ 解析完成');
   }catch(err){toast('解析失敗：'+err.message);}
 }
 // 讀檔並在需要時解壓縮：.zip → 取出內含 JSON/XML/CSV；.gz → 解 gzip；其他 → 純文字
@@ -2534,6 +2744,16 @@ async function handleTextImport(kind){
     try{
       const parsed=(kind==='nhi')?parseNHI(text):parseAppFile(text,'paste.json');
       if(parsed&&parsed.fields&&Object.keys(parsed.fields).length){fields=parsed.fields;notes=parsed.notes||[];}
+      if(kind==='nhi'){
+        const addedRec=(parsed&&parsed.records&&parsed.records.length)?ingestLabRecords(parsed.records,'nhi'):0;
+        let addedMed=0; try{ addedMed=ingestMeds(parseMeds(JSON.parse(text)),'nhi'); }catch(e){}
+        if(addedRec){notes=notes||[];notes.unshift('✅ 已將 '+addedRec+' 筆檢驗紀錄加入檢驗數據庫');}
+        if(addedMed){notes=notes||[];notes.unshift('💊 已將 '+addedMed+' 筆用藥紀錄加入「用藥紀錄」');}
+        if((addedRec||addedMed)&&!fields){
+          pendingImport={kind:cfg.out,fields:{},notes};renderImportResult();go('connect');
+          setSt('✅ 已匯入');toast('✅ 已匯入'+(addedRec?' '+addedRec+' 筆檢驗':'')+(addedMed?' '+addedMed+' 筆用藥':''));return;
+        }
+      }
     }catch(e){}
   }
   // 2) 否則交給 AI 辨識自由文字

@@ -9,7 +9,7 @@
 | 位置 | 內容 | 說明 |
 |---|---|---|
 | 瀏覽器 `localStorage['lifespan_data_v1']` | 完整 `state` 物件（JSON 字串） | 主要本機儲存 |
-| Firestore `users/{uid}/lifespan/data` | `{profile, history[], labs[], habits{}, updatedAt}` | 雲端同步（選填，Firebase 登入後） |
+| Firestore `users/{uid}/lifespan/data` | `{profile, history[], labs[], meds[], habits{}, updatedAt}` | 雲端同步（選填，Firebase 登入後） |
 | Firestore `users/{uid}/lifespan_images/{snapId}` | `{image(base64), kind, date}` | 報告原檔留底（選填） |
 | 匯出檔 `lifespan-health-YYYY-MM-DD.json` | `{app, schemaVersion, exportedAt, data:state}` | 手動匯出（設定 → 資料管理） |
 | 匯出檔 `lifespan-labs-YYYY-MM-DD.csv` | 檢驗數據平表 | 檢驗數據庫 CSV 匯出 |
@@ -26,6 +26,7 @@
   "result":    { /* 見 §4，最後一次計算結果 */ } | null,
   "history":   [ /* 見 §5，健康紀錄點快照，時序 */ ],
   "labs":      [ /* 見 §6，檢驗數據，時序 */ ],
+  "meds":      [ /* 見 §6.1，用藥紀錄，時序 */ ],
   "habits":    { "YYYY-MM-DD": { "water":true, ... } },
   "settings":  { /* 見 §7，本機設定；移轉時通常不入庫 */ },
   "dietVal":   1-5,
@@ -116,6 +117,30 @@
 | height | 身高 | cm |
 
 > 正規化建議：`lab_values(record_id FK, metric, value, unit)`，`metric` 用上表 key，方便任意項目的時序查詢與分析。
+
+---
+
+## 6.1 `meds[]`（用藥紀錄，時序）
+
+由健保健康存摺 FHIR（`MedicationRequest`／`MedicationDispense`／`MedicationStatement`）解析，或手動新增。建議後端表：`medication_records`。
+
+```jsonc
+{
+  "id":         "med_<base36ms><rand>",  // PK
+  "date":       "2025-06-01T...Z",       // ISO-8601（authoredOn／whenHandedOver／effectiveDateTime…）
+  "name":       "Amlodipine 5mg Tab",    // 藥品名（medicationCodeableConcept / 解析 medicationReference）
+  "dose":       "每日一次，每次一顆",      // 用法用量（dosageInstruction.text 或 doseAndRate/timing）
+  "route":      "口服",                   // 給藥途徑
+  "days":       28,                       // 天數（expectedSupplyDuration / daysSupply）| null
+  "qty":        "60tab",                  // 數量（quantity）
+  "status":     "active",                 // FHIR status
+  "kind":       "MedicationRequest",      // 來源資源型別
+  "prescriber": "台大醫院",                // requester.display
+  "source":     "nhi"                     // nhi | manual
+}
+```
+
+> 去重鍵：`date(日)｜name｜dose`。跨裝置合併以 `id` 去重（雲端同步同 labs）。
 
 ---
 
