@@ -715,7 +715,8 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   <div id="reportContent" style="display:none;">
     <div class="card"><div class="ct">🎯 整體摘要</div><div id="repSummary"></div></div>
     <div class="card"><div class="ct">🧪 檢驗重點 <span class="hint">異常與趨勢</span></div><div id="repLabs"></div></div>
-    <div class="card"><div class="ct">🔗 交叉洞察 <span class="hint">資料互相關聯</span></div><div id="repInsights"></div></div>
+    <div class="card"><div class="ct">💊 用藥概況 <span class="hint">近 90 天</span></div><div id="repMeds"></div></div>
+    <div class="card"><div class="ct">🔗 交叉洞察 <span class="hint">資料互相關聯（含用藥×檢驗）</span></div><div id="repInsights"></div></div>
     <div class="card"><div class="ct">✅ 優先行動建議 <span class="hint">可一鍵加為每日習慣</span></div><div id="repActions"></div></div>
     <div class="card"><div class="ct">📅 健康時間軸 <span class="hint">紀錄點＋檢驗合併</span></div><div id="repTimeline"></div></div>
     <div class="card">
@@ -893,6 +894,12 @@ service cloud.firestore {
     </details>
   </div>
   <div class="card">
+    <div class="ct">🔔 健康警戒系統</div>
+    <div class="hint" style="margin-bottom:10px;">系統會綜合檢驗、用藥、風險與趨勢自動把關；偵測到危急值、控制未達標、多重用藥或惡化趨勢時，以彈出視窗提醒你並附上「解決之道」。</div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;"><input type="checkbox" id="set-dailyalert" checked onchange="toggleDailyAlert(this.checked)"> 每天開啟 App 時自動檢查並提醒（每天最多一次）</label>
+    <div class="row-btn" style="margin-top:12px;"><button class="btn bp" onclick="showHealthAlert(true)">🔔 立即執行健康檢查</button></div>
+  </div>
+  <div class="card">
     <div class="ct">🤖 AI 引擎設定 <span class="hint">（選填）</span></div>
     <div class="hint" style="margin-bottom:10px;">設定後可使用「AI 健康顧問」。Key 僅存於您的瀏覽器，直接呼叫 API，不經第三方伺服器。</div>
     <div class="fg"><label class="fl">Google Gemini API Key</label><input class="fi" id="set-gemini" type="password" placeholder="AIzaSy… 或 AQ.Ab8R…"></div>
@@ -962,7 +969,7 @@ function load(){
   try{return JSON.parse(localStorage.getItem(LS_KEY))||defaults();}catch(e){return defaults();}
 }
 function defaults(){
-  return {profile:null, result:null, history:[], labs:[], meds:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:''}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], meds:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));}
 
@@ -1442,11 +1449,67 @@ function buildReminders(){
 function renderReminders(){
   const el=document.getElementById('dashReminders'); if(!el)return;
   const rem=buildReminders();
-  if(!rem.length){el.innerHTML='';return;}
   const col={crit:'var(--err)',warn:'var(--warn)',info:'var(--acc)'};
-  el.innerHTML=`<div class="card"><div class="ct">🚩 提醒與待辦 <span class="hint">${rem.length} 項</span></div>`+
+  const checkBtn=`<button class="btn bg" style="padding:5px 12px;font-size:.74rem;" onclick="showHealthAlert(true)">🔔 立即健康檢查</button>`;
+  if(!rem.length){el.innerHTML=`<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="hint">🔔 健康警戒系統運作中，偵測到問題會主動提醒。</div>${checkBtn}</div>`;return;}
+  el.innerHTML=`<div class="card"><div class="ct" style="display:flex;align-items:center;justify-content:space-between;">🚩 提醒與待辦 <span class="hint">${rem.length} 項</span></div>`+
     rem.map(x=>`<div class="rec" style="border-left-color:${col[x.lvl]};background:${x.lvl==='crit'?'#fef2f2':x.lvl==='warn'?'#fffbeb':'#f0f9ff'};"><div class="rec-icon">${x.icon}</div><div class="rec-body"><div class="rec-desc">${x.text}</div></div></div>`).join('')+
-    `</div>`;
+    `<div class="row-btn" style="margin-top:10px;">${checkBtn}</div></div>`;
+}
+/* ============ 健康警戒系統（彈出提醒＋解決之道，可每日自動） ============ */
+function buildHealthAlerts(){
+  const A=[],L=labLatest(),r=state.result,p=state.profile||{},now=Date.now();
+  const push=(lvl,icon,title,detail,solution)=>A.push({lvl,icon,title,detail,solution});
+  const v=k=>L[k]!=null?parseFloat(L[k].v):null;
+  LAB_ORDER.forEach(k=>{if(L[k]==null)return;if(labFlag(k,L[k].v)==='crit')push('crit','🚨',LAB_META[k].label+' 嚴重異常',`最新 ${L[k].v}${LAB_META[k].unit}，已達嚴重範圍。`,'儘速就醫或回診，攜帶此數據給醫師；請勿自行處理。');});
+  const highs=LAB_ORDER.filter(k=>L[k]!=null&&labFlag(k,L[k].v)==='high');
+  if(highs.length)push(highs.length>=3?'crit':'warn','⚠️',highs.length+' 項檢驗過高',highs.slice(0,6).map(k=>LAB_META[k].label+' '+L[k].v).join('、')+(highs.length>6?'…':''),'安排回診追蹤；針對偏高項目調整飲食與運動，必要時與醫師討論用藥。');
+  const worse=LAB_ORDER.filter(m=>{const st=labStats(m);return st&&st.n>=2&&st.dir==='worse';});
+  if(worse.length)push('warn','📈','惡化趨勢 '+worse.length+' 項',worse.map(k=>LAB_META[k].label).join('、')+' 較先前變差。','檢視近 1–3 個月生活型態改變，並固定週期複檢觀察走向。');
+  if(r){if(r.risks.cvd.level==='vhigh')push('warn','❤️','心血管風險極高','綜合評估屬極高風險族群。','積極控制血壓／血脂／血糖並戒菸，與醫師討論預防策略。');
+        if(r.risks.dm.level==='vhigh')push('warn','🩸','糖尿病風險極高','綜合評估屬極高風險族群。','檢查糖化血色素、減重與規律運動，必要時就醫。');}
+  const cls=medClasses(120);
+  if(cls.statin&&v('ldl')!=null&&v('ldl')>=100)push('warn','💊','降血脂治療未達標','服藥中但最新 LDL '+v('ldl')+' 仍偏高。','回診討論劑量、用藥順從性與飲食，切勿自行停藥。');
+  if(cls.bp){const s=v('sbp')!=null?v('sbp'):p.sbp;if(s&&s>=140)push('warn','💊','血壓控制未達標','服藥中但收縮壓 '+s+' 仍偏高。','規律量測並記錄，回診評估，切勿自行調整藥量。');}
+  if(cls.dm&&((v('hba1c')!=null&&v('hba1c')>=7)||(v('glucose')!=null&&v('glucose')>=140)))push('warn','💊','血糖控制未達標','服藥中但血糖指標偏高。','回診檢視控糖方案與生活型態，切勿自行停藥。');
+  const uniq=new Set(recentMeds(90).map(m=>m.name)).size;
+  if(uniq>=5)push('warn','⚠️','多重用藥（'+uniq+' 種）','近 90 天用藥種類較多，交互作用與副作用風險上升。','就醫時出示完整用藥清單，請醫師或藥師檢視是否可精簡。');
+  const dates=[];(state.labs||[]).forEach(e=>dates.push(new Date(e.date).getTime()));(state.history||[]).forEach(s=>dates.push(new Date(s.date).getTime()));
+  if(dates.length){const d=Math.floor((now-Math.max.apply(null,dates))/864e5);if(d>=120)push('info','⏰','已 '+d+' 天未更新資料','距上次檢驗／評估已久，分析可能失準。','安排一次抽血或健康評估以更新資料。');}
+  const rank={crit:0,warn:1,info:2};
+  A.sort((a,b)=>rank[a.lvl]-rank[b.lvl]);
+  return A;
+}
+function showHealthAlert(force){
+  const A=buildHealthAlerts();
+  const actionable=A.filter(x=>x.lvl!=='info');
+  if(!force&&!actionable.length)return false;
+  let m=document.getElementById('alertModal');
+  if(!m){m=document.createElement('div');m.id='alertModal';m.className='modal-overlay';document.body.appendChild(m);}
+  const col={crit:'var(--err)',warn:'var(--warn)',info:'var(--acc)'};
+  const body=A.length?A.map(x=>`<div class="rec" style="border-left-color:${col[x.lvl]};background:${x.lvl==='crit'?'#fef2f2':x.lvl==='warn'?'#fffbeb':'#f0f9ff'};"><div class="rec-icon">${x.icon}</div><div class="rec-body"><div class="rec-title">${esc(x.title)}</div><div class="rec-desc">${esc(x.detail)}</div><div class="rec-gain">💡 解決之道：${esc(x.solution)}</div></div></div>`).join('')
+    :'<div class="hint" style="color:var(--ok);font-weight:600;padding:8px 0;">✅ 目前沒有偵測到需要注意的健康警訊，繼續保持！</div>';
+  const crit=A.some(x=>x.lvl==='crit');
+  m.innerHTML=`<div class="modal-box">
+    <div class="ct">${crit?'🚨':'🔔'} 健康警戒 <span class="hint">${new Date().toLocaleDateString('zh-TW')}</span></div>
+    <div class="hint" style="margin:2px 0 10px;">系統每天為你把關；以下為偵測到的重點與建議做法（衛教參考，非醫療診斷；危急請就醫）。</div>
+    ${body}
+    <label style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--g600);margin-top:10px;"><input type="checkbox" id="alertDailyChk" ${state.settings.dailyAlert===false?'':'checked'} onchange="toggleDailyAlert(this.checked)"> 每天開啟 App 時自動提醒我</label>
+    <div class="row-btn" style="margin-top:12px;">
+      <button class="btn bp" onclick="closeHealthAlert();go('report');">查看綜合報告</button>
+      <button class="btn bg" onclick="closeHealthAlert()">知道了</button>
+    </div></div>`;
+  m.style.display='flex';
+  try{localStorage.setItem('ls_alertSeen',todayKey());}catch(e){}
+  return true;
+}
+function closeHealthAlert(){const m=document.getElementById('alertModal');if(m){m.style.display='none';m.innerHTML='';}}
+function toggleDailyAlert(on){state.settings.dailyAlert=!!on;save();const s=document.getElementById('set-dailyalert');if(s)s.checked=!!on;}
+function maybeDailyAlert(){
+  if(state.settings.dailyAlert===false)return;
+  let seen=''; try{seen=localStorage.getItem('ls_alertSeen')||'';}catch(e){}
+  if(seen===todayKey())return;
+  showHealthAlert(false);
 }
 /* ---- 統一時間軸 ---- */
 function buildTimeline(){
@@ -1496,6 +1559,8 @@ function renderReport(){
   else if(!abn.length)labsH='<div class="hint" style="color:var(--ok);font-weight:600;">✅ 目前檢驗項目都在標準範圍內。</div>';
   else labsH=abn.map(x=>{const st=labStats(x.k);const tr=st&&st.n>=2?(st.dir==='worse'?' <span style="color:var(--err);">↑惡化</span>':st.dir==='better'?' <span style="color:var(--ok);">↓改善</span>':''):'';return `<div class="hb"><div class="hb-l"><span>${FLAG_ICON[x.fl]||'•'} ${LAB_META[x.k].label}</span></div><div style="font-weight:700;color:${FLAG_COLOR[x.fl]};">${x.v} ${LAB_META[x.k].unit}${tr}</div></div>`;}).join('');
   document.getElementById('repLabs').innerHTML=labsH;
+  // 用藥概況
+  renderRepMeds();
   // 交叉洞察
   const ins=crossInsights(L,r,p);
   document.getElementById('repInsights').innerHTML=ins.length?ins.map(i=>`<div class="rec p${i.pri||2}"><div class="rec-icon">${i.icon||'🔗'}</div><div class="rec-body"><div class="rec-desc">${i.text}</div></div></div>`).join(''):'<div class="hint">目前各項資料之間未發現明顯的異常關聯。</div>';
@@ -1531,7 +1596,28 @@ function crossInsights(L,r,p){
   if((k&&(k<3||k>6))||(na&&(na<125||na>155)))add('⚠️','電解質（鉀／鈉）明顯異常，可能影響心臟與神經，建議儘速就醫確認。',1);
   const worse=LAB_ORDER.filter(m=>{const st=labStats(m);return st&&st.n>=2&&st.dir==='worse';});
   if(worse.length)add('📈','以下項目呈惡化趨勢，需留意：'+worse.map(m=>LAB_META[m].label).join('、')+'。建議檢視近期生活型態並持續追蹤。');
+  // 用藥 × 檢驗交叉：治療是否達標
+  const cls=medClasses(120);
+  if(cls.statin&&ldl&&ldl>=100)add('💊','正在服用降血脂藥，但最新 LDL 仍為 '+ldl+' mg/dL（一般控制目標多在 100 以下、高風險族群更低）。可與醫師討論劑量、用藥順從性或飲食是否需要調整，勿自行停藥。',1);
+  if(cls.bp&&sbp&&sbp>=140)add('💊','正在服用降血壓藥，但最新收縮壓仍達 '+sbp+' mmHg。血壓控制未達標，建議規律量測、記錄並回診評估，勿自行調整藥量。',1);
+  if(cls.dm&&((hba1c&&hba1c>=7)||(glu&&glu>=140)))add('💊','正在服用降血糖藥，但血糖控制指標偏高（'+(hba1c?('HbA1c '+hba1c+'%'):('空腹血糖 '+glu))+'）。建議回診檢視控糖方案與生活型態，勿自行停藥。',1);
+  if(cls.uricLowering&&ua&&ua>=7)add('💊','正在服用降尿酸藥，但尿酸仍為 '+ua+' mg/dL，未達一般目標（多建議 <6）。建議回診評估劑量與飲食。');
+  const rc=recentMeds(90),uniq=new Set(rc.map(m=>m.name)).size;
+  if(uniq>=5)add('⚠️','近 90 天用藥種類較多（'+uniq+' 種），多重用藥可能增加交互作用與副作用風險。就醫時請主動出示完整用藥清單，請醫師或藥師檢視是否有可精簡之處。',2);
   return out;
+}
+/* 綜合報告的用藥概況區塊 */
+function renderRepMeds(){
+  const el=document.getElementById('repMeds'); if(!el)return;
+  const rc=recentMeds(90).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+  if(!(state.meds||[]).length){el.innerHTML='<div class="hint">尚無用藥紀錄。可於「🔗 匯入串接」匯入健保健康存摺，或到「💊 用藥紀錄」手動新增。</div>';return;}
+  if(!rc.length){el.innerHTML='<div class="hint">近 90 天內無用藥紀錄（共 '+state.meds.length+' 筆歷史用藥，見「💊 用藥紀錄」）。</div>';return;}
+  const names=[...new Set(rc.map(m=>m.name))];
+  const cls=medClasses(90),labelMap={statin:'降血脂',bp:'降血壓',dm:'降血糖',antithrombotic:'抗血栓',uricLowering:'降尿酸'};
+  const tags=Object.keys(cls).map(c=>'<span class="pill mod">'+labelMap[c]+'</span>').join(' ');
+  el.innerHTML='<div style="font-size:.82rem;margin-bottom:6px;">近 90 天 <b>'+names.length+'</b> 種用藥'+(tags?'　'+tags:'')+'</div>'+
+    names.slice(0,10).map(n=>'<div class="hb"><div class="hb-l"><span class="hb-icon">💊</span><span style="font-size:.8rem;">'+esc(n)+'</span></div></div>').join('')+
+    (names.length>10?'<div class="hint">…等 '+names.length+' 種，詳見「💊 用藥紀錄」</div>':'');
 }
 function genLabRecs(L){
   const recs=[]; const v=k=>L[k]!=null?parseFloat(L[k].v):null;
@@ -1556,6 +1642,8 @@ function buildDigestText(){
   else t+='（尚未完成評估）\n';
   const order=LAB_ORDER.filter(k=>L[k]!==undefined);
   if(order.length){t+='\n【檢驗數據（最新）】\n';order.forEach(k=>{const fl=labFlag(k,L[k].v);const st=labStats(k);const tr=st&&st.n>=2?(st.dir==='worse'?' ↑惡化':st.dir==='better'?' ↓改善':''):'';t+=`${LAB_META[k].label}: ${L[k].v}${LAB_META[k].unit} ${FLAG_TXT[fl]}${tr}\n`;});}
+  const rmeds=recentMeds(90).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+  if(rmeds.length){const nm=[...new Set(rmeds.map(m=>m.name))];t+='\n【近 90 天用藥（'+nm.length+' 種）】\n'+nm.slice(0,20).join('、')+(nm.length>20?' …':'')+'\n';}
   const days=14,hb={};HABITS.forEach(h=>hb[h.id]=0);
   for(let i=0;i<days;i++){const key=new Date(Date.now()-i*86400000).toISOString().slice(0,10);if(state.habits[key])HABITS.forEach(h=>{if(state.habits[key][h.id])hb[h.id]++;});}
   t+='\n【近'+days+'天習慣達成】\n'+HABITS.map(h=>`${h.name}:${hb[h.id]}/${days}`).join('、')+'\n';
@@ -1566,7 +1654,7 @@ async function aiReport(){
   if(!s.gemini&&!s.openai){toast('請先到「設定」填入 API Key');go('settings');return;}
   const btn=document.getElementById('aiReportBtn');btn.disabled=true;btn.textContent='思考中…';
   const out=document.getElementById('repAiOut');out.style.display='block';out.textContent='AI 正在整合你的所有資料…';
-  const prompt=`你是一位整合型健康顧問。以下是使用者在健康 App 內的完整資料。請「整合」各面向（評估、檢驗、風險、習慣、趨勢），彼此連結後給出：\n1) 整體健康總評：最需優先關注的 2-3 件事，並說明數據之間的關聯（例如血糖×體重、血脂×心血管、腎功能×血壓）。\n2) 依優先順序、本週可執行的行動計畫。\n3) 需要就醫或進一步檢查的「紅旗」提醒。\n資料如下：\n${buildDigestText()}\n請用繁體中文、條理清楚、同理不恐嚇，控制在 500 字內。務必註明此為衛教參考、非醫療診斷；危急或明顯異常請就醫。`;
+  const prompt=`你是一位整合型健康顧問。以下是使用者在健康 App 內的完整資料。請「整合」各面向（評估、檢驗、用藥、風險、習慣、趨勢），彼此連結後給出：\n1) 整體健康總評：最需優先關注的 2-3 件事，並說明數據之間的關聯（例如血糖×體重、血脂×心血管、腎功能×血壓，以及「用藥×檢驗是否達標」如服降血脂藥但 LDL 仍偏高）。\n2) 依優先順序、本週可執行的行動計畫。\n3) 需要就醫或進一步檢查的「紅旗」提醒。\n資料如下：\n${buildDigestText()}\n請用繁體中文、條理清楚、同理不恐嚇，控制在 550 字內。若提到用藥，一律提醒「請與醫師／藥師討論，勿自行停藥或調整劑量」。務必註明此為衛教參考、非醫療診斷；危急或明顯異常請就醫。`;
   try{
     let text;const useGemini=s.engine==='gemini'||(s.engine!=='openai'&&s.gemini);
     if(useGemini&&s.gemini)text=await callGemini(s.gemini,prompt);else if(s.openai)text=await callOpenAI(s.openai,prompt);else text=await callGemini(s.gemini,prompt);
@@ -1988,6 +2076,8 @@ function parseMeds(data){
     out.push({name,dose:(dose||'').trim(),route:(route||'').trim(),days,qty,date:dt,
       status:res.status||'',kind:rt,prescriber:(prescriber||'').trim()});
   });
+  // 非 FHIR（健康存摺代碼／中文欄位）→ 用啟發式掃描補上
+  if(!out.length)scanMedsHeuristic(data).forEach(m=>out.push(m));
   return out;
 }
 function medName(cc){
@@ -2015,7 +2105,24 @@ function ingestMeds(meds,source){
     if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{}); }
   return added;
 }
-const MED_KIND_LABEL={MedicationRequest:'處方',MedicationDispense:'調劑',MedicationStatement:'用藥'};
+const MED_KIND_LABEL={MedicationRequest:'處方',MedicationDispense:'調劑',MedicationStatement:'用藥',NHIBank:'健保'};
+/* 近 N 天的用藥（預設 90 天）；無日期者一律納入 */
+function recentMeds(days){
+  const cut=Date.now()-(days||90)*864e5;
+  return (state.meds||[]).filter(m=>!m.date||new Date(m.date).getTime()>=cut);
+}
+/* 依藥名關鍵字粗分治療類別（衛教用途，非藥理判定）*/
+const MED_CLASS_RX={
+  statin:/statin|atorvastatin|rosuvastatin|simvastatin|pravastatin|lovastatin|立普妥|冠脂妥|素果|美百樂鎮|脂?降|降血脂|膽固醇/i,
+  bp:/amlodipine|nifedipine|felodipine|losartan|valsartan|irbesartan|candesartan|telmisartan|lisinopril|ramipril|enalapril|bisoprolol|atenolol|metoprolol|carvedilol|hydrochlorothiazide|脈優|得安穩|可悅您|汰復妥|降血壓|血壓/i,
+  dm:/metformin|glipizide|gliclazide|glimepiride|sitagliptin|linagliptin|empagliflozin|dapagliflozin|insulin|庫魯化|泌樂寬|糖?適?降|降血糖|胰島素|糖尿/i,
+  antithrombotic:/aspirin|acetylsalicylic|clopidogrel|ticagrelor|warfarin|rivaroxaban|apixaban|dabigatran|阿斯匹靈|伯基|保栓通|可邁丁|抗凝|抗血小板/i,
+  uricLowering:/allopurinol|febuxostat|benzbromarone|安樂普利諾|福避痛|降尿酸/i
+};
+function medClasses(days){
+  const on={}; recentMeds(days).forEach(m=>{const n=m.name||'';Object.keys(MED_CLASS_RX).forEach(c=>{if(MED_CLASS_RX[c].test(n))on[c]=(on[c]||0)+1;});});
+  return on;
+}
 function renderMeds(){
   const meds=(state.meds||[]).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
   const empty=document.getElementById('medsEmpty'),content=document.getElementById('medsContent');
@@ -2171,12 +2278,13 @@ function saveSettings(){
   state.settings.engine=document.getElementById('set-engine').value;
   state.settings.gas=document.getElementById('set-gas').value.trim();
   state.settings.autosync=document.getElementById('set-autosync').checked;
+  const da=document.getElementById('set-dailyalert');if(da)state.settings.dailyAlert=da.checked;
   state.settings.fb=document.getElementById('set-fb').value.trim();
   state.settings.fbEmail=document.getElementById('set-fb-email').value.trim();
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.21-meds';
+const APP_VERSION='2026.07.21-meds-alert';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -2208,9 +2316,11 @@ function init(){
   document.getElementById('set-fb-email').value=state.settings.fbEmail||'';
   refreshAiBadge();refreshCloudBadge();
   const bt=document.getElementById('buildTag');if(bt)bt.textContent=APP_VERSION;
+  const da=document.getElementById('set-dailyalert');if(da)da.checked=state.settings.dailyAlert!==false;
   setupCloudGate();
   setupPWA();
   renderDash();
+  setTimeout(maybeDailyAlert,600);
 }
 /* ============ PWA：安裝與離線快取 ============ */
 let deferredInstallPrompt=null;
@@ -2502,22 +2612,27 @@ async function handleImport(e,kind){
   try{
     const entries=await extractTextEntries(f);   // 自動解壓縮（.zip/.gz），回傳多個文字檔
     const fields={};const notes=[];const records=[];const meds=[];
-    let ok=0;
+    let ok=0,failed=0;
     entries.forEach(({name,text})=>{
       try{
         let parsed;
-        if(kind==='nhi'){ parsed=parseNHI(text); try{ parseMeds(JSON.parse(text)).forEach(m=>meds.push(m)); }catch(e){} }
+        if(kind==='nhi'){ parsed=parseNHI(text); try{ parseMeds(jsonParseLenient(text)).forEach(m=>meds.push(m)); }catch(e){} }
         else if(kind==='wearable')parsed=parseWearable(text,name);
         else parsed=parseAppFile(text,name);
         if(parsed&&parsed.fields){Object.assign(fields,parsed.fields);ok++;}
         if(parsed&&parsed.records)parsed.records.forEach(r=>records.push(r));
         (parsed&&parsed.notes||[]).forEach(n=>notes.push(n));
-      }catch(err){/* 略過無法解析的檔案 */}
+      }catch(err){ failed++; /* 該檔無法解析 */ }
     });
     // 健保帶日期的檢驗紀錄 → 直接併入檢驗數據庫（依原始日期）
     const addedRec=records.length?ingestLabRecords(records,'nhi'):0;
     const addedMed=meds.length?ingestMeds(meds,'nhi'):0;
-    if(!Object.keys(fields).length && !addedRec && !addedMed){toast('未從檔案擷取到可用數值');return;}
+    if(!Object.keys(fields).length && !addedRec && !addedMed){
+      const why=failed?('檔案讀到了，但 '+failed+' 個檔的格式無法解析'):'檔案能讀取，但找不到可辨識的檢驗值或用藥欄位';
+      pendingImport={kind,fields:{},notes:['⚠️ '+why+'。請確認這是健康存摺匯出的 FHIR／JSON；若是 PDF 或掃描影像，請改用「拍照／上傳報告」由 AI 辨識。']};
+      renderImportResult();go('connect');
+      toast('未擷取到可用資料'); return;
+    }
     if(entries.length>1)notes.unshift('已解壓縮並合併 '+ok+'/'+entries.length+' 個檔案');
     if(addedRec)notes.unshift('✅ 已將 '+addedRec+' 筆健保檢驗紀錄（依原始日期）加入檢驗數據庫');
     if(addedMed)notes.unshift('💊 已將 '+addedMed+' 筆用藥紀錄加入「用藥紀錄」');
@@ -2739,14 +2854,15 @@ async function handleTextImport(kind){
   const setSt=(t,c)=>{if(st){st.textContent=t;st.style.color=c||'var(--g600)';}};
   if(!text){setSt('請先貼上文字','var(--err)');return;}
   let fields=null, notes=[];
-  // 1) 若像 JSON／FHIR → 本機解析（免 AI、不外傳）
-  if(text[0]==='{'||text[0]==='['){
+  // 1) 若像 JSON／FHIR → 本機解析（免 AI、不外傳）；去掉 BOM／前導空白再判斷
+  const head=text.replace(/^[﻿\s]+/,'')[0];
+  if(head==='{'||head==='['){
     try{
       const parsed=(kind==='nhi')?parseNHI(text):parseAppFile(text,'paste.json');
       if(parsed&&parsed.fields&&Object.keys(parsed.fields).length){fields=parsed.fields;notes=parsed.notes||[];}
       if(kind==='nhi'){
         const addedRec=(parsed&&parsed.records&&parsed.records.length)?ingestLabRecords(parsed.records,'nhi'):0;
-        let addedMed=0; try{ addedMed=ingestMeds(parseMeds(JSON.parse(text)),'nhi'); }catch(e){}
+        let addedMed=0; try{ addedMed=ingestMeds(parseMeds(jsonParseLenient(text)),'nhi'); }catch(e){}
         if(addedRec){notes=notes||[];notes.unshift('✅ 已將 '+addedRec+' 筆檢驗紀錄加入檢驗數據庫');}
         if(addedMed){notes=notes||[];notes.unshift('💊 已將 '+addedMed+' 筆用藥紀錄加入「用藥紀錄」');}
         if((addedRec||addedMed)&&!fields){
@@ -2778,8 +2894,76 @@ function toNum(v){const n=parseFloat(v);return isNaN(n)?null:n;}
 function pushField(map,key,val){const n=toNum(val);if(n!==null)map[key]=n;}
 
 // 健康存摺：FHIR Bundle 或一般 JSON
+/* 寬鬆 JSON 解析：健康存摺檔常有 BOM、XSSI 前綴或字串內控制字元，嚴格 JSON.parse 會直接失敗被略過 */
+function jsonParseLenient(txt){
+  if(typeof txt!=='string')return txt;
+  try{return JSON.parse(txt);}catch(e){}
+  let s=txt.replace(/^\uFEFF/,'').replace(/^\s*\)\]\}'?,?\s*/,'');  // 去 BOM／XSSI 前綴
+  s=s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,' ');  // 去未跳脫控制字元
+  try{return JSON.parse(s);}catch(e){}
+  const oa=s.indexOf('{'),ob=s.lastIndexOf('}'),aa=s.indexOf('['),ab=s.lastIndexOf(']');
+  let start=-1,end=-1;
+  if(oa>=0&&(aa<0||oa<aa)){start=oa;end=ob;} else if(aa>=0){start=aa;end=ab;}
+  if(start>=0&&end>start)return JSON.parse(s.slice(start,end+1));             // 只留最外層物件／陣列
+  throw new Error('JSON 格式無法解析');
+}
+/* 日期彈性解析：支援 ISO、YYYYMMDD、民國 YYYMMDD（如 1140310→2025-03-10）、含斜線 */
+function parseFlexDate(v){
+  if(v==null)return null;
+  let s=String(v).trim(); if(!s)return null;
+  const digits=s.replace(/[^\d]/g,'');
+  if(/^\d{7}$/.test(digits)){const y=+digits.slice(0,3)+1911,m=+digits.slice(3,5),d=+digits.slice(5,7);const dt=new Date(Date.UTC(y,m-1,d));return isNaN(dt)?null:dt.toISOString();}
+  if(/^\d{8}$/.test(digits)){const y=+digits.slice(0,4),m=+digits.slice(4,6),d=+digits.slice(6,8);const dt=new Date(Date.UTC(y,m-1,d));return isNaN(dt)?null:dt.toISOString();}
+  const dt=new Date(s); return isNaN(dt)?null:dt.toISOString();
+}
+/* 非 FHIR 的用藥格式（健康存摺常見的代碼／中文欄位結構）：遞迴掃描整棵 JSON，用欄位別名找出「像用藥」的物件 */
+const MED_ALIAS={
+  name:['藥品名稱','藥名','商品名','學名','品名','藥品','處方藥品','drugname','medname','name','drug_name','item_name','productname','medicinename'],
+  code:['藥品代碼','藥品代號','藥品碼','健保碼','健保代碼','健保藥品代碼','drugcode','drugno','nhicode','atc','code','drugid'],
+  date:['就醫日期','調劑日期','給藥日期','開立日期','領藥日期','看診日期','處方日期','日期','date','dispensedate','visitdate','servicedate','rxdate'],
+  days:['給藥日數','用藥日數','投藥日數','天數','日份','日數','days','dayssupply','supplydays'],
+  dose:['用法用量','用法','用量','劑量','每日劑量','頻次','usage','dosage','sig','freq','frequency','dose'],
+  route:['給藥途徑','途徑','route'],
+  qty:['總量','數量','藥量','給藥量','quantity','qty','amount','totalqty'],
+  prescriber:['醫療院所','院所名稱','就診院所','醫院','院所','處方院所','hospital','provider','org','facility','clinic']
+};
+function medNormKey(k){return String(k).toLowerCase().replace(/[\s_\-()（）]/g,'');}
+function medPickAlias(obj,aliases){
+  const map={}; Object.keys(obj).forEach(k=>{map[medNormKey(k)]=obj[k];});
+  for(const a of aliases){const v=map[medNormKey(a)]; if(v!=null&&String(v).trim()!=='')return v;}
+  return null;
+}
+function looksLikeMed(o){
+  if(!o||typeof o!=='object'||Array.isArray(o))return false;
+  const nm=medPickAlias(o,MED_ALIAS.name);
+  if(!nm||String(nm).trim().length<2)return false;
+  return ['date','days','code','dose','qty'].some(f=>medPickAlias(o,MED_ALIAS[f])!=null);
+}
+function scanMedsHeuristic(data){
+  const out=[]; let n=0;
+  (function walk(node,depth){
+    if(n>8000||depth>9||node==null)return;
+    if(Array.isArray(node)){node.forEach(x=>walk(x,depth+1));return;}
+    if(typeof node!=='object')return;
+    n++;
+    if(looksLikeMed(node)){
+      let name=String(medPickAlias(node,MED_ALIAS.name)).trim();
+      const code=medPickAlias(node,MED_ALIAS.code);
+      if(code&&!name.includes(String(code)))name+=' ('+String(code).trim()+')';
+      out.push({name,
+        dose:(medPickAlias(node,MED_ALIAS.dose)||'').toString().trim(),
+        route:(medPickAlias(node,MED_ALIAS.route)||'').toString().trim(),
+        days:toNum(medPickAlias(node,MED_ALIAS.days)),
+        qty:(medPickAlias(node,MED_ALIAS.qty)||'').toString().trim(),
+        date:parseFlexDate(medPickAlias(node,MED_ALIAS.date)),
+        status:'',kind:'NHIBank',prescriber:(medPickAlias(node,MED_ALIAS.prescriber)||'').toString().trim()});
+    }
+    Object.keys(node).forEach(k=>{const v=node[k]; if(v&&typeof v==='object')walk(v,depth+1);});
+  })(data,0);
+  return out;
+}
 function parseNHI(txt){
-  const data=JSON.parse(txt);
+  const data=jsonParseLenient(txt);
   const fields={};const notes=[];const byDate={};   // dayKey -> {date(ISO), values}
   const addDated=(dateStr,key,val)=>{
     if(!key)return; const n=toNum(val); if(n===null)return;

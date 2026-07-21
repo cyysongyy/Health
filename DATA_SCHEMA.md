@@ -146,7 +146,7 @@
 
 ## 7. `settings`（本機設定，一般不入庫）
 
-`{ gemini, openai, engine, gas, autosync, fb, fbEmail }` — 含 API 金鑰與 Firebase 設定，**屬機敏／裝置本機資訊，移轉時建議排除**。
+`{ gemini, openai, engine, gas, autosync, fb, fbEmail, dailyAlert }` — 含 API 金鑰與 Firebase 設定，**屬機敏／裝置本機資訊，移轉時建議排除**。`dailyAlert`（boolean，預設 true）控制每日健康警戒彈窗。
 
 ---
 
