@@ -31,14 +31,23 @@ body{font-family:'Microsoft JhengHei','Noto Sans TC',system-ui,sans-serif;backgr
 .api-badge{font-size:.67rem;padding:2px 7px;border-radius:10px;font-weight:600;}
 .api-on{background:rgba(16,185,129,.3);color:#a7f3d0;}
 .api-off{background:rgba(255,255,255,.12);color:rgba(255,255,255,.55);}
-.nav{background:#fff;display:flex;flex-wrap:wrap;gap:6px;border-bottom:2px solid var(--g200);
-  position:sticky;top:46px;z-index:200;padding:8px 10px;}
-.nt{padding:6px 11px;border-radius:16px;cursor:pointer;font-size:.76rem;color:var(--g700);
-  white-space:nowrap;background:var(--g100);border:1px solid var(--g200);
-  transition:all .15s;user-select:none;line-height:1.2;}
+.navbar{background:#fff;display:flex;align-items:center;gap:10px;border-bottom:2px solid var(--g200);
+  position:sticky;top:46px;z-index:200;padding:7px 12px;}
+.nav-toggle{background:var(--pri);color:#fff;border:none;border-radius:9px;padding:7px 13px;
+  font-size:.83rem;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px;}
+.nav-toggle:active{background:var(--prid);}
+.nav-current{font-size:.85rem;font-weight:700;color:var(--g900);}
+.nav{display:none;background:#fff;position:sticky;top:93px;z-index:200;
+  grid-template-columns:repeat(2,1fr);gap:7px;padding:10px 12px;
+  border-bottom:2px solid var(--g200);box-shadow:0 8px 18px rgba(0,0,0,.10);}
+.nav.open{display:grid;}
+@media(min-width:460px){.nav.open{grid-template-columns:repeat(3,1fr);}}
+.nt{padding:10px 10px;border-radius:10px;cursor:pointer;font-size:.8rem;color:var(--g700);
+  text-align:center;background:var(--g100);border:1px solid var(--g200);
+  transition:all .15s;user-select:none;line-height:1.25;}
 .nt.active{color:#fff;background:var(--pri);border-color:var(--pri);font-weight:700;
   box-shadow:0 2px 6px rgba(13,148,136,.35);}
-.nt:hover:not(.active){background:var(--pril);color:var(--prid);border-color:var(--pril);}
+.nt:active:not(.active){background:var(--pril);color:var(--prid);}
 .main{max-width:920px;margin:0 auto;padding:16px 12px 70px;}
 .sec{display:none;}
 .sec.active{display:block;animation:fi .2s;}
@@ -302,7 +311,11 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   </div>
 </div>
 
-<div class="nav">
+<div class="navbar">
+  <button class="nav-toggle" onclick="toggleNav()"><span id="navIcon">☰</span> 選單</button>
+  <span class="nav-current" id="navCurrent">📊 總覽</span>
+</div>
+<div class="nav" id="navMenu">
   <div class="nt active" data-sec="dash">📊 總覽</div>
   <div class="nt" data-sec="assess">📝 健康評估</div>
   <div class="nt" data-sec="connect">🔗 匯入串接</div>
@@ -900,10 +913,21 @@ function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));}
 
 /* ============ 導覽 ============ */
 document.querySelectorAll('.nt').forEach(t=>t.onclick=()=>go(t.dataset.sec));
+function toggleNav(){
+  const m=document.getElementById('navMenu');const open=m.classList.toggle('open');
+  const ic=document.getElementById('navIcon');if(ic)ic.textContent=open?'✕':'☰';
+}
+function closeNav(){
+  const m=document.getElementById('navMenu');if(m)m.classList.remove('open');
+  const ic=document.getElementById('navIcon');if(ic)ic.textContent='☰';
+}
 function go(sec){
   document.querySelectorAll('.nt').forEach(t=>t.classList.toggle('active',t.dataset.sec===sec));
   document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
   document.getElementById('sec-'+sec).classList.add('active');
+  const cur=document.querySelector('.nt[data-sec="'+sec+'"]'), nc=document.getElementById('navCurrent');
+  if(cur&&nc)nc.textContent=cur.textContent;
+  closeNav();
   window.scrollTo(0,0);
   if(sec==='trend')renderTrend();
   if(sec==='labs')renderLabs();
@@ -1847,7 +1871,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.20-nav-wrap';
+const APP_VERSION='2026.07.20-nav-menu';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
