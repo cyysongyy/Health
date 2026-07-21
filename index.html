@@ -2284,7 +2284,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.21-import-diag';
+const APP_VERSION='2026.07.21-import-diag2';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -2612,10 +2612,10 @@ async function handleImport(e,kind){
   try{
     const entries=await extractTextEntries(f);   // 自動解壓縮（.zip/.gz），回傳多個文字檔
     const fields={};const notes=[];const records=[];const meds=[];
-    let ok=0,failed=0,firstJson=null;
+    let ok=0,failed=0,firstJson=null,firstText=null;
     entries.forEach(({name,text})=>{
       try{
-        if(kind==='nhi'&&firstJson===null){try{firstJson=jsonParseLenient(text);}catch(e){}}
+        if(kind==='nhi'){ if(firstText===null)firstText=text; if(firstJson===null){try{firstJson=jsonParseLenient(text);}catch(e){}} }
         let parsed;
         if(kind==='nhi'){ parsed=parseNHI(text); try{ parseMeds(jsonParseLenient(text)).forEach(m=>meds.push(m)); }catch(e){} }
         else if(kind==='wearable')parsed=parseWearable(text,name);
@@ -2629,10 +2629,14 @@ async function handleImport(e,kind){
     const addedRec=records.length?ingestLabRecords(records,'nhi'):0;
     const addedMed=meds.length?ingestMeds(meds,'nhi'):0;
     if(!Object.keys(fields).length && !addedRec && !addedMed){
-      const why=failed?('檔案讀到了，但 '+failed+' 個檔的格式無法解析'):'檔案能讀取，但目前的解析器對不上這個檔的欄位結構';
+      let debug=null,debugTitle='';
+      if(firstJson){debug=jsonOutlineText(firstJson);debugTitle='🔧 檔案結構（僅欄位名稱與截短樣本，可安全分享）';}
+      else if(firstText){debug=firstText.replace(/[\u0000-\u001F]/g,'·').slice(0,800);debugTitle='🔧 檔案內容前 800 字（無法解析為 JSON，請看實際格式；分享前可自行遮蔽敏感值）';}
+      const why=firstJson?'檔案已成功解析，但目前的解析器對不上它的欄位結構'
+        :(firstText?'檔案讀到了，但內容無法解析為 JSON（可能是 XML、編碼問題或非標準格式）':'檔案讀到了，但格式無法解析');
       pendingImport={kind,fields:{},
-        notes:['⚠️ '+why+'。','若這是健康存摺「醫療類」JSON，請把下方「檔案結構」複製給開發者，即可為此格式加上對應；若是 PDF／掃描影像，請改用「拍照／上傳報告」由 AI 辨識。'],
-        debug:firstJson?jsonOutlineText(firstJson):null};
+        notes:['⚠️ '+why+'。','請把下方「檔案'+(firstJson?'結構':'內容')+'」複製給開發者，即可為此格式加上對應；若是 PDF／掃描影像，請改用「拍照／上傳報告」由 AI 辨識。'],
+        debug,debugTitle};
       renderImportResult();go('connect');
       toast('未擷取到可用資料'); return;
     }
@@ -2902,12 +2906,16 @@ function jsonParseLenient(txt){
   if(typeof txt!=='string')return txt;
   try{return JSON.parse(txt);}catch(e){}
   let s=txt.replace(/^\uFEFF/,'').replace(/^\s*\)\]\}'?,?\s*/,'');  // 去 BOM／XSSI 前綴
-  s=s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,' ');  // 去未跳脫控制字元
+  s=s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g,' ');  // 去多數控制字元（保留 \t\n\r）
   try{return JSON.parse(s);}catch(e){}
-  const oa=s.indexOf('{'),ob=s.lastIndexOf('}'),aa=s.indexOf('['),ab=s.lastIndexOf(']');
+  const s2=s.replace(/[\u0000-\u001F]/g,' ');  // 更積極：連 \t\n\r 也換空白（JSON 結構不需空白）
+  try{return JSON.parse(s2);}catch(e){}
+  const s3=s2.replace(/,\s*([}\]])/g,'$1');  // 去尾逗號 trailing comma
+  try{return JSON.parse(s3);}catch(e){}
+  const oa=s3.indexOf('{'),ob=s3.lastIndexOf('}'),aa=s3.indexOf('['),ab=s3.lastIndexOf(']');
   let start=-1,end=-1;
   if(oa>=0&&(aa<0||oa<aa)){start=oa;end=ob;} else if(aa>=0){start=aa;end=ab;}
-  if(start>=0&&end>start)return JSON.parse(s.slice(start,end+1));             // 只留最外層物件／陣列
+  if(start>=0&&end>start)return JSON.parse(s3.slice(start,end+1));             // 只留最外層物件／陣列
   throw new Error('JSON 格式無法解析');
 }
 /* 產生 JSON 結構大綱（只列 key 名稱／型別／截短樣本），供匯入失敗時診斷、可安全分享 */
@@ -3104,9 +3112,9 @@ function renderImportResult(){
   const rows=Object.keys(pendingImport.fields).map(k=>
     `<div class="hb"><div class="hb-l">${FIELD_LABEL[k]||k}</div><div style="font-weight:700;color:var(--pri);">${pendingImport.fields[k]}</div></div>`).join('');
   const dbg=pendingImport.debug?
-    `<details style="margin-top:10px;"><summary style="cursor:pointer;font-size:.8rem;color:var(--acc);font-weight:600;">🔧 檔案結構（供診斷，僅欄位名稱與截短樣本，可安全分享）</summary>
+    `<details style="margin-top:10px;" open><summary style="cursor:pointer;font-size:.8rem;color:var(--acc);font-weight:600;">${esc(pendingImport.debugTitle||'🔧 檔案結構（供診斷，可安全分享）')}</summary>
       <pre id="importDebugPre" style="white-space:pre-wrap;word-break:break-word;font-size:.68rem;background:var(--g100);border-radius:8px;padding:10px;margin-top:6px;max-height:320px;overflow:auto;font-family:'DM Mono',monospace;">${esc(pendingImport.debug)}</pre>
-      <button class="btn bg" style="padding:5px 12px;font-size:.72rem;margin-top:6px;" onclick="copyDebug()">📋 複製結構</button></details>`:'';
+      <button class="btn bg" style="padding:5px 12px;font-size:.72rem;margin-top:6px;" onclick="copyDebug()">📋 複製</button></details>`:'';
   el.innerHTML=(rows||'<div class="hint">無數值</div>')+
     (pendingImport.notes.length?'<div class="hint" style="margin-top:8px;">'+pendingImport.notes.map(n=>'· '+n).join('<br>')+'</div>':'')+dbg;
 }
