@@ -780,6 +780,10 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
         <button class="btn bg" onclick="exportLabs()">📤 匯出 CSV</button>
         <button class="btn bd" onclick="clearLabs()">🗑️ 清除全部</button>
       </div>
+      <div class="row-btn" style="margin-top:8px;">
+        <button class="btn bg" style="font-size:.72rem;padding:5px 11px;" onclick="showLabParseCheck()">🔬 解析檢查（比對原始欄位）</button>
+      </div>
+      <div class="hint" style="margin-top:6px;">若某項檢驗值看起來不對，剛匯入健保後按「解析檢查」，把該項目的原始欄位截圖給開發者即可校正對應。</div>
     </div>
   </div>
 </div>
@@ -2159,6 +2163,32 @@ function clearLabs(){
     if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
   }
 }
+// 解析檢查：顯示每個健保檢驗項目「取到的值」與其原始欄位，供校正對應
+function showLabParseCheck(){
+  const keys=Object.keys(BANK_LAB_SAMPLES||{});
+  let m=document.getElementById('labChkModal');
+  if(!m){m=document.createElement('div');m.id='labChkModal';m.className='modal-overlay';document.body.appendChild(m);}
+  let body;
+  if(!keys.length){
+    body='<div class="hint">目前沒有健保解析樣本。請先到「🔗 匯入串接」重新匯入一次健保健康存摺，再回來按此鈕（樣本只在本次匯入後暫存、不外傳）。</div>';
+  }else{
+    body=keys.map(k=>{
+      const s=BANK_LAB_SAMPLES[k];
+      const rowStr=Object.keys(s.row).sort((a,b)=>{const na=+((a.match(/\.(\d+)$/)||[])[1]||0),nb=+((b.match(/\.(\d+)$/)||[])[1]||0);return na-nb;})
+        .map(kk=>{const hit=(kk===s.pickedKey)?' ⬅️ 取此值':(kk===s.nameField?' （名稱欄）':'');return esc(kk)+' = '+esc(String(s.row[kk]))+hit;}).join('\n');
+      const dt=s.date?new Date(s.date).toLocaleDateString('zh-TW',{calendar:'gregory'}):'—';
+      return `<div style="margin-bottom:12px;"><div style="font-weight:700;">${LAB_META[k]?LAB_META[k].label:k} → 取值 <span style="color:var(--pri);">${esc(String(s.picked))}</span> <span class="hint">（日期 ${dt}）</span></div>`+
+        `<pre style="white-space:pre-wrap;word-break:break-word;font-size:.66rem;background:var(--g100);border-radius:6px;padding:8px;margin-top:4px;">${rowStr}</pre></div>`;
+    }).join('');
+  }
+  m.innerHTML=`<div class="modal-box">
+    <div class="ct">🔬 健保檢驗解析檢查</div>
+    <div class="hint" style="margin:2px 0 8px;">每項顯示系統「取到的值」與整列原始欄位（⬅️ 為取值處、名稱欄已標示）。若取錯，截圖該項給開發者即可校正。</div>
+    ${body}
+    <div class="row-btn" style="margin-top:8px;"><button class="btn bg" onclick="document.getElementById('labChkModal').style.display='none'">關閉</button></div>
+  </div>`;
+  m.style.display='flex';
+}
 /* 單筆檢驗紀錄：新增 / 編輯 / 刪除 */
 function labSyncMaybe(){ save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{}); }
 function labDelete(id){
@@ -2304,8 +2334,10 @@ function parseBankMeds(bd){
   });
   return meds;
 }
+let BANK_LAB_SAMPLES={};   // 解析檢查用：每個檢驗項的第一筆原始列樣本（不存 localStorage）
 function parseBankLabs(bd){
   const byDate={};
+  BANK_LAB_SAMPLES={};
   const sufOf=k=>{const m=String(k).match(/\.(\d+)$/);return m?+m[1]:0;};
   const isDateStr=s=>/^\d{7,8}$/.test(s)&&!!parseFlexDate(s);
   Object.keys(bd).filter(k=>/^r\d+$/.test(k)).forEach(sec=>{
@@ -2314,23 +2346,24 @@ function parseBankLabs(bd){
     rows.forEach(row=>{
       if(!row||typeof row!=='object')return;
       const entries=Object.keys(row).filter(k=>typeof row[k]==='string'||typeof row[k]==='number')
-        .map(k=>({suf:sufOf(k),v:String(row[k]==null?'':row[k]).trim()})).filter(e=>e.v!=='');
+        .map(k=>({key:k,suf:sufOf(k),v:String(row[k]==null?'':row[k]).trim()})).filter(e=>e.v!=='');
       // 檢驗名稱欄（可對應到 LAB_META 的中／英名稱）
       let nameE=null,key=null;
       for(const e of entries){ const kk=bankLabKey(e.v); if(kk){key=kk;nameE=e;break;} }
       if(!key)return;
       // 檢驗值：名稱欄「之後」的第一個落在生理範圍的數值 → 避開前段的區碼/院所/代碼（如區碼「4」）
-      let val=null;
+      let val=null,valKey=null;
       entries.filter(e=>e.suf>nameE.suf).sort((a,b)=>a.suf-b.suf).some(e=>{
         if(isDateStr(e.v))return false;                        // 跳過日期
         const n=toNum(e.v);
-        if(n!==null && /^\s*[<>]?\s*-?\d/.test(e.v) && e.v.replace(/[^\d.]/g,'').length<=7 && bankLabInRange(key,n)){ val=n; return true; }
+        if(n!==null && /^\s*[<>]?\s*-?\d/.test(e.v) && e.v.replace(/[^\d.]/g,'').length<=7 && bankLabInRange(key,n)){ val=n; valKey=e.key; return true; }
         return false;
       });
       if(val==null)return;
       // 日期：採用健保原始日期（該次就醫／採檢日 .5，或報告日 .6），支援西元與民國年
       let date=parseFlexDate(row[sec+'.5'])||parseFlexDate(row[sec+'.6']);
       if(!date){ for(const e of entries.slice().sort((a,b)=>a.suf-b.suf)){ if(isDateStr(e.v)){ date=parseFlexDate(e.v); break; } } }
+      if(!BANK_LAB_SAMPLES[key])BANK_LAB_SAMPLES[key]={picked:val,pickedKey:valKey,nameField:nameE.key,name:nameE.v,date,row:Object.assign({},row)};
       hits.push({key,val,date});
     });
     if(hits.length<3)return;   // 命中太少不視為檢驗結果區
@@ -2901,7 +2934,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.22-date-greg';
+const APP_VERSION='2026.07.22-labcheck';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
