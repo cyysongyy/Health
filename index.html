@@ -1034,7 +1034,21 @@ let charts={};
 function chartReady(){return typeof Chart!=='undefined';}
 
 function load(){
-  try{return JSON.parse(localStorage.getItem(LS_KEY))||defaults();}catch(e){return defaults();}
+  let s; try{s=JSON.parse(localStorage.getItem(LS_KEY))||defaults();}catch(e){return defaults();}
+  // 一次性清理：舊版解析器匯入的健保檢驗可能把「區碼(4)」當成值、且日期記成匯入當天，
+  // 會遮蓋重匯後的正確資料。清掉一次舊的健保檢驗（保留手動輸入），請使用者重匯一次即乾淨。
+  try{
+    if(localStorage.getItem('ls_fix_nhilab')!=='1'){
+      localStorage.setItem('ls_fix_nhilab','1');
+      if(s&&Array.isArray(s.labs)){
+        const before=s.labs.length;
+        s.labs=s.labs.filter(e=>e&&e.source!=='nhi');
+        const removed=before-s.labs.length;
+        if(removed>0){ s._nhiPurged=removed; try{localStorage.setItem(LS_KEY,JSON.stringify(s));}catch(e){} }
+      }
+    }
+  }catch(e){}
+  return s;
 }
 function defaults(){
   return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh'}, dietVal:3, stressVal:3};
@@ -2934,7 +2948,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.22-reimport-refresh';
+const APP_VERSION='2026.07.22-nhilab-cleanup';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -2971,6 +2985,7 @@ function init(){
   setupPWA();
   renderDash();
   applyI18n();
+  if(state._nhiPurged){const n=state._nhiPurged;delete state._nhiPurged;save();setTimeout(()=>{toast('已清除 '+n+' 筆舊的健保檢驗，請到「匯入串接」重新匯入一次');},400);}
   setTimeout(maybeDailyAlert,600);
 }
 /* ============ PWA：安裝與離線快取 ============ */
