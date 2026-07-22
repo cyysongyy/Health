@@ -1383,7 +1383,7 @@ function renderDash(){
   document.getElementById('dashEmpty').style.display=r?'none':'block';
   document.getElementById('dashContent').style.display=r?'block':'none';
   if(!r)return;
-  document.getElementById('dashDate').textContent='· '+new Date(r.date).toLocaleDateString('zh-TW');
+  document.getElementById('dashDate').textContent='· '+new Date(r.date).toLocaleDateString('zh-TW',{calendar:'gregory'});
   const g=gradeInfo(r.score);
   document.getElementById('scoreNum').textContent=r.score;
   document.getElementById('scoreNum').style.color=g.c;
@@ -1558,7 +1558,7 @@ function refreshCurrentView(){
   else if(id==='advice')renderAdvice(); else if(id==='smart')renderSmart();
 }
 /* ---- 主動提醒 / 紅旗待辦 ---- */
-function labDateStr(x){ return x&&x.date?new Date(x.date).toLocaleDateString('zh-TW'):''; }
+function labDateStr(x){ return x&&x.date?new Date(x.date).toLocaleDateString('zh-TW',{calendar:'gregory'}):''; }
 function buildReminders(){
   const out=[],now=Date.now(),L=labLatest(),r=state.result;
   const push=(lvl,icon,text)=>out.push({lvl,icon,text});
@@ -1595,7 +1595,7 @@ function crossFindings(){
   // 1) 影像／病理紅旗：報告內含需追蹤的字眼
   (state.reports||[]).forEach(r=>{
     const txt=(r.findings||'')+' '+(r.findingsZh||''); const m=txt.match(IMG_FLAG_RX); if(!m)return;
-    const d=r.date?new Date(r.date).toLocaleDateString('zh-TW'):'';
+    const d=r.date?new Date(r.date).toLocaleDateString('zh-TW',{calendar:'gregory'}):'';
     push('warn','🩻','影像／病理發現需追蹤：'+r.name,(r.findingsZh||r.findings||'').slice(0,90),'關鍵字「'+m[0]+'」・'+d,'建議回診請醫師確認此發現是否需進一步檢查或定期追蹤（本比對僅為關鍵字提示，非診斷）。');
   });
   // 2) 照護缺口：長期用藥但缺近期對應監測
@@ -1659,7 +1659,7 @@ function showHealthAlert(force){
     :'<div class="hint" style="color:var(--ok);font-weight:600;padding:8px 0;">✅ 目前沒有偵測到需要注意的健康警訊，繼續保持！</div>';
   const crit=A.some(x=>x.lvl==='crit');
   m.innerHTML=`<div class="modal-box">
-    <div class="ct">${crit?'🚨':'🔔'} 健康警戒 <span class="hint">${new Date().toLocaleDateString('zh-TW')}</span></div>
+    <div class="ct">${crit?'🚨':'🔔'} 健康警戒 <span class="hint">${new Date().toLocaleDateString('zh-TW',{calendar:'gregory'})}</span></div>
     <div class="hint" style="margin:2px 0 10px;">系統每天為你把關；以下為偵測到的重點與建議做法（衛教參考，非醫療診斷；危急請就醫）。</div>
     ${body}
     <label style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--g600);margin-top:10px;"><input type="checkbox" id="alertDailyChk" ${state.settings.dailyAlert===false?'':'checked'} onchange="toggleDailyAlert(this.checked)"> 每天開啟 App 時自動提醒我</label>
@@ -1740,7 +1740,7 @@ function renderReport(){
   document.getElementById('repActions').innerHTML=recs.length?recs.slice(0,12).map(rc=>`<div class="rec p${rc.pri}"><div class="rec-icon">${rc.icon}</div><div class="rec-body"><div class="rec-title">${rc.title}</div><div class="rec-desc">${rc.desc}</div>${rc.src?`<div class="rec-gain">🔗 觸發：${rc.src}</div>`:''}<div style="margin-top:6px;"><button class="btn bg" style="padding:4px 11px;font-size:.72rem;" onclick="addRecHabit('${(rc.habit||rc.title).replace(/'/g,'')}')">➕ 加為每日習慣</button></div></div></div>`).join(''):'<div class="hint">🎉 目前沒有需優先處理的項目，請維持良好習慣。</div>';
   // 時間軸
   const tl=buildTimeline();
-  document.getElementById('repTimeline').innerHTML=tl.length?tl.map(e=>`<div class="hb"><div class="hb-l"><span class="hb-icon">${e.icon}</span><span style="font-size:.8rem;">${e.text}</span></div><div class="hint" style="white-space:nowrap;">${new Date(e.date).toLocaleDateString('zh-TW')}</div></div>`).join(''):'<div class="hint">尚無紀錄。</div>';
+  document.getElementById('repTimeline').innerHTML=tl.length?tl.map(e=>`<div class="hb"><div class="hb-l"><span class="hb-icon">${e.icon}</span><span style="font-size:.8rem;">${e.text}</span></div><div class="hint" style="white-space:nowrap;">${new Date(e.date).toLocaleDateString('zh-TW',{calendar:'gregory'})}</div></div>`).join(''):'<div class="hint">尚無紀錄。</div>';
 }
 function crossInsights(L,r,p){
   const out=[]; const v=k=>L[k]!=null?parseFloat(L[k].v):null;
@@ -1912,7 +1912,7 @@ function renderTrend(){
   if(!has)return;
   if(!chartReady()){return;}
   const m=TREND_METRICS.find(x=>x.k===curTrend);
-  const pts=h.map(s=>({x:new Date(s.date).toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'}),y:s[curTrend]}));
+  const pts=h.map(s=>({x:new Date(s.date).toLocaleDateString('zh-TW',{calendar:'gregory',month:'numeric',day:'numeric'}),y:s[curTrend]}));
   if(charts.trend)charts.trend.destroy();
   charts.trend=new Chart(document.getElementById('trendChart'),{
     type:'line',
@@ -1925,7 +1925,7 @@ function renderTrend(){
   let html='<tr><th>日期</th><th>健康分</th><th>體重</th><th>BMI</th><th>血壓</th><th>血糖</th><th>生理齡</th><th>報告</th></tr>';
   [...h].reverse().forEach(s=>{
     const rep=s.img?`<a class="link" onclick="fbViewReport('${s.id}')" style="cursor:pointer;">${s.imgKind==='pdf'?'📄':'📷'}</a>`:'—';
-    html+=`<tr><td>${new Date(s.date).toLocaleDateString('zh-TW')}</td>
+    html+=`<tr><td>${new Date(s.date).toLocaleDateString('zh-TW',{calendar:'gregory'})}</td>
     <td class="num">${s.score??'—'}</td><td class="num">${s.weight??'—'}</td><td class="num">${s.bmi??'—'}</td>
     <td class="num">${s.sbp?s.sbp+'/'+(s.dbp||'?'):'—'}</td><td class="num">${s.glucose??'—'}</td><td class="num">${s.bio??'—'}</td>
     <td style="text-align:center;">${rep}</td></tr>`;
@@ -2049,7 +2049,7 @@ function renderLabs(){
   const present=LAB_ORDER.filter(k=>latest[k]!==undefined);
   document.getElementById('labsLatest').innerHTML=present.map(k=>{
     const m=LAB_META[k],fl=labFlag(k,latest[k].v),col=FLAG_COLOR[fl],ic=FLAG_ICON[fl];
-    return `<div class="sc${fl==='crit'?' crit':''}" style="border-left-color:${col};"><div class="sv" style="color:${col};">${ic?ic+' ':''}${latest[k].v}<small> ${m.unit}</small></div><div class="sl">${m.label} · ${new Date(latest[k].date).toLocaleDateString('zh-TW')}</div></div>`;
+    return `<div class="sc${fl==='crit'?' crit':''}" style="border-left-color:${col};"><div class="sv" style="color:${col};">${ic?ic+' ':''}${latest[k].v}<small> ${m.unit}</small></div><div class="sl">${m.label} · ${new Date(latest[k].date).toLocaleDateString('zh-TW',{calendar:'gregory'})}</div></div>`;
   }).join('');
   // 異常警示：嚴重(crit) / 過高(high)
   const critList=present.filter(k=>labFlag(k,latest[k].v)==='crit');
@@ -2096,17 +2096,17 @@ function renderLabs(){
   if(chartReady()&&series.length){
     if(charts.lab)charts.lab.destroy();
     charts.lab=new Chart(document.getElementById('labChart'),{type:'line',
-      data:{labels:series.map(s=>new Date(s.date).toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'})),
+      data:{labels:series.map(s=>new Date(s.date).toLocaleDateString('zh-TW',{calendar:'gregory',month:'numeric',day:'numeric'})),
         datasets:[{label:LAB_META[curLab].label,data:series.map(s=>s.value),borderColor:'#0d9488',backgroundColor:'#0d948822',fill:true,tension:.3,pointRadius:4,spanGaps:true}]},
       options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:false}}}});
     wrap.style.display='block';
   }else{wrap.style.display='none';}
   document.getElementById('labHistTable').innerHTML=
     '<tr><th>日期</th><th>'+LAB_META[curLab].label+'（'+LAB_META[curLab].unit+'）</th><th>狀態</th></tr>'+
-    [...series].reverse().map(s=>{const fl=labFlag(curLab,s.value);return `<tr><td>${new Date(s.date).toLocaleDateString('zh-TW')}</td><td class="num" style="color:${FLAG_COLOR[fl]};">${s.value}</td><td style="color:${FLAG_COLOR[fl]};font-size:.72rem;">${FLAG_ICON[fl]?FLAG_ICON[fl]+' ':''}${FLAG_TXT[fl]}</td></tr>`;}).join('');
+    [...series].reverse().map(s=>{const fl=labFlag(curLab,s.value);return `<tr><td>${new Date(s.date).toLocaleDateString('zh-TW',{calendar:'gregory'})}</td><td class="num" style="color:${FLAG_COLOR[fl]};">${s.value}</td><td style="color:${FLAG_COLOR[fl]};font-size:.72rem;">${FLAG_ICON[fl]?FLAG_ICON[fl]+' ':''}${FLAG_TXT[fl]}</td></tr>`;}).join('');
   // 全部紀錄
   let head='<tr><th>日期</th><th>來源</th>'+present.map(k=>'<th>'+LAB_META[k].label+'</th>').join('')+'<th>操作</th></tr>';
-  const body=[...labs].reverse().map(e=>'<tr><td>'+new Date(e.date).toLocaleDateString('zh-TW')+'</td><td style="font-size:.72rem;">'+(SRC_LABEL[e.source]||e.source||'—')+'</td>'+
+  const body=[...labs].reverse().map(e=>'<tr><td>'+new Date(e.date).toLocaleDateString('zh-TW',{calendar:'gregory'})+'</td><td style="font-size:.72rem;">'+(SRC_LABEL[e.source]||e.source||'—')+'</td>'+
     present.map(k=>{const v=e.values&&e.values[k];if(v==null)return '<td class="num">—</td>';const fl=labFlag(k,v);return '<td class="num" style="color:'+FLAG_COLOR[fl]+';">'+v+'</td>';}).join('')+
     '<td style="white-space:nowrap;"><a class="link" style="cursor:pointer;" onclick="openLabEditor(\''+e.id+'\')">✏️</a>　<a class="link" style="cursor:pointer;color:var(--err);" onclick="labDelete(\''+e.id+'\')">🗑️</a></td></tr>').join('');
   document.getElementById('labAllTable').innerHTML=head+body;
@@ -2134,14 +2134,14 @@ function renderLabSingle(labs){
   const sorted=[...labs].sort((a,b)=>new Date(b.date)-new Date(a.date));
   if(!labSingleId||!sorted.some(e=>e.id===labSingleId))labSingleId=sorted[0].id;
   const sel=document.getElementById('labRecordSel');
-  sel.innerHTML=sorted.map(e=>`<option value="${e.id}"${e.id===labSingleId?' selected':''}>${new Date(e.date).toLocaleDateString('zh-TW')}　${SRC_LABEL[e.source]||e.source||''}　(${Object.keys(e.values||{}).length} 項)</option>`).join('');
+  sel.innerHTML=sorted.map(e=>`<option value="${e.id}"${e.id===labSingleId?' selected':''}>${new Date(e.date).toLocaleDateString('zh-TW',{calendar:'gregory'})}　${SRC_LABEL[e.source]||e.source||''}　(${Object.keys(e.values||{}).length} 項)</option>`).join('');
   const rec=sorted.find(e=>e.id===labSingleId);
   const t=document.getElementById('labSingleTable');
   if(!rec){t.innerHTML='';return;}
   const keys=LAB_ORDER.filter(k=>rec.values&&rec.values[k]!=null);
   t.innerHTML='<tr><th>項目</th><th>數值</th><th>狀態</th></tr>'+
     keys.map(k=>{const v=rec.values[k],fl=labFlag(k,v);return `<tr><td>${LAB_META[k].label}</td><td class="num" style="color:${FLAG_COLOR[fl]};font-weight:700;">${v} <span class="hint">${LAB_META[k].unit}</span></td><td style="color:${FLAG_COLOR[fl]};font-size:.72rem;">${FLAG_ICON[fl]?FLAG_ICON[fl]+' ':''}${FLAG_TXT[fl]}</td></tr>`;}).join('')+
-    `<tr><td colspan="3" class="hint" style="padding-top:8px;">來源：${SRC_LABEL[rec.source]||rec.source||'—'}　·　時間：${new Date(rec.date).toLocaleString('zh-TW')}</td></tr>`;
+    `<tr><td colspan="3" class="hint" style="padding-top:8px;">來源：${SRC_LABEL[rec.source]||rec.source||'—'}　·　時間：${new Date(rec.date).toLocaleString('zh-TW',{calendar:'gregory'})}</td></tr>`;
 }
 function labPickRecord(id){ labSingleId=id; renderLabSingle(state.labs||[]); }
 function exportLabs(){
@@ -2496,7 +2496,7 @@ function renderMeds(){
   document.getElementById('medsCount').textContent='共 '+meds.length+' 筆';
   // 摘要：不重複藥品數、最近日期、近 90 天用藥
   const uniq=new Set(meds.map(m=>m.name)).size;
-  const latest=meds[0].date?new Date(meds[0].date).toLocaleDateString('zh-TW'):'—';
+  const latest=meds[0].date?new Date(meds[0].date).toLocaleDateString('zh-TW',{calendar:'gregory'}):'—';
   const cut=Date.now()-90*864e5;
   const recent=meds.filter(m=>m.date&&new Date(m.date).getTime()>=cut);
   const recentNames=[...new Set(recent.map(m=>m.name))];
@@ -2522,7 +2522,7 @@ function renderMeds(){
       e.count++; if(t2>=e.last){e.last=t2;e.lastDays=m.days!=null?m.days:e.lastDays;e.lastSrc=m.source;}});
     const groups=Object.values(g).sort((a,b)=>b.last-a.last);
     t.innerHTML='<tr><th>藥品</th><th>次數</th><th>最近日期</th><th>最近天數</th></tr>'+
-      (groups.length?groups.map(e=>{const d=e.last?new Date(e.last).toLocaleDateString('zh-TW'):'—';
+      (groups.length?groups.map(e=>{const d=e.last?new Date(e.last).toLocaleDateString('zh-TW',{calendar:'gregory'}):'—';
         return `<tr style="cursor:pointer;" onclick="medDrill('${esc(e.name).replace(/'/g,'')}')"><td><b>${esc(e.name)}</b></td><td class="num">${e.count}</td><td style="white-space:nowrap;">${d}</td><td style="white-space:nowrap;">${e.lastDays!=null?e.lastDays+' 天':'—'}</td></tr>`;
       }).join(''):'<tr><td colspan="4" class="hint">無符合藥品</td></tr>');
     if(hint)hint.textContent='依藥品歸併：'+groups.length+' 種'+(q?'（符合「'+esc(medSearch)+'」）':'');
@@ -2530,7 +2530,7 @@ function renderMeds(){
     const cap=400, show=filtered.slice(0,cap);
     t.innerHTML='<tr><th>日期</th><th>藥品</th><th>用法用量</th><th>天數/數量</th><th>來源</th><th></th></tr>'+
       (show.length?show.map(m=>{
-        const d=m.date?new Date(m.date).toLocaleDateString('zh-TW'):'—';
+        const d=m.date?new Date(m.date).toLocaleDateString('zh-TW',{calendar:'gregory'}):'—';
         const dq=[m.days!=null?m.days+' 天':'',m.qty||''].filter(Boolean).join(' / ')||'—';
         const src=m.source==='nhi'?('健保'+(MED_KIND_LABEL[m.kind]?'·'+MED_KIND_LABEL[m.kind]:'')):(m.source==='manual'?'手動':(m.source||''));
         const info=[m.dose,m.route].filter(Boolean).join('，')||'—';
@@ -2629,7 +2629,7 @@ function renderSurgeries(){
   if(!surs.length){ if(empty)empty.style.display='block'; if(content)content.style.display='none'; return; }
   if(empty)empty.style.display='none'; if(content)content.style.display='block';
   document.getElementById('surCount').textContent='共 '+surs.length+' 筆';
-  const latest=surs[0].date?new Date(surs[0].date).toLocaleDateString('zh-TW'):'—';
+  const latest=surs[0].date?new Date(surs[0].date).toLocaleDateString('zh-TW',{calendar:'gregory'}):'—';
   const yrAgo=Date.now()-365*864e5;
   const recent=surs.filter(s=>s.date&&new Date(s.date).getTime()>=yrAgo);
   document.getElementById('surSummary').innerHTML=
@@ -2638,7 +2638,7 @@ function renderSurgeries(){
   const t=document.getElementById('surTable');
   t.innerHTML='<tr><th>日期</th><th>手術／處置</th><th>相關診斷</th><th>院所</th><th></th></tr>'+
     surs.map(s=>{
-      const d=s.date?new Date(s.date).toLocaleDateString('zh-TW'):'—';
+      const d=s.date?new Date(s.date).toLocaleDateString('zh-TW',{calendar:'gregory'}):'—';
       return `<tr><td style="white-space:nowrap;">${d}</td><td><b>${esc(s.name)}</b></td>`+
         `<td class="hint">${esc(s.dx||'—')}</td><td class="hint" style="white-space:nowrap;">${esc(s.hospital||'')}</td>`+
         `<td style="white-space:nowrap;"><span onclick="openSurEditor('${s.id}')" style="cursor:pointer;color:var(--acc);">✏️</span> <span onclick="surDelete('${s.id}')" style="cursor:pointer;color:var(--err);">🗑️</span></td></tr>`;
@@ -2729,7 +2729,7 @@ function renderReports(){
   bar.innerHTML=untrans?`<button class="btn bp" style="padding:6px 13px;font-size:.78rem;" onclick="translateAllReports()">🌐 一鍵翻譯全部（${untrans} 筆）</button>`:'';
   const t=document.getElementById('rptList');
   t.innerHTML=reps.map(r=>{
-    const d=r.date?new Date(r.date).toLocaleDateString('zh-TW'):'—';
+    const d=r.date?new Date(r.date).toLocaleDateString('zh-TW',{calendar:'gregory'}):'—';
     const en=r.findings?`<div style="font-size:.76rem;color:var(--g600);margin-top:5px;white-space:pre-wrap;word-break:break-word;"><b>原文：</b>${esc(r.findings)}</div>`:'';
     const zh=r.findingsZh?`<div style="font-size:.8rem;color:var(--g900);margin-top:6px;white-space:pre-wrap;word-break:break-word;background:var(--pril);border-radius:8px;padding:8px;"><b>🌐 中文：</b>${esc(r.findingsZh)}</div>`:'';
     const tbtn=r.findings&&!r.findingsZh?`<button class="btn bg" style="padding:4px 10px;font-size:.72rem;" onclick="translateReport('${r.id}')">🌐 翻譯成中文</button>`:'';
@@ -2834,7 +2834,7 @@ function clearReports(){
 /* ============ 每日習慣 ============ */
 function todayKey(){return new Date().toISOString().slice(0,10);}
 function renderHabits(){
-  document.getElementById('habitDate').textContent='· '+new Date().toLocaleDateString('zh-TW');
+  document.getElementById('habitDate').textContent='· '+new Date().toLocaleDateString('zh-TW',{calendar:'gregory'});
   const tk=todayKey();
   const today=state.habits[tk]||{};
   const list=document.getElementById('habitList');list.innerHTML='';
@@ -2869,7 +2869,7 @@ function drawHabitChart(){
   const labels=[],data=[];
   for(let i=13;i>=0;i--){
     const d=new Date(Date.now()-i*86400000);const k=d.toISOString().slice(0,10);
-    labels.push(d.toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'}));
+    labels.push(d.toLocaleDateString('zh-TW',{calendar:'gregory',month:'numeric',day:'numeric'}));
     const day=state.habits[k]||{};
     const done=HABITS.filter(h=>day[h.id]).length;
     data.push(Math.round(done/HABITS.length*100));
@@ -2901,7 +2901,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.22-lab-fix';
+const APP_VERSION='2026.07.22-date-greg';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -3834,7 +3834,7 @@ function showReportModal(d){
     ? `<iframe src="${d.image}" style="width:100%;height:86vh;border:none;border-radius:10px;background:#fff;"></iframe>`
     : `<img src="${d.image}" style="max-width:100%;max-height:86vh;border-radius:10px;box-shadow:0 6px 30px rgba(0,0,0,.5);">`;
   m.innerHTML=`<div style="width:100%;max-width:900px;text-align:center;">
-    <div style="color:#fff;font-size:.8rem;margin-bottom:8px;">${d.date?new Date(d.date).toLocaleString('zh-TW'):''}　·　點畫面任一處關閉</div>
+    <div style="color:#fff;font-size:.8rem;margin-bottom:8px;">${d.date?new Date(d.date).toLocaleString('zh-TW',{calendar:'gregory'}):''}　·　點畫面任一處關閉</div>
     ${inner}</div>`;
   m.style.display='flex';
 }
@@ -3976,7 +3976,7 @@ function drawProjChart(){
   const fit=linreg(pts);
   const lastX=pts[pts.length-1].x;
   const labels=[],hist=[],proj=[];
-  s.forEach(o=>{labels.push(new Date(o.t).toLocaleDateString('zh-TW',{month:'numeric',day:'numeric'}));});
+  s.forEach(o=>{labels.push(new Date(o.t).toLocaleDateString('zh-TW',{calendar:'gregory',month:'numeric',day:'numeric'}));});
   const histY=s.map(o=>o.v);
   // 未來 6 個月，每月一點
   const future=[];
