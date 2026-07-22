@@ -800,7 +800,12 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <div id="medsSummary" class="disc" style="margin-bottom:10px;"></div>
     </div>
     <div class="card">
-      <div class="ct">🗂️ 用藥清單 <span class="hint">依日期排序（新→舊）</span></div>
+      <div class="ct">🗂️ 用藥清單 <span class="hint" id="medsListHint">依日期排序（新→舊）</span></div>
+      <div class="seg" id="medViewSeg" style="margin-bottom:8px;">
+        <div class="seg-btn on" onclick="setMedView('grouped')">📦 依藥品歸併</div>
+        <div class="seg-btn" onclick="setMedView('list')">📋 逐筆清單</div>
+      </div>
+      <input class="fi" id="medSearch" placeholder="🔍 搜尋藥名…" oninput="medSearchChanged(this.value)" style="margin-bottom:10px;">
       <div style="overflow-x:auto;"><table id="medsTable"></table></div>
       <div class="row-btn" style="margin-top:10px;">
         <button class="btn bp" onclick="openMedEditor()">➕ 新增用藥</button>
@@ -2447,18 +2452,44 @@ function renderMeds(){
   const alert=document.getElementById('medsAlert');
   const many=recentNames.length>=5;
   alert.innerHTML=many?`<div class="disc" style="border-left:3px solid var(--warn);background:#fffbeb;color:#92400e;margin-bottom:10px;">⚠️ 近 90 天內用藥種類較多（${recentNames.length} 種），就醫時建議主動告知醫師目前所有用藥，避免重複或交互作用。</div>`:'';
+  // 依檢視模式與搜尋渲染清單
+  const q=(medSearch||'').trim().toLowerCase();
+  const seg=document.getElementById('medViewSeg');
+  if(seg)[...seg.children].forEach(b=>b.classList.toggle('on',b.getAttribute('onclick').includes("'"+medView+"'")));
+  const filtered=q?meds.filter(m=>(m.name||'').toLowerCase().includes(q)):meds;
   const t=document.getElementById('medsTable');
-  t.innerHTML='<tr><th>日期</th><th>藥品</th><th>用法用量</th><th>天數/數量</th><th>來源</th><th></th></tr>'+
-    meds.map(m=>{
-      const d=m.date?new Date(m.date).toLocaleDateString('zh-TW'):'—';
-      const dq=[m.days!=null?m.days+' 天':'',m.qty||''].filter(Boolean).join(' / ')||'—';
-      const src=m.source==='nhi'?('健保'+(MED_KIND_LABEL[m.kind]?'·'+MED_KIND_LABEL[m.kind]:'')):(m.source==='manual'?'手動':(m.source||''));
-      const info=[m.dose,m.route].filter(Boolean).join('，')||'—';
-      return `<tr><td style="white-space:nowrap;">${d}</td><td><b>${esc(m.name)}</b>${m.prescriber?'<br><span class="hint">'+esc(m.prescriber)+'</span>':''}</td>`+
-        `<td>${esc(info)}</td><td style="white-space:nowrap;">${esc(dq)}</td><td class="hint" style="white-space:nowrap;">${esc(src)}</td>`+
-        `<td style="white-space:nowrap;"><span onclick="openMedEditor('${m.id}')" style="cursor:pointer;color:var(--acc);">✏️</span> <span onclick="medDelete('${m.id}')" style="cursor:pointer;color:var(--err);">🗑️</span></td></tr>`;
-    }).join('');
+  const hint=document.getElementById('medsListHint');
+  if(medView==='grouped'){
+    if(hint)hint.textContent='依藥品歸併（點藥名看逐筆）';
+    const g={};
+    filtered.forEach(m=>{const k=m.name||'（未命名）';const t2=m.date?new Date(m.date).getTime():0;
+      const e=g[k]||(g[k]={name:k,count:0,last:0,lastDays:null,lastSrc:''});
+      e.count++; if(t2>=e.last){e.last=t2;e.lastDays=m.days!=null?m.days:e.lastDays;e.lastSrc=m.source;}});
+    const groups=Object.values(g).sort((a,b)=>b.last-a.last);
+    t.innerHTML='<tr><th>藥品</th><th>次數</th><th>最近日期</th><th>最近天數</th></tr>'+
+      (groups.length?groups.map(e=>{const d=e.last?new Date(e.last).toLocaleDateString('zh-TW'):'—';
+        return `<tr style="cursor:pointer;" onclick="medDrill('${esc(e.name).replace(/'/g,'')}')"><td><b>${esc(e.name)}</b></td><td class="num">${e.count}</td><td style="white-space:nowrap;">${d}</td><td style="white-space:nowrap;">${e.lastDays!=null?e.lastDays+' 天':'—'}</td></tr>`;
+      }).join(''):'<tr><td colspan="4" class="hint">無符合藥品</td></tr>');
+    if(hint)hint.textContent='依藥品歸併：'+groups.length+' 種'+(q?'（符合「'+esc(medSearch)+'」）':'');
+  }else{
+    const cap=400, show=filtered.slice(0,cap);
+    t.innerHTML='<tr><th>日期</th><th>藥品</th><th>用法用量</th><th>天數/數量</th><th>來源</th><th></th></tr>'+
+      (show.length?show.map(m=>{
+        const d=m.date?new Date(m.date).toLocaleDateString('zh-TW'):'—';
+        const dq=[m.days!=null?m.days+' 天':'',m.qty||''].filter(Boolean).join(' / ')||'—';
+        const src=m.source==='nhi'?('健保'+(MED_KIND_LABEL[m.kind]?'·'+MED_KIND_LABEL[m.kind]:'')):(m.source==='manual'?'手動':(m.source||''));
+        const info=[m.dose,m.route].filter(Boolean).join('，')||'—';
+        return `<tr><td style="white-space:nowrap;">${d}</td><td><b>${esc(m.name)}</b>${m.prescriber?'<br><span class="hint">'+esc(m.prescriber)+'</span>':''}</td>`+
+          `<td>${esc(info)}</td><td style="white-space:nowrap;">${esc(dq)}</td><td class="hint" style="white-space:nowrap;">${esc(src)}</td>`+
+          `<td style="white-space:nowrap;"><span onclick="openMedEditor('${m.id}')" style="cursor:pointer;color:var(--acc);">✏️</span> <span onclick="medDelete('${m.id}')" style="cursor:pointer;color:var(--err);">🗑️</span></td></tr>`;
+      }).join(''):'<tr><td colspan="6" class="hint">無符合紀錄</td></tr>');
+    if(hint)hint.textContent='逐筆：'+filtered.length+' 筆'+(filtered.length>cap?'（顯示前 '+cap+'，請用搜尋縮小）':'')+(q?'（符合「'+esc(medSearch)+'」）':'');
+  }
 }
+let medView='grouped',medSearch='';
+function setMedView(v){medView=v;renderMeds();}
+function medSearchChanged(v){medSearch=v;renderMeds();}
+function medDrill(name){medView='list';medSearch=name;const el=document.getElementById('medSearch');if(el)el.value=name;const seg=document.getElementById('medViewSeg');renderMeds();window.scrollTo(0,document.getElementById('medsTable').offsetTop-80);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function openMedEditor(id){
   const editing=id?((state.meds||[]).find(m=>m.id===id)):null;
@@ -2815,7 +2846,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.22-i18n';
+const APP_VERSION='2026.07.22-meds-group';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
