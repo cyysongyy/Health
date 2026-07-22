@@ -330,6 +330,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   <div class="nt" data-sec="assess">📝 健康評估</div>
   <div class="nt" data-sec="connect">🔗 匯入串接</div>
   <div class="nt" data-sec="risk">🔬 風險預測</div>
+  <div class="nt" data-sec="medscore">🩺 醫療級評估</div>
   <div class="nt" data-sec="smart">🚨 智慧預警</div>
   <div class="nt" data-sec="trend">📈 趨勢追蹤</div>
   <div class="nt" data-sec="labs">🧪 檢驗數據庫</div>
@@ -586,6 +587,12 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <div class="hint" style="text-align:center;margin-top:6px;">分數越靠外圈代表該面向風險越低（越健康）</div>
     </div>
   </div>
+</div>
+
+<!-- ========== MEDICAL-GRADE SCORES ========== -->
+<div class="sec" id="sec-medscore">
+  <div class="disc" style="border-left:3px solid var(--pri);">🩺 <b>醫療級評估：</b>採用國際實證、臨床實際使用的風險模型（ASCVD Pooled Cohort Equations、FINDRISC、CKD-EPI 2021、FIB-4、脂肪肝指數、代謝症候群準則），依你的個人資料與最新檢驗值精算。<b>仍為衛教與自我管理參考、非醫療診斷</b>；模型多源自歐美族群，套用於台灣人可能高估或低估，實際判讀請以醫師為準。</div>
+  <div id="medscoreBody"></div>
 </div>
 
 <!-- ========== SMART ALERTS ========== -->
@@ -1146,6 +1153,7 @@ function go(sec){
   if(sec==='habit')renderHabits();
   if(sec==='dash')renderDash();
   if(sec==='risk')renderRisk();
+  if(sec==='medscore')renderMedScore();
   if(sec==='advice')renderAdvice();
   if(sec==='connect')renderImportResult();
   if(sec==='smart')renderSmart();
@@ -2952,7 +2960,131 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.22-tz-taipei';
+/* ============ 醫療級評估：實證臨床風險模型 ============ */
+function medInputs(){
+  const p=state.profile||{}, L=labLatest(), r=state.result||{};
+  const v=k=>L[k]!=null?parseFloat(L[k].v):null;
+  const num=x=>(x==null||x===''||isNaN(+x))?null:+x;
+  const cls=(typeof medClasses==='function')?medClasses(180):{};
+  const bmi=r.bmi||(p.height&&p.weight?+(p.weight/Math.pow(p.height/100,2)).toFixed(1):null);
+  return {
+    sex:p.sex||null, age:num(p.age), bmi, waist:num(p.waist),
+    tc:v('chol')!=null?v('chol'):num(p.chol), hdl:v('hdl')!=null?v('hdl'):num(p.hdl), ldl:v('ldl'), tg:v('tg'),
+    sbp:v('sbp')!=null?v('sbp'):num(p.sbp), dbp:v('dbp')!=null?v('dbp'):num(p.dbp),
+    glucose:v('glucose')!=null?v('glucose'):num(p.glucose), hba1c:v('hba1c'),
+    scr:v('cr'), ast:v('ast'), alt:v('alt'), plt:v('plt'), ggt:v('ggt'),
+    smoker:p.smoke==='current', exercise:num(p.exercise), diet:num(p.diet), fhDiabetes:!!p.fhDiabetes,
+    onBpMed:!!cls.bp, onDmMed:!!cls.dm,
+    diabetes:(v('hba1c')!=null&&v('hba1c')>=6.5)||(v('glucose')!=null&&v('glucose')>=126)||!!cls.dm
+  };
+}
+// ASCVD Pooled Cohort Equations (2013 ACC/AHA)，10 年硬性 ASCVD 風險（白人係數）
+function calcASCVD(I){
+  const {sex,tc,hdl,sbp,onBpMed:t,smoker:sm,diabetes:dm}=I; let age=I.age;
+  const clamp=age<40||age>79; age=Math.min(79,Math.max(40,age));
+  const la=Math.log(age),lc=Math.log(tc),lh=Math.log(hdl),ls=Math.log(sbp);
+  let sum,mean,s0;
+  if(sex==='female'){
+    sum=-29.799*la+4.884*la*la+13.540*lc-3.114*la*lc-13.578*lh+3.149*la*lh+(t?2.019*ls:1.957*ls)+(sm?7.574-1.665*la:0)+(dm?0.661:0);
+    mean=-29.18;s0=0.9665;
+  }else{
+    sum=12.344*la+11.853*lc-2.664*la*lc-7.990*lh+1.769*la*lh+(t?1.797*ls:1.764*ls)+(sm?7.837-1.795*la:0)+(dm?0.658:0);
+    mean=61.18;s0=0.9144;
+  }
+  return {pct:+((1-Math.pow(s0,Math.exp(sum-mean)))*100).toFixed(1),clamp};
+}
+function calcFINDRISC(I){
+  let s=0; const {age,bmi,waist,sex}=I;
+  s+=age<45?0:age<55?2:age<65?3:4;
+  s+=bmi<25?0:bmi<30?1:3;
+  if(sex==='male')s+=waist<94?0:waist<=102?3:4; else s+=waist<80?0:waist<=88?3:4;
+  s+=(I.exercise!=null&&I.exercise>=150)?0:2;                 // 每週≥150 分鐘視為足量活動
+  s+=(I.diet!=null&&I.diet>=3)?0:1;                            // 飲食品質中上視為每日蔬果
+  s+=I.onBpMed?2:0;
+  const highGlu=(I.hba1c!=null&&I.hba1c>=5.7)||(I.glucose!=null&&I.glucose>=100)||I.diabetes;
+  s+=highGlu?5:0;
+  s+=I.fhDiabetes?3:0;                                         // App 僅記錄有無家族史，保守以 3 分計
+  const band= s<7?['很低','約 1%','var(--ok)']: s<12?['略高','約 4%','var(--warn)']: s<15?['中等','約 17%','var(--warn)']: s<21?['高','約 33%','var(--err)']:['很高','約 50%','var(--err)'];
+  return {score:s,band};
+}
+function calcCKDEPI(I){
+  const {sex,age,scr}=I; const k=sex==='female'?0.7:0.9, a=sex==='female'?-0.241:-0.302;
+  const e=Math.round(142*Math.pow(Math.min(scr/k,1),a)*Math.pow(Math.max(scr/k,1),-1.200)*Math.pow(0.9938,age)*(sex==='female'?1.012:1));
+  const st= e>=90?['G1 正常/偏高','var(--ok)']: e>=60?['G2 輕度下降','var(--ok)']: e>=45?['G3a 輕–中度','var(--warn)']: e>=30?['G3b 中–重度','var(--warn)']: e>=15?['G4 重度','var(--err)']:['G5 腎衰竭','var(--err)'];
+  return {egfr:e,stage:st};
+}
+function renderMedScore(){
+  const el=document.getElementById('medscoreBody'); if(!el)return;
+  const I=medInputs(); const cards=[];
+  const box=(icon,title,src,inner)=>`<div class="card"><div class="ct">${icon} ${title}</div><div class="hint" style="margin:-2px 0 8px;">模型：${src}</div>${inner}</div>`;
+  const miss=(icon,title,src,need)=>`<div class="card" style="opacity:.7;"><div class="ct">${icon} ${title}</div><div class="hint" style="margin:-2px 0 6px;">模型：${src}</div><div class="hint">尚缺 <b>${need}</b>，補齊即可計算（到「📝 健康評估」填寫，或「🔗 匯入串接」匯入檢驗）。</div></div>`;
+  const big=(txt,color)=>`<div style="font-size:2rem;font-weight:900;color:${color};line-height:1;">${txt}</div>`;
+  // 1) ASCVD
+  if(I.sex&&I.age&&I.tc&&I.hdl&&I.sbp){
+    const r=calcASCVD(I);
+    const c= r.pct<5?['低風險','var(--ok)']: r.pct<7.5?['邊緣風險','var(--warn)']: r.pct<20?['中度風險','var(--warn)']:['高風險','var(--err)'];
+    cards.push(box('❤️','10 年心血管疾病風險','ASCVD Pooled Cohort Equations（ACC/AHA 2013）',
+      big(r.pct+'%',c[1])+`<div style="font-weight:800;color:${c[1]};margin-top:4px;">${c[0]}</div>`+
+      `<div style="font-size:.82rem;margin-top:6px;line-height:1.6;">未來 10 年發生心肌梗塞或中風等動脈硬化性心血管事件的估計機率。${r.pct>=7.5?'≥7.5% 通常代表可與醫師討論是否需要他汀類藥物與更積極的危險因子控制。':'維持不吸菸、控制血壓血脂血糖可再降低。'}</div>`+
+      `<div class="hint" style="margin-top:8px;">採用：性別・年齡・總膽固醇 ${I.tc}・HDL ${I.hdl}・收縮壓 ${I.sbp}${I.onBpMed?'（服降壓藥）':''}${I.smoker?'・吸菸':''}${I.diabetes?'・糖尿病':''}</div>`+
+      (r.clamp?`<div class="hint" style="color:var(--warn);margin-top:4px;">⚠️ 此模型適用 40–79 歲，你的年齡已就近取邊界估算，僅供參考。</div>`:'')+
+      `<div class="hint" style="margin-top:4px;">注：源自美國族群，套用於亞洲人可能高估。</div>`));
+  }else cards.push(miss('❤️','10 年心血管疾病風險','ASCVD（ACC/AHA）',[!I.sex||!I.age?'性別/年齡':'',!I.tc?'總膽固醇':'',!I.hdl?'HDL':'',!I.sbp?'收縮壓':''].filter(Boolean).join('、')));
+  // 2) FINDRISC
+  if(I.age&&I.bmi&&I.waist&&I.sex){
+    const f=calcFINDRISC(I);
+    cards.push(box('🩸','10 年第二型糖尿病風險','FINDRISC 芬蘭糖尿病風險量表',
+      big(f.score+' 分',f.band[2])+`<div style="font-weight:800;color:${f.band[2]};margin-top:4px;">${f.band[0]}風險・10 年約 ${f.band[1].replace('約 ','')}發病</div>`+
+      `<div style="font-size:.82rem;margin-top:6px;line-height:1.6;">總分 0–26。${f.score>=12?'屬中等以上風險，建議檢查糖化血色素、控制體重與腰圍、增加運動。':'維持體重、規律運動與健康飲食可續保低風險。'}</div>`+
+      `<div class="hint" style="margin-top:8px;">採用：年齡・BMI ${I.bmi}・腰圍 ${I.waist}・活動量・飲食・${I.onBpMed?'服降壓藥・':''}血糖史・家族史</div>`));
+  }else cards.push(miss('🩸','10 年第二型糖尿病風險','FINDRISC',[!I.age?'年齡':'',!I.bmi?'身高/體重':'',!I.waist?'腰圍':'',!I.sex?'性別':''].filter(Boolean).join('、')));
+  // 3) CKD-EPI
+  if(I.sex&&I.age&&I.scr){
+    const k=calcCKDEPI(I);
+    cards.push(box('🫘','腎功能 eGFR 與分期','CKD-EPI 2021（去種族版）＋ KDIGO 分期',
+      big(k.egfr+' <span style="font-size:.9rem;">mL/min/1.73m²</span>',k.stage[1])+`<div style="font-weight:800;color:${k.stage[1]};margin-top:4px;">${k.stage[0]}</div>`+
+      `<div style="font-size:.82rem;margin-top:6px;line-height:1.6;">由血清肌酸酐 ${I.scr} 精算的腎絲球過濾率。${k.egfr<60?'低於 60 且持續 3 個月以上即符合慢性腎臟病，建議腎臟科追蹤、控制血壓血糖、避免傷腎藥物。':'目前腎功能於正常範圍，仍建議定期追蹤。'}</div>`+
+      `<div class="hint" style="margin-top:8px;">採用：性別・年齡・肌酸酐 ${I.scr}（單筆估算需 3 個月內兩次確認慢性）</div>`));
+  }else cards.push(miss('🫘','腎功能 eGFR 與分期','CKD-EPI 2021',[!I.sex||!I.age?'性別/年齡':'',!I.scr?'肌酸酐 Cr':''].filter(Boolean).join('、')));
+  // 4) FIB-4
+  if(I.age&&I.ast&&I.alt&&I.plt){
+    const fib=+((I.age*I.ast)/(I.plt*Math.sqrt(I.alt))).toFixed(2);
+    const c= fib<1.3?['低風險（可排除進行性纖維化）','var(--ok)']: fib<=2.67?['中間帶（需進一步評估）','var(--warn)']:['高風險（可能進行性肝纖維化）','var(--err)'];
+    cards.push(box('🫀','肝纖維化風險 FIB-4','FIB-4 Index',
+      big(fib,c[1])+`<div style="font-weight:800;color:${c[1]};margin-top:4px;">${c[0]}</div>`+
+      `<div style="font-size:.82rem;margin-top:6px;line-height:1.6;">綜合年齡、GOT/GPT 與血小板估計肝纖維化程度。${fib>1.3?'高於 1.3 建議進一步做肝纖維化掃描（FibroScan）或就醫評估。':'目前無進行性纖維化的明顯跡象。'}</div>`+
+      `<div class="hint" style="margin-top:8px;">採用：年齡・GOT ${I.ast}・GPT ${I.alt}・血小板 ${I.plt}（>65 歲切點略高）</div>`));
+  }else cards.push(miss('🫀','肝纖維化風險 FIB-4','FIB-4',[!I.age?'年齡':'',!I.ast?'GOT/AST':'',!I.alt?'GPT/ALT':'',!I.plt?'血小板':''].filter(Boolean).join('、')));
+  // 5) FLI
+  if(I.tg&&I.bmi&&I.ggt&&I.waist){
+    const Lx=0.953*Math.log(I.tg)+0.139*I.bmi+0.718*Math.log(I.ggt)+0.053*I.waist-15.745;
+    const fli=Math.round(Math.exp(Lx)/(1+Math.exp(Lx))*100);
+    const c= fli<30?['低（可排除脂肪肝）','var(--ok)']: fli<60?['中間帶','var(--warn)']:['高（脂肪肝可能）','var(--err)'];
+    cards.push(box('🧈','脂肪肝指數 FLI','Fatty Liver Index',
+      big(fli,c[1])+`<div style="font-weight:800;color:${c[1]};margin-top:4px;">${c[0]}</div>`+
+      `<div style="font-size:.82rem;margin-top:6px;line-height:1.6;">由 BMI、腰圍、三酸甘油酯、γ-GT 估計脂肪肝可能性（0–100）。${fli>=60?'偏高：減重 5–10%、少糖少酒、規律運動最有效。':''}</div>`+
+      `<div class="hint" style="margin-top:8px;">採用：BMI ${I.bmi}・腰圍 ${I.waist}・三酸甘油酯 ${I.tg}・γ-GT ${I.ggt}</div>`));
+  }else cards.push(miss('🧈','脂肪肝指數 FLI','Fatty Liver Index',[!I.bmi?'身高/體重':'',!I.waist?'腰圍':'',!I.tg?'三酸甘油酯':'',!I.ggt?'γ-GT':''].filter(Boolean).join('、')));
+  // 6) 代謝症候群（台灣/亞洲切點）
+  {
+    const comp=[]; let n=0, avail=0;
+    const add=(ok,txt,has)=>{ if(has){avail++; if(ok){n++;comp.push('✅ '+txt);}else comp.push('⬜ '+txt);} };
+    add(I.waist!=null&&(I.sex==='male'?I.waist>=90:I.waist>=80),'腰圍（男≥90/女≥80 cm）'+(I.waist!=null?'：'+I.waist:''),I.waist!=null);
+    add(I.tg!=null&&I.tg>=150,'三酸甘油酯 ≥150'+(I.tg!=null?'：'+I.tg:''),I.tg!=null);
+    add(I.hdl!=null&&(I.sex==='male'?I.hdl<40:I.hdl<50),'HDL 偏低（男<40/女<50）'+(I.hdl!=null?'：'+I.hdl:''),I.hdl!=null);
+    add((I.sbp!=null&&I.sbp>=130)||(I.dbp!=null&&I.dbp>=85)||I.onBpMed,'血壓 ≥130/85 或服藥'+((I.sbp||I.dbp)?'：'+(I.sbp||'?')+'/'+(I.dbp||'?'):''),I.sbp!=null||I.dbp!=null||I.onBpMed);
+    add((I.glucose!=null&&I.glucose>=100)||I.onDmMed,'空腹血糖 ≥100 或服藥'+(I.glucose!=null?'：'+I.glucose:''),I.glucose!=null||I.onDmMed);
+    if(avail>=3){
+      const c= n>=3?['符合代謝症候群','var(--err)']: n===2?['接近（2 項）','var(--warn)']:['未達標','var(--ok)'];
+      cards.push(box('🔥','代謝症候群','NCEP ATP III（台灣/亞洲腰圍切點）',
+        big(n+' / 5 項',c[1])+`<div style="font-weight:800;color:${c[1]};margin-top:4px;">${c[0]}（符合 3 項以上即成立）</div>`+
+        `<div style="font-size:.82rem;margin-top:8px;line-height:1.8;">${comp.join('<br>')}</div>`+
+        (n>=3?`<div style="font-size:.82rem;margin-top:6px;">代謝症候群使心血管與糖尿病風險上升，整體生活型態介入（減重、運動、地中海飲食）最有效。</div>`:'')));
+    }else cards.push(miss('🔥','代謝症候群','NCEP ATP III（亞洲切點）','腰圍、血脂、血壓、血糖等至少 3 項'));
+  }
+  el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
+}
+const APP_VERSION='2026.07.22-medscore';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
