@@ -333,6 +333,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   <div class="nt" data-sec="trend">📈 趨勢追蹤</div>
   <div class="nt" data-sec="labs">🧪 檢驗數據庫</div>
   <div class="nt" data-sec="meds">💊 用藥紀錄</div>
+  <div class="nt" data-sec="surgery">🔧 手術紀錄</div>
   <div class="nt" data-sec="habit">✅ 每日習慣</div>
   <div class="nt" data-sec="advice">💡 建議 & AI</div>
   <div class="nt" data-sec="report">📋 綜合報告</div>
@@ -716,6 +717,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
     <div class="card"><div class="ct">🎯 整體摘要</div><div id="repSummary"></div></div>
     <div class="card"><div class="ct">🧪 檢驗重點 <span class="hint">異常與趨勢</span></div><div id="repLabs"></div></div>
     <div class="card"><div class="ct">💊 用藥概況 <span class="hint">近 90 天</span></div><div id="repMeds"></div></div>
+    <div class="card"><div class="ct">🔧 手術／處置史</div><div id="repSurgery"></div></div>
     <div class="card"><div class="ct">🔗 交叉洞察 <span class="hint">資料互相關聯（含用藥×檢驗）</span></div><div id="repInsights"></div></div>
     <div class="card"><div class="ct">✅ 優先行動建議 <span class="hint">可一鍵加為每日習慣</span></div><div id="repActions"></div></div>
     <div class="card"><div class="ct">📅 健康時間軸 <span class="hint">紀錄點＋檢驗合併</span></div><div id="repTimeline"></div></div>
@@ -804,6 +806,34 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
         <button class="btn bd" onclick="clearMeds()">🗑️ 清除全部</button>
       </div>
       <div class="hint" style="margin-top:8px;">⚠️ 用藥紀錄僅供自我管理與就醫時參考，請勿自行調整處方；用藥問題請諮詢醫師或藥師。</div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== SURGERY RECORDS ========== -->
+<div class="sec" id="sec-surgery">
+  <div id="surEmpty" class="card empty">
+    <div class="em">🔧</div>
+    <div>尚無手術紀錄。到「🔗 匯入串接」匯入健保「健康存摺」的醫療類資料，系統會自動從住院／門診紀錄擷取手術與處置；也可在下方手動新增。</div>
+    <div class="row-btn" style="margin-top:12px;justify-content:center;">
+      <button class="btn bp" onclick="go('connect')">🔗 前往匯入</button>
+      <button class="btn bg" onclick="openSurEditor()">➕ 手動新增</button>
+    </div>
+  </div>
+  <div id="surContent" style="display:none;">
+    <div class="card">
+      <div class="ct">🔧 手術／處置總覽 <span class="hint" id="surCount"></span></div>
+      <div id="surSummary" class="disc" style="margin-bottom:10px;"></div>
+    </div>
+    <div class="card">
+      <div class="ct">🗂️ 手術紀錄清單 <span class="hint">依日期排序（新→舊）</span></div>
+      <div style="overflow-x:auto;"><table id="surTable"></table></div>
+      <div class="row-btn" style="margin-top:10px;">
+        <button class="btn bp" onclick="openSurEditor()">➕ 新增手術</button>
+        <button class="btn bg" onclick="exportSurgeries()">📤 匯出 CSV</button>
+        <button class="btn bd" onclick="clearSurgeries()">🗑️ 清除全部</button>
+      </div>
+      <div class="hint" style="margin-top:8px;">⚠️ 手術紀錄僅供自我管理與就醫時參考；名稱與診斷以健保紀錄為準，如有疑問請諮詢醫師。</div>
     </div>
   </div>
 </div>
@@ -969,7 +999,7 @@ function load(){
   try{return JSON.parse(localStorage.getItem(LS_KEY))||defaults();}catch(e){return defaults();}
 }
 function defaults(){
-  return {profile:null, result:null, history:[], labs:[], meds:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));}
 
@@ -994,6 +1024,7 @@ function go(sec){
   if(sec==='trend')renderTrend();
   if(sec==='labs')renderLabs();
   if(sec==='meds')renderMeds();
+  if(sec==='surgery')renderSurgeries();
   if(sec==='report')renderReport();
   if(sec==='habit')renderHabits();
   if(sec==='dash')renderDash();
@@ -1561,6 +1592,7 @@ function renderReport(){
   document.getElementById('repLabs').innerHTML=labsH;
   // 用藥概況
   renderRepMeds();
+  renderRepSurgery();
   // 交叉洞察
   const ins=crossInsights(L,r,p);
   document.getElementById('repInsights').innerHTML=ins.length?ins.map(i=>`<div class="rec p${i.pri||2}"><div class="rec-icon">${i.icon||'🔗'}</div><div class="rec-body"><div class="rec-desc">${i.text}</div></div></div>`).join(''):'<div class="hint">目前各項資料之間未發現明顯的異常關聯。</div>';
@@ -1619,6 +1651,14 @@ function renderRepMeds(){
     names.slice(0,10).map(n=>'<div class="hb"><div class="hb-l"><span class="hb-icon">💊</span><span style="font-size:.8rem;">'+esc(n)+'</span></div></div>').join('')+
     (names.length>10?'<div class="hint">…等 '+names.length+' 種，詳見「💊 用藥紀錄」</div>':'');
 }
+function renderRepSurgery(){
+  const el=document.getElementById('repSurgery'); if(!el)return;
+  const surs=(state.surgeries||[]).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+  if(!surs.length){el.innerHTML='<div class="hint">尚無手術紀錄。可於「🔗 匯入串接」匯入健保健康存摺，或到「🔧 手術紀錄」手動新增。</div>';return;}
+  el.innerHTML='<div style="font-size:.82rem;margin-bottom:6px;">共 <b>'+surs.length+'</b> 筆手術／處置</div>'+
+    surs.slice(0,8).map(s=>{const d=s.date?new Date(s.date).getFullYear():'';return '<div class="hb"><div class="hb-l"><span class="hb-icon">🔧</span><span style="font-size:.8rem;">'+esc(s.name)+(s.dx?'<span class="hint">（'+esc(s.dx)+'）</span>':'')+'</span></div><div class="hint" style="white-space:nowrap;">'+d+'</div></div>';}).join('')+
+    (surs.length>8?'<div class="hint">…等 '+surs.length+' 筆，詳見「🔧 手術紀錄」</div>':'');
+}
 function genLabRecs(L){
   const recs=[]; const v=k=>L[k]!=null?parseFloat(L[k].v):null;
   const ldl=v('ldl'),tg=v('tg'),hba1c=v('hba1c'),ua=v('ua'),egfr=v('egfr'),alt=v('alt'),ast=v('ast'),ggt=v('ggt'),hb=v('hb'),tsh=v('tsh'),k=v('k');
@@ -1644,6 +1684,8 @@ function buildDigestText(){
   if(order.length){t+='\n【檢驗數據（最新）】\n';order.forEach(k=>{const fl=labFlag(k,L[k].v);const st=labStats(k);const tr=st&&st.n>=2?(st.dir==='worse'?' ↑惡化':st.dir==='better'?' ↓改善':''):'';t+=`${LAB_META[k].label}: ${L[k].v}${LAB_META[k].unit} ${FLAG_TXT[fl]}${tr}\n`;});}
   const rmeds=recentMeds(90).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
   if(rmeds.length){const nm=[...new Set(rmeds.map(m=>m.name))];t+='\n【近 90 天用藥（'+nm.length+' 種）】\n'+nm.slice(0,20).join('、')+(nm.length>20?' …':'')+'\n';}
+  const surs=(state.surgeries||[]).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+  if(surs.length){t+='\n【手術／處置史（'+surs.length+' 筆）】\n'+surs.slice(0,15).map(s=>(s.date?new Date(s.date).getFullYear()+' ':'')+s.name).join('、')+(surs.length>15?' …':'')+'\n';}
   const days=14,hb={};HABITS.forEach(h=>hb[h.id]=0);
   for(let i=0;i<days;i++){const key=new Date(Date.now()-i*86400000).toISOString().slice(0,10);if(state.habits[key])HABITS.forEach(h=>{if(state.habits[key][h.id])hb[h.id]++;});}
   t+='\n【近'+days+'天習慣達成】\n'+HABITS.map(h=>`${h.name}:${hb[h.id]}/${days}`).join('、')+'\n';
@@ -2149,6 +2191,25 @@ function parseBankLabs(bd){
   const records=Object.values(byDate).sort((a,b)=>new Date(a.date)-new Date(b.date));
   return {fields,records};
 }
+// 手術／處置名稱關鍵字（健保醫療類的手術名稱多以「術」結尾或含這些動詞）
+const SURG_RX=/術|切除|修補|置換|移植|重建|吻合|造(口|廔|瘻)|截肢|清創|植入|接合|摘除|複位|固定|引流|節除|燒灼|栓塞|支架/;
+function parseBankSurgeries(bd){
+  const out=[];
+  Object.keys(bd).filter(k=>/^r\d+$/.test(k)).forEach(sec=>{
+    const rows=bd[sec]; if(!Array.isArray(rows))return;
+    rows.forEach(rec=>{
+      if(!rec||typeof rec!=='object')return;
+      const strVals=Object.keys(rec).sort().map(k=>rec[k]).filter(v=>typeof v==='string').map(v=>v.trim()).filter(Boolean);
+      const names=strVals.filter(v=>v.length>=4&&SURG_RX.test(v)&&!/無資料|聲明|照護|衛教|複診|回診|門診|注射|抽血/.test(v));
+      if(!names.length)return;
+      const date=bankVisitDate(rec,sec);
+      const hosp=(rec[sec+'.4']||'').toString().trim();
+      const dx=strVals.find(v=>v.length>4&&/[一-鿿]/.test(v)&&!SURG_RX.test(v)&&!/醫院|診所|醫$|業務組|聲明|無資料/.test(v))||'';
+      [...new Set(names)].forEach(nm=>out.push({date,hospital:hosp,name:nm,dx,source:'nhi'}));
+    });
+  });
+  return out;
+}
 function parseMeds(data){
   // 健保健康存摺 bdata 格式優先
   const bd=nhiBankData(data);
@@ -2340,6 +2401,99 @@ function clearMeds(){
   }
 }
 
+/* ============ 手術紀錄 ============ */
+function ingestSurgeries(surs,source){
+  if(!surs||!surs.length)return 0;
+  state.surgeries=state.surgeries||[];
+  const sig=s=>((s.date||'').slice(0,10)+'|'+(s.name||''));
+  const seen=new Set(state.surgeries.map(sig));
+  let added=0;
+  surs.forEach(s=>{
+    const k=sig(s); if(seen.has(k))return; seen.add(k);
+    let iso=null; if(s.date){const d=new Date(s.date);if(!isNaN(d))iso=d.toISOString();}
+    state.surgeries.push({id:'sur_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),
+      date:iso||s.date||null,name:s.name,dx:s.dx||'',hospital:s.hospital||'',source:source||'nhi'});
+    added++;
+  });
+  if(added){ if(state.surgeries.length>2000)state.surgeries=state.surgeries.slice(-2000); save();
+    if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{}); }
+  return added;
+}
+function renderSurgeries(){
+  const surs=(state.surgeries||[]).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+  const empty=document.getElementById('surEmpty'),content=document.getElementById('surContent');
+  if(!surs.length){ if(empty)empty.style.display='block'; if(content)content.style.display='none'; return; }
+  if(empty)empty.style.display='none'; if(content)content.style.display='block';
+  document.getElementById('surCount').textContent='共 '+surs.length+' 筆';
+  const latest=surs[0].date?new Date(surs[0].date).toLocaleDateString('zh-TW'):'—';
+  const yrAgo=Date.now()-365*864e5;
+  const recent=surs.filter(s=>s.date&&new Date(s.date).getTime()>=yrAgo);
+  document.getElementById('surSummary').innerHTML=
+    `共 <b>${surs.length}</b> 筆手術／處置紀錄，最近一筆 ${latest}。`+
+    (recent.length?`<br>近一年內：${recent.slice(0,8).map(s=>'<span class="pill mod">'+esc(s.name)+'</span>').join(' ')}${recent.length>8?' …':''}`:'');
+  const t=document.getElementById('surTable');
+  t.innerHTML='<tr><th>日期</th><th>手術／處置</th><th>相關診斷</th><th>院所</th><th></th></tr>'+
+    surs.map(s=>{
+      const d=s.date?new Date(s.date).toLocaleDateString('zh-TW'):'—';
+      return `<tr><td style="white-space:nowrap;">${d}</td><td><b>${esc(s.name)}</b></td>`+
+        `<td class="hint">${esc(s.dx||'—')}</td><td class="hint" style="white-space:nowrap;">${esc(s.hospital||'')}</td>`+
+        `<td style="white-space:nowrap;"><span onclick="openSurEditor('${s.id}')" style="cursor:pointer;color:var(--acc);">✏️</span> <span onclick="surDelete('${s.id}')" style="cursor:pointer;color:var(--err);">🗑️</span></td></tr>`;
+    }).join('');
+}
+function openSurEditor(id){
+  const editing=id?((state.surgeries||[]).find(s=>s.id===id)):null;
+  const e=editing||{};
+  const dateVal=e.date?new Date(e.date).toISOString().slice(0,10):todayKey();
+  let m=document.getElementById('surModal');
+  if(!m){m=document.createElement('div');m.id='surModal';m.className='modal-overlay';document.body.appendChild(m);}
+  m.innerHTML=`<div class="modal-box">
+    <div class="ct">${editing?'✏️ 編輯手術紀錄':'➕ 新增手術紀錄'}</div>
+    <div class="fg"><label class="fl">日期</label><input class="fi" type="date" id="surIn_date" value="${dateVal}"></div>
+    <div class="fg"><label class="fl">手術／處置名稱 <span class="hint">必填</span></label><input class="fi" id="surIn_name" value="${esc(e.name||'')}" placeholder="例：腹腔鏡膽囊切除術"></div>
+    <div class="fg"><label class="fl">相關診斷</label><input class="fi" id="surIn_dx" value="${esc(e.dx||'')}" placeholder="例：膽結石"></div>
+    <div class="fg"><label class="fl">醫療院所</label><input class="fi" id="surIn_hosp" value="${esc(e.hospital||'')}" placeholder="例：某某醫院"></div>
+    <div class="row-btn" style="margin-top:14px;">
+      <button class="btn bp" onclick="saveSurEditor('${editing?editing.id:''}')">💾 儲存</button>
+      <button class="btn bg" onclick="closeSurEditor()">取消</button>
+    </div></div>`;
+  m.style.display='flex';
+}
+function closeSurEditor(){const m=document.getElementById('surModal');if(m){m.style.display='none';m.innerHTML='';}}
+function saveSurEditor(id){
+  const name=(document.getElementById('surIn_name').value||'').trim();
+  if(!name){toast('請填入手術／處置名稱');return;}
+  const ds=document.getElementById('surIn_date').value;
+  const date=ds?new Date(ds+'T00:00:00').toISOString():null;
+  const dx=(document.getElementById('surIn_dx').value||'').trim();
+  const hospital=(document.getElementById('surIn_hosp').value||'').trim();
+  state.surgeries=state.surgeries||[];
+  if(id){const s=state.surgeries.find(x=>x.id===id); if(s){Object.assign(s,{date,name,dx,hospital,edited:true});}}
+  else{ state.surgeries.push({id:'sur_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),date,name,dx,hospital,source:'manual'}); }
+  save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  closeSurEditor();renderSurgeries();toast(id?'✅ 已更新':'✅ 已新增');
+}
+function surDelete(id){
+  if(!confirm('確定刪除這一筆手術紀錄？'))return;
+  state.surgeries=(state.surgeries||[]).filter(s=>s.id!==id);
+  save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  renderSurgeries();toast('已刪除');
+}
+function exportSurgeries(){
+  const surs=state.surgeries||[]; if(!surs.length){toast('沒有可匯出的手術紀錄');return;}
+  const head=['date','name','dx','hospital','source'];
+  const rows=surs.map(s=>[s.date?new Date(s.date).toISOString():'',s.name||'',s.dx||'',s.hospital||'',s.source||'']
+    .map(x=>/[",\n]/.test(String(x))?'"'+String(x).replace(/"/g,'""')+'"':x));
+  const csv=[head.join(','),...rows.map(r=>r.join(','))].join('\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='lifespan-surgeries-'+todayKey()+'.csv';a.click();
+}
+function clearSurgeries(){
+  if(confirm('確定清除所有手術紀錄？此動作無法復原。')){
+    state.surgeries=[];save();renderSurgeries();toast('已清除手術紀錄');
+    if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  }
+}
+
 /* ============ 每日習慣 ============ */
 function todayKey(){return new Date().toISOString().slice(0,10);}
 function renderHabits(){
@@ -2410,7 +2564,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.21-nhi-bank';
+const APP_VERSION='2026.07.21-surgery';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -2612,7 +2766,7 @@ function fbDoc(){
 function fbSyncNow(){
   if(!fbUser||!fbDb)return Promise.reject(new Error('未登入'));
   return fbDoc().set(fbClean({
-    profile:state.profile||null, history:state.history||[], labs:state.labs||[], meds:state.meds||[], habits:state.habits||{}, customHabits:state.customHabits||[],
+    profile:state.profile||null, history:state.history||[], labs:state.labs||[], meds:state.meds||[], surgeries:state.surgeries||[], habits:state.habits||{}, customHabits:state.customHabits||[],
     updatedAt:new Date().toISOString()
   }),{merge:true});
 }
@@ -2640,14 +2794,19 @@ async function fbPull(){
       const mm={};[...(state.meds||[]),...d.meds].forEach(x=>{if(x&&x.id)mm[x.id]=x;});
       state.meds=Object.values(mm).sort((a,b)=>new Date(a.date||0)-new Date(b.date||0));
     }
+    if(Array.isArray(d.surgeries)){
+      const sm={};[...(state.surgeries||[]),...d.surgeries].forEach(x=>{if(x&&x.id)sm[x.id]=x;});
+      state.surgeries=Object.values(sm).sort((a,b)=>new Date(a.date||0)-new Date(b.date||0));
+    }
     if(d.profile)state.profile=d.profile;
     if(d.habits)state.habits=Object.assign({},state.habits,d.habits);
     if(Array.isArray(d.customHabits)){const cm={};[...(state.customHabits||[]),...d.customHabits].forEach(x=>{if(x&&x.id)cm[x.id]=x;});state.customHabits=Object.values(cm);}
     save();
-    fbMsg('✅ 已合併，共 '+state.history.length+' 筆紀錄、'+(state.labs?state.labs.length:0)+' 筆檢驗、'+(state.meds?state.meds.length:0)+' 筆用藥',true);toast('已從雲端拉取');
+    fbMsg('✅ 已合併，共 '+state.history.length+' 筆紀錄、'+(state.labs?state.labs.length:0)+' 筆檢驗、'+(state.meds?state.meds.length:0)+' 筆用藥、'+(state.surgeries?state.surgeries.length:0)+' 筆手術',true);toast('已從雲端拉取');
     if(document.getElementById('sec-trend').classList.contains('active'))renderTrend();
     if(document.getElementById('sec-labs').classList.contains('active'))renderLabs();
     if(document.getElementById('sec-meds').classList.contains('active'))renderMeds();
+    if(document.getElementById('sec-surgery').classList.contains('active'))renderSurgeries();
   }catch(e){fbMsg('⚠️ 拉取失敗：'+fbErr(e),false);}
 }
 async function gasGet(action){
@@ -2737,13 +2896,13 @@ async function handleImport(e,kind){
   e.target.value='';
   try{
     const entries=await extractTextEntries(f);   // 自動解壓縮（.zip/.gz），回傳多個文字檔
-    const fields={};const notes=[];const records=[];const meds=[];
+    const fields={};const notes=[];const records=[];const meds=[];const surs=[];
     let ok=0,failed=0,firstJson=null,firstText=null;
     entries.forEach(({name,text})=>{
       try{
         if(kind==='nhi'){ if(firstText===null)firstText=text; if(firstJson===null){try{firstJson=jsonParseLenient(text);}catch(e){}} }
         let parsed;
-        if(kind==='nhi'){ parsed=parseNHI(text); try{ parseMeds(jsonParseLenient(text)).forEach(m=>meds.push(m)); }catch(e){} }
+        if(kind==='nhi'){ parsed=parseNHI(text); try{const j=jsonParseLenient(text);parseMeds(j).forEach(m=>meds.push(m));const bd=nhiBankData(j);if(bd)parseBankSurgeries(bd).forEach(s=>surs.push(s));}catch(e){} }
         else if(kind==='wearable')parsed=parseWearable(text,name);
         else parsed=parseAppFile(text,name);
         if(parsed&&parsed.fields){Object.assign(fields,parsed.fields);ok++;}
@@ -2754,7 +2913,8 @@ async function handleImport(e,kind){
     // 健保帶日期的檢驗紀錄 → 直接併入檢驗數據庫（依原始日期）
     const addedRec=records.length?ingestLabRecords(records,'nhi'):0;
     const addedMed=meds.length?ingestMeds(meds,'nhi'):0;
-    if(!Object.keys(fields).length && !addedRec && !addedMed){
+    const addedSur=surs.length?ingestSurgeries(surs,'nhi'):0;
+    if(!Object.keys(fields).length && !addedRec && !addedMed && !addedSur){
       let debug=null,debugTitle='';
       if(firstJson){debug=jsonOutlineText(firstJson);debugTitle='🔧 檔案結構（僅欄位名稱與截短樣本，可安全分享）';}
       else if(firstText){debug=firstText.replace(/[\u0000-\u001F]/g,'·').slice(0,800);debugTitle='🔧 檔案內容前 800 字（無法解析為 JSON，請看實際格式；分享前可自行遮蔽敏感值）';}
@@ -2769,9 +2929,10 @@ async function handleImport(e,kind){
     if(entries.length>1)notes.unshift('已解壓縮並合併 '+ok+'/'+entries.length+' 個檔案');
     if(addedRec)notes.unshift('✅ 已將 '+addedRec+' 筆健保檢驗紀錄（依原始日期）加入檢驗數據庫');
     if(addedMed)notes.unshift('💊 已將 '+addedMed+' 筆用藥紀錄加入「用藥紀錄」');
+    if(addedSur)notes.unshift('🔧 已將 '+addedSur+' 筆手術／處置加入「手術紀錄」');
     pendingImport={kind,fields,notes};
     renderImportResult();go('connect');
-    const bits=[]; if(addedRec)bits.push(addedRec+' 筆檢驗'); if(addedMed)bits.push(addedMed+' 筆用藥');
+    const bits=[]; if(addedRec)bits.push(addedRec+' 筆檢驗'); if(addedMed)bits.push(addedMed+' 筆用藥'); if(addedSur)bits.push(addedSur+' 筆手術');
     toast(bits.length?('✅ 已匯入 '+bits.join('、')):'✅ 解析完成');
   }catch(err){toast('解析失敗：'+err.message);}
 }
@@ -2995,12 +3156,13 @@ async function handleTextImport(kind){
       if(parsed&&parsed.fields&&Object.keys(parsed.fields).length){fields=parsed.fields;notes=parsed.notes||[];}
       if(kind==='nhi'){
         const addedRec=(parsed&&parsed.records&&parsed.records.length)?ingestLabRecords(parsed.records,'nhi'):0;
-        let addedMed=0; try{ addedMed=ingestMeds(parseMeds(jsonParseLenient(text)),'nhi'); }catch(e){}
+        let addedMed=0,addedSur=0; try{ const j=jsonParseLenient(text); addedMed=ingestMeds(parseMeds(j),'nhi'); const bd=nhiBankData(j); if(bd)addedSur=ingestSurgeries(parseBankSurgeries(bd),'nhi'); }catch(e){}
         if(addedRec){notes=notes||[];notes.unshift('✅ 已將 '+addedRec+' 筆檢驗紀錄加入檢驗數據庫');}
         if(addedMed){notes=notes||[];notes.unshift('💊 已將 '+addedMed+' 筆用藥紀錄加入「用藥紀錄」');}
-        if((addedRec||addedMed)&&!fields){
+        if(addedSur){notes=notes||[];notes.unshift('🔧 已將 '+addedSur+' 筆手術／處置加入「手術紀錄」');}
+        if((addedRec||addedMed||addedSur)&&!fields){
           pendingImport={kind:cfg.out,fields:{},notes};renderImportResult();go('connect');
-          setSt('✅ 已匯入');toast('✅ 已匯入'+(addedRec?' '+addedRec+' 筆檢驗':'')+(addedMed?' '+addedMed+' 筆用藥':''));return;
+          setSt('✅ 已匯入');toast('✅ 已匯入'+(addedRec?' '+addedRec+' 筆檢驗':'')+(addedMed?' '+addedMed+' 筆用藥':'')+(addedSur?' '+addedSur+' 筆手術':''));return;
         }
       }
     }catch(e){}

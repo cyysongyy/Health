@@ -27,6 +27,7 @@
   "history":   [ /* 見 §5，健康紀錄點快照，時序 */ ],
   "labs":      [ /* 見 §6，檢驗數據，時序 */ ],
   "meds":      [ /* 見 §6.1，用藥紀錄，時序 */ ],
+  "surgeries": [ /* 見 §6.2，手術紀錄，時序 */ ],
   "habits":    { "YYYY-MM-DD": { "water":true, ... } },
   "settings":  { /* 見 §7，本機設定；移轉時通常不入庫 */ },
   "dietVal":   1-5,
@@ -141,6 +142,25 @@
 ```
 
 > 去重鍵：`date(日)｜name｜dose`。跨裝置合併以 `id` 去重（雲端同步同 labs）。
+
+---
+
+## 6.2 `surgeries[]`（手術紀錄，時序）
+
+由健保健康存摺醫療類 `myhealthbank.bdata`（住院／門診就醫紀錄中的手術／處置名稱）解析，或手動新增。建議後端表：`surgery_records`。
+
+```jsonc
+{
+  "id":       "sur_<base36ms><rand>",  // PK
+  "date":     "2023-10-09T...Z",       // ISO-8601（該次就醫日期）
+  "name":     "開放性腓神經修補術",       // 手術／處置名稱
+  "dx":       "周邊神經良性腫瘤",         // 相關診斷（best-effort）
+  "hospital": "北港仁一醫",              // 院所
+  "source":   "nhi"                     // nhi | manual
+}
+```
+
+> 去重鍵：`date(日)｜name`。
 
 ---
 
