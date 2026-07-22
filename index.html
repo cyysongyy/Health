@@ -315,6 +315,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 <div class="hd">
   <h1>🫀 LifeSpan 健康預測</h1>
   <div class="hd-right">
+    <span id="langToggle" class="api-badge" onclick="toggleLang()" style="cursor:pointer;background:rgba(255,255,255,.18);color:#fff;font-weight:700;">EN</span>
     <span id="cloudBadge" class="api-badge api-off" onclick="go('settings')" style="cursor:pointer;">☁️ 未連線</span>
     <span id="aiBadge" class="api-badge api-off">AI 未設定</span>
   </div>
@@ -1026,9 +1027,69 @@ function load(){
   try{return JSON.parse(localStorage.getItem(LS_KEY))||defaults();}catch(e){return defaults();}
 }
 function defaults(){
-  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh'}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));}
+
+/* ============ 介面雙語（中／英，介面骨架） ============ */
+const LANG_EN={
+  // 導覽
+  '📊 總覽':'📊 Overview','📝 健康評估':'📝 Assessment','🔗 匯入串接':'🔗 Import','🔬 風險預測':'🔬 Risk','🚨 智慧預警':'🚨 Alerts',
+  '📈 趨勢追蹤':'📈 Trends','🧪 檢驗數據庫':'🧪 Lab Data','💊 用藥紀錄':'💊 Medications','🔧 手術紀錄':'🔧 Surgeries','🩻 影像病理':'🩻 Imaging/Path',
+  '✅ 每日習慣':'✅ Habits','💡 建議 & AI':'💡 Advice & AI','📋 綜合報告':'📋 Report','🦶 足部訓練':'🦶 Foot Training','⚙️ 設定':'⚙️ Settings',
+  '選單':'Menu','LifeSpan 健康預測':'LifeSpan Health','🫀 LifeSpan 健康預測':'🫀 LifeSpan Health',
+  // 徽章
+  'AI 未設定':'AI off','AI 已啟用':'AI on','☁️ 未連線':'☁️ Offline','☁️ 已連結':'☁️ Linked','🔥 雲端':'🔥 Cloud',
+  // 區塊標題
+  '🎯 綜合健康評分':'🎯 Overall Health Score','⏳ 生理年齡 vs 實際年齡':'⏳ Biological vs Actual Age','🕰️ 預期壽命預測':'🕰️ Life Expectancy','📊 各面向健康分數':'📊 Health Dimensions',
+  '👤 基本資料':'👤 Basic Info','🩸 生理指標':'🩸 Biomarkers','🏃 生活型態':'🏃 Lifestyle','🧬 家族病史':'🧬 Family History',
+  '📷 檢驗報告辨識':'📷 Report Recognition','🏥 健康存摺（My Health Bank）':'🏥 My Health Bank','⌚ 穿戴裝置 / 健康 App':'⌚ Wearables / Health App','📎 現有 App / 附件資料':'📎 Existing App / Files','✅ 匯入結果':'✅ Import Result',
+  '❤️ 心血管疾病風險':'❤️ Cardiovascular Risk','🩸 第二型糖尿病風險':'🩸 Type 2 Diabetes Risk','🔥 代謝症候群指標':'🔥 Metabolic Syndrome','📉 風險因子雷達圖':'📉 Risk Factor Radar',
+  '🛎️ 主動健康警示':'🛎️ Health Alerts','🔮 未來走向預測':'🔮 Projection','🎯 最佳解決方案模擬器':'🎯 Best-Plan Simulator','🤖 AI 守護解讀':'🤖 AI Guardian','⏰ 自動化守護':'⏰ Automation',
+  '📈 趨勢追蹤':'📈 Trends','📋 歷史紀錄':'📋 History','✅ 今日健康習慣':'✅ Today’s Habits','🔥 近 14 天完成度':'🔥 Last 14 Days','🎯 個人化延壽行動清單':'🎯 Longevity Action List','🤖 AI 健康顧問':'🤖 AI Health Advisor',
+  '🎯 整體摘要':'🎯 Summary','🧪 檢驗重點':'🧪 Lab Highlights','💊 用藥概況':'💊 Medication Overview','🔧 手術／處置史':'🔧 Surgical History','🔗 交叉洞察':'🔗 Cross Insights','✅ 優先行動建議':'✅ Priority Actions','📅 健康時間軸':'📅 Timeline','🤖 AI 綜合解讀':'🤖 AI Synthesis',
+  '🧪 檢驗總覽':'🧪 Lab Overview','🔍 資料檢視':'🔍 View','📈 單項時序趨勢':'📈 Metric Trend','🗂️ 全部檢驗紀錄':'🗂️ All Lab Records',
+  '💊 用藥總覽':'💊 Medication Overview','🗂️ 用藥清單':'🗂️ Medication List','🔧 手術／處置總覽':'🔧 Surgery Overview','🗂️ 手術紀錄清單':'🗂️ Surgery List','🩻 影像／病理報告':'🩻 Imaging / Pathology',
+  '🔥 Firebase 雲端同步':'🔥 Firebase Cloud Sync','🔔 健康警戒系統':'🔔 Health Alert System','🤖 AI 引擎設定':'🤖 AI Engine','💾 資料管理':'💾 Data Management','📲 安裝 App／離線使用':'📲 Install / Offline','ℹ️ 關於':'ℹ️ About',
+  // 表單標籤
+  '性別':'Sex','年齡':'Age','身高':'Height','體重':'Weight','腰圍':'Waist','收縮壓':'Systolic BP','舒張壓':'Diastolic BP','靜止心率':'Resting HR','空腹血糖':'Fasting Glucose','總膽固醇':'Total Cholesterol','HDL 好膽固醇':'HDL','吸菸狀況':'Smoking',
+  '每週運動（分鐘）':'Exercise (min/wk)','每週飲酒（份）':'Alcohol (drinks/wk)','每日睡眠（小時）':'Sleep (hrs/day)','每日靜坐時間（小時）':'Sitting (hrs/day)','飲食品質（蔬果、少加工）':'Diet Quality','壓力/情緒狀態':'Stress/Mood',
+  '日期':'Date','檢查名稱':'Exam Name','手術／處置名稱':'Procedure Name','相關診斷':'Related Dx','醫療院所':'Facility','藥品名稱':'Drug Name','用法用量':'Dosage','給藥途徑':'Route','天數':'Days','開立/來源':'Prescriber','報告原文':'Original Report','中文翻譯':'Chinese Translation','選擇一筆紀錄（依時間）':'Select a record (by time)',
+  'Email':'Email','密碼':'Password','優先引擎':'Preferred Engine','Apps Script 部署網址':'Apps Script URL',
+  // 按鈕
+  '🔮 產生健康預測':'🔮 Generate Prediction','↺ 清除':'↺ Reset','💾 存為紀錄點':'💾 Save Snapshot',
+  '📝 開始健康評估':'📝 Start Assessment','📝 前往評估表':'📝 Go to Assessment','📷 前往辨識報告':'📷 Recognize a Report',
+  '📷 拍照 / 選擇報告（圖片或 PDF）':'📷 Photo / Report (image or PDF)','🔍 辨識文字':'🔍 Recognize Text','🔍 辨識／解析':'🔍 Parse','📋 載入範例':'📋 Load Sample',
+  '📥 上傳健康存摺檔案（JSON／壓縮檔／PDF）':'📥 Upload My Health Bank file (JSON/zip/PDF)','📥 上傳穿戴裝置匯出檔':'📥 Upload wearable export','📥 上傳 JSON / CSV':'📥 Upload JSON / CSV',
+  '💾 帶入並存成紀錄':'💾 Apply & Save','➡️ 只帶入評估表':'➡️ Apply to Form','📝 前往評估表 ':'📝 Go to Form',
+  '➕ 手動新增':'➕ Add Manually','➕ 新增報告':'➕ Add Report','➕ 新增手術':'➕ Add Surgery','➕ 新增用藥':'➕ Add Medication','➕ 新增紀錄':'➕ Add Record','➕ 加為每日習慣':'➕ Add as Habit',
+  '📤 匯出 CSV':'📤 Export CSV','📤 匯出資料 (JSON)':'📤 Export Data (JSON)','📥 匯入資料':'📥 Import Data','🗑️ 清除全部':'🗑️ Clear All','🗑️ 清除全部資料':'🗑️ Clear All Data','🗑️ 清除所有紀錄':'🗑️ Clear All Records','🗑️ 刪除這筆':'🗑️ Delete','✏️ 編輯這筆':'✏️ Edit',
+  '🌐 翻譯成中文':'🌐 Translate to Chinese','💾 儲存':'💾 Save','💾 儲存設定':'💾 Save Settings','取消':'Cancel','知道了':'Got it','查看綜合報告':'View Report','🔗 前往匯入':'🔗 Go to Import',
+  '✨ 產生 AI 健康建議':'✨ Generate AI Advice','✨ 產生 AI 綜合解讀':'✨ Generate AI Synthesis','✨ AI 解讀今日警示':'✨ AI Read Today’s Alerts','📋 複製報告文字':'📋 Copy Report','📋 複製':'📋 Copy',
+  '🆕 註冊新帳號':'🆕 Sign Up','🔑 登入':'🔑 Sign In','🚪 登出':'🚪 Sign Out','⬆️ 上傳全部到雲端':'⬆️ Upload All','⬇️ 從雲端拉取':'⬇️ Pull from Cloud','🔌 測試連線':'🔌 Test Connection',
+  '🔔 立即健康檢查':'🔔 Run Health Check','🔔 立即執行健康檢查':'🔔 Run Health Check Now','📲 安裝到主畫面':'📲 Add to Home Screen','✅ 全選（最佳情境）':'✅ Select All (best case)',
+  // 免責／常見
+  '男':'Male','女':'Female','🚩 提醒與待辦':'🚩 Reminders & To-dos'
+};
+function curLang(){ return (state.settings&&state.settings.lang==='en')?'en':'zh'; }
+function applyI18n(){
+  const en=curLang()==='en';
+  const w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,null);
+  const nodes=[]; let n; while(n=w.nextNode())nodes.push(n);
+  nodes.forEach(node=>{
+    const raw=node.nodeValue; const key=(raw||'').trim(); if(!key)return;
+    if(en){ if(node._zh===undefined && LANG_EN[key]!==undefined){ node._zh=raw; node.nodeValue=raw.replace(key,LANG_EN[key]); } }
+    else { if(node._zh!==undefined){ node.nodeValue=node._zh; delete node._zh; } }
+  });
+  document.querySelectorAll('[placeholder]').forEach(el=>{
+    const key=(el.getAttribute('placeholder')||'').trim();
+    if(en){ if(el._zhPh===undefined && LANG_EN[key]!==undefined){ el._zhPh=el.getAttribute('placeholder'); el.setAttribute('placeholder',LANG_EN[key]); } }
+    else { if(el._zhPh!==undefined){ el.setAttribute('placeholder',el._zhPh); delete el._zhPh; } }
+  });
+  const tg=document.getElementById('langToggle'); if(tg)tg.textContent=en?'中文':'EN';
+  document.documentElement.lang=en?'en':'zh-TW';
+}
+function toggleLang(){ state.settings.lang=curLang()==='en'?'zh':'en'; save(); applyI18n(); toast(curLang()==='en'?'Switched to English (UI shell)':'已切換回中文'); }
 
 /* ============ 導覽 ============ */
 document.querySelectorAll('.nt').forEach(t=>t.onclick=()=>go(t.dataset.sec));
@@ -1060,6 +1121,7 @@ function go(sec){
   if(sec==='advice')renderAdvice();
   if(sec==='connect')renderImportResult();
   if(sec==='smart')renderSmart();
+  if(curLang()==='en')applyI18n();
 }
 function toast(msg){
   const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
@@ -2753,7 +2815,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.22-imaging';
+const APP_VERSION='2026.07.22-i18n';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -2789,6 +2851,7 @@ function init(){
   setupCloudGate();
   setupPWA();
   renderDash();
+  applyI18n();
   setTimeout(maybeDailyAlert,600);
 }
 /* ============ PWA：安裝與離線快取 ============ */
