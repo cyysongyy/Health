@@ -905,6 +905,10 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <button class="btn bg" onclick="fbSignUp()">🆕 註冊新帳號</button>
       <button class="btn bg" id="fbSignOutBtn" onclick="fbSignOut()" style="display:none;">🚪 登出</button>
     </div>
+    <div class="row-btn" style="margin-top:6px;">
+      <button class="btn bg" style="font-size:.8rem;" onclick="fbDiag()">🔍 診斷連線</button>
+    </div>
+    <div class="hint" style="margin-top:6px;">登入失敗時按「🔍 診斷連線」，會直接測試能不能連到 Firebase 並顯示真正原因。</div>
     <label style="display:flex;align-items:center;gap:6px;font-size:.82rem;margin:10px 0 8px;"><input type="checkbox" id="set-autosync"> 存為紀錄點時自動同步雲端</label>
     <div class="row-btn">
       <button class="btn bp" onclick="fbPush()">⬆️ 上傳全部到雲端</button>
@@ -2948,7 +2952,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.22-nhilab-cleanup';
+const APP_VERSION='2026.07.22-fb-diag';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -3069,9 +3073,32 @@ function fbErr(e){
   const m={'auth/invalid-email':'Email 格式不正確','auth/missing-password':'請輸入密碼',
     'auth/weak-password':'密碼太弱（至少 6 碼）','auth/email-already-in-use':'此 Email 已註冊，請改用「登入」',
     'auth/user-not-found':'查無此帳號，請先「註冊新帳號」','auth/wrong-password':'密碼錯誤',
-    'auth/invalid-credential':'帳號或密碼錯誤','auth/network-request-failed':'網路連線失敗',
+    'auth/invalid-credential':'帳號或密碼錯誤','auth/network-request-failed':'網路連線失敗（連不到 Firebase）',
+    'auth/too-many-requests':'嘗試次數過多，請稍後再試','auth/api-key-not-valid':'Firebase API 金鑰無效',
     'auth/operation-not-allowed':'尚未在 Firebase 啟用「電子郵件/密碼」登入方式'};
-  return (e&&(m[e.code]||e.message))||'未知錯誤';
+  const base=(e&&(m[e.code]||e.message))||'未知錯誤';
+  return base+(e&&e.code?'（'+e.code+'）':'');   // 附上原始錯誤碼，方便診斷
+}
+// Firebase 連線自我診斷：直接打 Auth 端點，回報實際狀況
+async function fbDiag(){
+  fbMsg('診斷中…',true);
+  const cfg=fbGetConfig();
+  const out=[];
+  out.push('網路：'+(navigator.onLine?'線上':'離線'));
+  out.push('Firebase 元件：'+(typeof firebase==='undefined'?'未載入 ❌':'已載入 ✅'));
+  try{
+    const url='https://identitytoolkit.googleapis.com/v1/accounts:signUp?key='+cfg.apiKey;
+    const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({returnSecureToken:true})});
+    const j=await r.json().catch(()=>({}));
+    out.push('Auth 端點 HTTP '+r.status);
+    if(j&&j.error&&j.error.message)out.push('回應：'+j.error.message);
+    // MISSING_EMAIL / MISSING_PASSWORD 代表「連得到、只是沒帶帳密」→ 網路 OK
+    if(r.ok||/MISSING_|EMAIL|PASSWORD|WEAK/.test((j.error&&j.error.message)||''))out.push('✅ 連得到 Firebase！網路沒問題，請直接註冊/登入。');
+    else if(/API_KEY|PERMISSION|referer|blocked|FORBIDDEN/i.test((j.error&&j.error.message)||''))out.push('⚠️ 是金鑰／來源限制被擋，不是你的網路。');
+    else out.push('⚠️ 端點有回應但不是預期，狀態碼如上。');
+  }catch(err){ out.push('❌ 連不到 Auth 端點：'+(err.message||err)+'（多半是內容阻擋器／VPN／該網路擋 Google，請換網路或關閉阻擋器）'); }
+  fbMsg(out.join('｜'),/✅ 連得到/.test(out.join('')));
+  alert('🔍 Firebase 連線診斷\n\n'+out.join('\n'));
 }
 function fbClean(o){try{return JSON.parse(JSON.stringify(o));}catch(e){return o;}}
 // 內建預設 Firebase 設定（已實測可用）；使用者可於設定欄自訂覆蓋
