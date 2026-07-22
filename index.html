@@ -2934,7 +2934,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.22-labcheck';
+const APP_VERSION='2026.07.22-reimport-refresh';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -3287,6 +3287,7 @@ async function handleImport(e,kind){
       }catch(err){ failed++; /* 該檔無法解析 */ }
     });
     // 健保帶日期的檢驗紀錄 → 直接併入檢驗數據庫（依原始日期）
+    if(records.length)state.labs=(state.labs||[]).filter(e=>e.source!=='nhi');   // 健保為完整快照：重匯時汰換舊的健保檢驗，避免舊誤值遮蓋
     const addedRec=records.length?ingestLabRecords(records,'nhi'):0;
     const addedMed=meds.length?ingestMeds(meds,'nhi'):0;
     const addedSur=surs.length?ingestSurgeries(surs,'nhi'):0;
@@ -3533,6 +3534,7 @@ async function handleTextImport(kind){
       const parsed=(kind==='nhi')?parseNHI(text):parseAppFile(text,'paste.json');
       if(parsed&&parsed.fields&&Object.keys(parsed.fields).length){fields=parsed.fields;notes=parsed.notes||[];}
       if(kind==='nhi'){
+        if(parsed&&parsed.records&&parsed.records.length)state.labs=(state.labs||[]).filter(e=>e.source!=='nhi');
         const addedRec=(parsed&&parsed.records&&parsed.records.length)?ingestLabRecords(parsed.records,'nhi'):0;
         let addedMed=0,addedSur=0,addedRpt=0; try{ const j=jsonParseLenient(text); addedMed=ingestMeds(parseMeds(j),'nhi'); const bd=nhiBankData(j); if(bd){addedSur=ingestSurgeries(parseBankSurgeries(bd),'nhi');addedRpt=ingestReports(parseBankReports(bd),'nhi');} }catch(e){}
         if(addedRec){notes=notes||[];notes.unshift('✅ 已將 '+addedRec+' 筆檢驗紀錄加入檢驗數據庫');}
