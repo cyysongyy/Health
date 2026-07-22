@@ -720,6 +720,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
     <div class="card"><div class="ct">🧪 檢驗重點 <span class="hint">異常與趨勢</span></div><div id="repLabs"></div></div>
     <div class="card"><div class="ct">💊 用藥概況 <span class="hint">近 90 天</span></div><div id="repMeds"></div></div>
     <div class="card"><div class="ct">🔧 手術／處置史</div><div id="repSurgery"></div></div>
+    <div class="card"><div class="ct">🧭 交叉分析與預警 <span class="hint">影像×用藥×檢驗，附依據與建議</span></div><div id="repCross"></div></div>
     <div class="card"><div class="ct">🔗 交叉洞察 <span class="hint">資料互相關聯（含用藥×檢驗）</span></div><div id="repInsights"></div></div>
     <div class="card"><div class="ct">✅ 優先行動建議 <span class="hint">可一鍵加為每日習慣</span></div><div id="repActions"></div></div>
     <div class="card"><div class="ct">📅 健康時間軸 <span class="hint">紀錄點＋檢驗合併</span></div><div id="repTimeline"></div></div>
@@ -1557,12 +1558,13 @@ function refreshCurrentView(){
   else if(id==='advice')renderAdvice(); else if(id==='smart')renderSmart();
 }
 /* ---- 主動提醒 / 紅旗待辦 ---- */
+function labDateStr(x){ return x&&x.date?new Date(x.date).toLocaleDateString('zh-TW'):''; }
 function buildReminders(){
   const out=[],now=Date.now(),L=labLatest(),r=state.result;
   const push=(lvl,icon,text)=>out.push({lvl,icon,text});
-  LAB_ORDER.forEach(k=>{if(L[k]==null)return;if(labFlag(k,L[k].v)==='crit')push('crit','🚨',`${LAB_META[k].label} ${L[k].v}${LAB_META[k].unit} 為嚴重異常，建議儘速就醫。`);});
+  LAB_ORDER.forEach(k=>{if(L[k]==null)return;if(labFlag(k,L[k].v)==='crit'){const d=labDateStr(L[k]);push('crit','🚨',`${LAB_META[k].label} ${L[k].v}${LAB_META[k].unit} 為嚴重異常${d?`（檢驗日 ${d}）`:''}，建議儘速就醫。`);}});
   const highs=LAB_ORDER.filter(k=>L[k]!=null&&labFlag(k,L[k].v)==='high');
-  if(highs.length)push('warn','⚠️',`有 ${highs.length} 項檢驗偏高：${highs.slice(0,5).map(k=>LAB_META[k].label).join('、')}${highs.length>5?'…':''}，建議追蹤。`);
+  if(highs.length)push('warn','⚠️',`有 ${highs.length} 項檢驗偏高：${highs.slice(0,5).map(k=>LAB_META[k].label+(labDateStr(L[k])?` ${L[k].v}（${labDateStr(L[k])}）`:'')).join('、')}${highs.length>5?'…':''}，建議追蹤。`);
   const worse=LAB_ORDER.filter(m=>{const st=labStats(m);return st&&st.n>=2&&st.dir==='worse';});
   if(worse.length)push('warn','📈',`惡化趨勢：${worse.map(k=>LAB_META[k].label).join('、')}，需留意。`);
   if(r){if(r.risks.cvd.level==='vhigh')push('warn','❤️','心血管風險評為極高，建議諮詢醫師並積極改善可修正因子。');if(r.risks.dm.level==='vhigh')push('warn','🩸','糖尿病風險評為極高，建議檢查糖化血色素並控糖。');}
@@ -1583,13 +1585,50 @@ function renderReminders(){
     `<div class="row-btn" style="margin-top:10px;">${checkBtn}</div></div>`;
 }
 /* ============ 健康警戒系統（彈出提醒＋解決之道，可每日自動） ============ */
+/* 跨資料交叉分析引擎：把檢驗×用藥×影像病理×手術串起來找早期警訊 */
+const IMG_FLAG_RX=/\b(mass|nodule|lesion|tumou?r|cyst|suspicious|carcinoma|malignan|metasta|neoplasm|polyp|effusion|calculus|stone|stenosis|obstruct|aneurysm)\b|腫瘤|腫塊|結節|囊腫|病灶|疑似|惡性|息肉|結石|積水|積液|鈣化|陰影|狹窄|阻塞|動脈瘤|增生/i;
+function crossFindings(){
+  const F=[],L=labLatest(),now=Date.now();
+  const push=(lvl,icon,title,detail,evidence,action)=>F.push({lvl,icon,title,detail,evidence,action});
+  const latestLabT=key=>{const a=(state.labs||[]).filter(e=>e.values&&e.values[key]!=null).map(e=>new Date(e.date).getTime());return a.length?Math.max.apply(null,a):null;};
+  const daysAgo=t=>t?Math.floor((now-t)/864e5):Infinity;
+  // 1) 影像／病理紅旗：報告內含需追蹤的字眼
+  (state.reports||[]).forEach(r=>{
+    const txt=(r.findings||'')+' '+(r.findingsZh||''); const m=txt.match(IMG_FLAG_RX); if(!m)return;
+    const d=r.date?new Date(r.date).toLocaleDateString('zh-TW'):'';
+    push('warn','🩻','影像／病理發現需追蹤：'+r.name,(r.findingsZh||r.findings||'').slice(0,90),'關鍵字「'+m[0]+'」・'+d,'建議回診請醫師確認此發現是否需進一步檢查或定期追蹤（本比對僅為關鍵字提示，非診斷）。');
+  });
+  // 2) 照護缺口：長期用藥但缺近期對應監測
+  const cls=medClasses(200);
+  const gap=(key,labs,months,cnName,cnLab)=>{ if(!cls[key])return;
+    const t=Math.max.apply(null,labs.map(k=>latestLabT(k)||0)); const dd=t?daysAgo(t):Infinity;
+    if(dd>months*30)push('warn','⏰','照護缺口：'+cnName+'缺近期追蹤',(isFinite(dd)?'已約 '+dd+' 天':'查無紀錄')+'未檢查'+cnLab+'，但目前有在服用'+cnName+'。','用藥 × '+cnLab+' 追蹤間隔','安排一次'+cnLab+'檢查，確認治療是否達標、有無副作用。');
+  };
+  gap('dm',['hba1c','glucose'],6,'糖尿病用藥','糖化血色素／血糖');
+  gap('statin',['ldl','chol','tg'],12,'降血脂用藥','血脂');
+  gap('bp',['sbp'],12,'降血壓用藥','血壓');
+  // 3) 長期慢性用藥但久未追蹤腎功能
+  if(cls.dm||cls.bp||cls.statin||cls.uricLowering){
+    const t=Math.max(latestLabT('egfr')||0,latestLabT('cr')||0)||null; const dd=t?daysAgo(t):Infinity;
+    if(dd>365)push('info','🫘','長期用藥建議追蹤腎功能',(isFinite(dd)?'已約 '+dd+' 天':'查無紀錄')+'未檢查腎功能（eGFR／肌酸酐）。','慢性用藥 × 腎功能','多數慢性病用藥需定期監測腎功能，建議至少一年一次。');
+  }
+  const rank={crit:0,warn:1,info:2};
+  F.sort((a,b)=>rank[a.lvl]-rank[b.lvl]);
+  return F;
+}
+function renderCrossFindings(){
+  const el=document.getElementById('repCross'); if(!el)return;
+  const F=crossFindings();
+  const col={crit:'var(--err)',warn:'var(--warn)',info:'var(--acc)'};
+  el.innerHTML=F.length?F.map(f=>`<div class="rec" style="border-left-color:${col[f.lvl]};background:${f.lvl==='crit'?'#fef2f2':f.lvl==='warn'?'#fffbeb':'#f0f9ff'};"><div class="rec-icon">${f.icon}</div><div class="rec-body"><div class="rec-title">${esc(f.title)}</div><div class="rec-desc">${esc(f.detail)}</div><div class="rec-gain">🔗 依據：${esc(f.evidence)}　·　💡 ${esc(f.action)}</div></div></div>`).join(''):'<div class="hint" style="color:var(--ok);font-weight:600;">✅ 交叉比對目前未發現需要注意的跨資料訊號（檢驗×用藥×影像）。</div>';
+}
 function buildHealthAlerts(){
   const A=[],L=labLatest(),r=state.result,p=state.profile||{},now=Date.now();
   const push=(lvl,icon,title,detail,solution)=>A.push({lvl,icon,title,detail,solution});
   const v=k=>L[k]!=null?parseFloat(L[k].v):null;
-  LAB_ORDER.forEach(k=>{if(L[k]==null)return;if(labFlag(k,L[k].v)==='crit')push('crit','🚨',LAB_META[k].label+' 嚴重異常',`最新 ${L[k].v}${LAB_META[k].unit}，已達嚴重範圍。`,'儘速就醫或回診，攜帶此數據給醫師；請勿自行處理。');});
+  LAB_ORDER.forEach(k=>{if(L[k]==null)return;if(labFlag(k,L[k].v)==='crit'){const d=labDateStr(L[k]);push('crit','🚨',LAB_META[k].label+' 嚴重異常'+(d?'（'+d+'）':''),`最新 ${L[k].v}${LAB_META[k].unit}${d?'（檢驗日 '+d+'）':''}，已達嚴重範圍。`,'儘速就醫或回診，攜帶此數據給醫師；請勿自行處理。');}});
   const highs=LAB_ORDER.filter(k=>L[k]!=null&&labFlag(k,L[k].v)==='high');
-  if(highs.length)push(highs.length>=3?'crit':'warn','⚠️',highs.length+' 項檢驗過高',highs.slice(0,6).map(k=>LAB_META[k].label+' '+L[k].v).join('、')+(highs.length>6?'…':''),'安排回診追蹤；針對偏高項目調整飲食與運動，必要時與醫師討論用藥。');
+  if(highs.length)push(highs.length>=3?'crit':'warn','⚠️',highs.length+' 項檢驗過高',highs.slice(0,6).map(k=>LAB_META[k].label+' '+L[k].v+(labDateStr(L[k])?'（'+labDateStr(L[k])+'）':'')).join('、')+(highs.length>6?'…':''),'安排回診追蹤；針對偏高項目調整飲食與運動，必要時與醫師討論用藥。');
   const worse=LAB_ORDER.filter(m=>{const st=labStats(m);return st&&st.n>=2&&st.dir==='worse';});
   if(worse.length)push('warn','📈','惡化趨勢 '+worse.length+' 項',worse.map(k=>LAB_META[k].label).join('、')+' 較先前變差。','檢視近 1–3 個月生活型態改變，並固定週期複檢觀察走向。');
   if(r){if(r.risks.cvd.level==='vhigh')push('warn','❤️','心血管風險極高','綜合評估屬極高風險族群。','積極控制血壓／血脂／血糖並戒菸，與醫師討論預防策略。');
@@ -1602,6 +1641,9 @@ function buildHealthAlerts(){
   if(uniq>=5)push('warn','⚠️','多重用藥（'+uniq+' 種）','近 90 天用藥種類較多，交互作用與副作用風險上升。','就醫時出示完整用藥清單，請醫師或藥師檢視是否可精簡。');
   const dates=[];(state.labs||[]).forEach(e=>dates.push(new Date(e.date).getTime()));(state.history||[]).forEach(s=>dates.push(new Date(s.date).getTime()));
   if(dates.length){const d=Math.floor((now-Math.max.apply(null,dates))/864e5);if(d>=120)push('info','⏰','已 '+d+' 天未更新資料','距上次檢驗／評估已久，分析可能失準。','安排一次抽血或健康評估以更新資料。');}
+  // 跨資料交叉訊號（影像紅旗、照護缺口…）併入警戒
+  const titles=new Set(A.map(x=>x.title));
+  crossFindings().forEach(f=>{ if(titles.has(f.title))return; titles.add(f.title); push(f.lvl,f.icon,f.title,f.detail,f.action); });
   const rank={crit:0,warn:1,info:2};
   A.sort((a,b)=>rank[a.lvl]-rank[b.lvl]);
   return A;
@@ -1688,6 +1730,7 @@ function renderReport(){
   // 用藥概況
   renderRepMeds();
   renderRepSurgery();
+  renderCrossFindings();
   // 交叉洞察
   const ins=crossInsights(L,r,p);
   document.getElementById('repInsights').innerHTML=ins.length?ins.map(i=>`<div class="rec p${i.pri||2}"><div class="rec-icon">${i.icon||'🔗'}</div><div class="rec-body"><div class="rec-desc">${i.text}</div></div></div>`).join(''):'<div class="hint">目前各項資料之間未發現明顯的異常關聯。</div>';
@@ -1786,6 +1829,8 @@ function buildDigestText(){
   const days=14,hb={};HABITS.forEach(h=>hb[h.id]=0);
   for(let i=0;i<days;i++){const key=new Date(Date.now()-i*86400000).toISOString().slice(0,10);if(state.habits[key])HABITS.forEach(h=>{if(state.habits[key][h.id])hb[h.id]++;});}
   t+='\n【近'+days+'天習慣達成】\n'+HABITS.map(h=>`${h.name}:${hb[h.id]}/${days}`).join('、')+'\n';
+  const cf=crossFindings();
+  if(cf.length){t+='\n【交叉分析警訊】\n'+cf.map(f=>'・'+f.title+'：'+f.detail+'（'+f.action+'）').join('\n')+'\n';}
   return t;
 }
 async function aiReport(){
@@ -2260,32 +2305,42 @@ function parseBankMeds(bd){
   return meds;
 }
 function parseBankLabs(bd){
-  const fields={},byDate={};
-  const isDate8=s=>/^\d{8}$/.test(s)&&+s.slice(0,4)>=1990&&+s.slice(0,4)<=2100;
-  Object.keys(bd).filter(k=>/^r\d+$/.test(k)).forEach(vk=>{
-    const rows=bd[vk]; if(!Array.isArray(rows)||!rows.length)return;
-    // 先蒐集這個區段的候選檢驗列，再用「命中比例」判斷此區段是否為檢驗結果區（避免把門診診斷＋費用誤判成檢驗）
+  const byDate={};
+  const sufOf=k=>{const m=String(k).match(/\.(\d+)$/);return m?+m[1]:0;};
+  const isDateStr=s=>/^\d{7,8}$/.test(s)&&!!parseFlexDate(s);
+  Object.keys(bd).filter(k=>/^r\d+$/.test(k)).forEach(sec=>{
+    const rows=bd[sec]; if(!Array.isArray(rows)||!rows.length)return;
     const hits=[];
     rows.forEach(row=>{
       if(!row||typeof row!=='object')return;
-      const scalars=Object.keys(row).sort().map(k=>row[k]==null?'':String(row[k]).trim());
-      let key=null,val=null,date=null;
-      for(const s of scalars){ if(!key){const kk=bankLabKey(s); if(kk)key=kk;} }
+      const entries=Object.keys(row).filter(k=>typeof row[k]==='string'||typeof row[k]==='number')
+        .map(k=>({suf:sufOf(k),v:String(row[k]==null?'':row[k]).trim()})).filter(e=>e.v!=='');
+      // 檢驗名稱欄（可對應到 LAB_META 的中／英名稱）
+      let nameE=null,key=null;
+      for(const e of entries){ const kk=bankLabKey(e.v); if(kk){key=kk;nameE=e;break;} }
       if(!key)return;
-      for(const s of scalars){ if(val==null&&!isDate8(s)){const n=toNum(s); if(n!==null&&/^\s*[<>]?\s*-?\d/.test(s)&&s.replace(/[^\d]/g,'').length<=6&&bankLabInRange(key,n))val=n;} }
-      if(val==null)return;   // 值需落在該檢驗的合理生理範圍，否則多半是費用／代碼誤判
-      for(const s of scalars){ if(isDate8(s)){const d=parseFlexDate(s); if(d){date=d;break;}} }
+      // 檢驗值：名稱欄「之後」的第一個落在生理範圍的數值 → 避開前段的區碼/院所/代碼（如區碼「4」）
+      let val=null;
+      entries.filter(e=>e.suf>nameE.suf).sort((a,b)=>a.suf-b.suf).some(e=>{
+        if(isDateStr(e.v))return false;                        // 跳過日期
+        const n=toNum(e.v);
+        if(n!==null && /^\s*[<>]?\s*-?\d/.test(e.v) && e.v.replace(/[^\d.]/g,'').length<=7 && bankLabInRange(key,n)){ val=n; return true; }
+        return false;
+      });
+      if(val==null)return;
+      // 日期：採用健保原始日期（該次就醫／採檢日 .5，或報告日 .6），支援西元與民國年
+      let date=parseFlexDate(row[sec+'.5'])||parseFlexDate(row[sec+'.6']);
+      if(!date){ for(const e of entries.slice().sort((a,b)=>a.suf-b.suf)){ if(isDateStr(e.v)){ date=parseFlexDate(e.v); break; } } }
       hits.push({key,val,date});
     });
-    // 至少要有數列命中，才視為檢驗結果區（避免門診診斷偶發命中）
-    if(hits.length<3)return;
+    if(hits.length<3)return;   // 命中太少不視為檢驗結果區
     hits.forEach(({key,val,date})=>{
       const iso=date||new Date().toISOString(); const dk=iso.slice(0,10);
       (byDate[dk]=byDate[dk]||{date:iso,values:{}}).values[key]=val;
-      pushField(fields,key,val);
     });
   });
   const records=Object.values(byDate).sort((a,b)=>new Date(a.date)-new Date(b.date));
+  const fields={}; records.forEach(r=>Object.assign(fields,r.values));   // 最新一筆（依日期）帶入表單
   return {fields,records};
 }
 // 手術／處置名稱關鍵字（健保醫療類的手術名稱多以「術」結尾或含這些動詞）
@@ -2846,7 +2901,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.22-meds-group';
+const APP_VERSION='2026.07.22-lab-fix';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
