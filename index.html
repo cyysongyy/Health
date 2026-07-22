@@ -2952,7 +2952,7 @@ function saveSettings(){
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
-const APP_VERSION='2026.07.22-fb-diag';
+const APP_VERSION='2026.07.22-fb-diag2';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -3155,7 +3155,7 @@ async function fbSignIn(){
   if(!email||!pw){fbMsg('請輸入 Email 與密碼',false);return;}
   fbMsg('登入中…',true);
   try{await fbAuth.signInWithEmailAndPassword(email,pw);fbMsg('✅ 已登入：'+email,true);}
-  catch(e){fbMsg('⚠️ '+fbErr(e),false);}
+  catch(e){fbMsg('⚠️ '+fbErr(e),false); if(e&&e.code==='auth/network-request-failed')fbDiag();}
 }
 async function fbSignUp(){
   fbSaveConfigFromInput();
@@ -3166,7 +3166,7 @@ async function fbSignUp(){
   if(pw.length<6){fbMsg('密碼至少 6 碼',false);return;}
   fbMsg('建立帳號中…',true);
   try{await fbAuth.createUserWithEmailAndPassword(email,pw);fbMsg('✅ 已建立帳號並登入：'+email,true);}
-  catch(e){fbMsg('⚠️ '+fbErr(e),false);}
+  catch(e){fbMsg('⚠️ '+fbErr(e),false); if(e&&e.code==='auth/network-request-failed')fbDiag();}
 }
 async function fbSignOut(){
   if(fbAuth){try{await fbAuth.signOut();}catch(e){}}
