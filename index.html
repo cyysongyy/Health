@@ -594,7 +594,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== MEDICAL-GRADE SCORES ========== -->
 <div class="sec" id="sec-medscore">
-  <div class="disc" style="border-left:3px solid var(--pri);">🩺 <b>醫療級評估：</b>採用國際實證、臨床實際使用的風險模型（ASCVD Pooled Cohort Equations、FINDRISC、CKD-EPI 2021、FIB-4、脂肪肝指數、代謝症候群準則），依你的個人資料與最新檢驗值精算。<b>仍為衛教與自我管理參考、非醫療診斷</b>；模型多源自歐美族群，套用於台灣人可能高估或低估，實際判讀請以醫師為準。</div>
+  <div class="disc" style="border-left:3px solid var(--pri);">🩺 <b>醫療級評估：</b>採用國際實證、臨床實際使用的風險模型（ASCVD Pooled Cohort Equations、FINDRISC、CKD-EPI 2021、FIB-4、脂肪肝指數、代謝症候群準則、TyG 胰島素阻抗指數、血脂比值/非-HDL-C、AHA Life’s Essential 8 心血管健康總分），依你的個人資料與最新檢驗值精算。<b>仍為衛教與自我管理參考、非醫療診斷</b>；模型多源自歐美族群，套用於台灣人可能高估或低估，實際判讀請以醫師為準。</div>
   <div id="medscoreBody"></div>
 </div>
 
@@ -3664,7 +3664,7 @@ function medInputs(){
     sbp:v('sbp')!=null?v('sbp'):num(p.sbp), dbp:v('dbp')!=null?v('dbp'):num(p.dbp),
     glucose:v('glucose')!=null?v('glucose'):num(p.glucose), hba1c:v('hba1c'),
     scr:v('cr'), ast:v('ast'), alt:v('alt'), plt:v('plt'), ggt:v('ggt'),
-    smoker:p.smoke==='current', exercise:num(p.exercise), diet:num(p.diet), fhDiabetes:!!p.fhDiabetes,
+    smoker:p.smoke==='current', smoke:p.smoke||null, sleep:num(p.sleep), exercise:num(p.exercise), diet:num(p.diet), fhDiabetes:!!p.fhDiabetes,
     onBpMed:!!cls.bp, onDmMed:!!cls.dm,
     diabetes:(v('hba1c')!=null&&v('hba1c')>=6.5)||(v('glucose')!=null&&v('glucose')>=126)||!!cls.dm
   };
@@ -3703,6 +3703,32 @@ function calcCKDEPI(I){
   const e=Math.round(142*Math.pow(Math.min(scr/k,1),a)*Math.pow(Math.max(scr/k,1),-1.200)*Math.pow(0.9938,age)*(sex==='female'?1.012:1));
   const st= e>=90?['G1 正常/偏高','var(--ok)']: e>=60?['G2 輕度下降','var(--ok)']: e>=45?['G3a 輕–中度','var(--warn)']: e>=30?['G3b 中–重度','var(--warn)']: e>=15?['G4 重度','var(--err)']:['G5 腎衰竭','var(--err)'];
   return {egfr:e,stage:st};
+}
+// TyG 指數（胰島素阻抗替代指標）：ln[空腹三酸甘油酯(mg/dL) × 空腹血糖(mg/dL) / 2]
+function calcTyG(I){ return +Math.log(I.tg*I.glucose/2).toFixed(2); }
+// Life's Essential 8（AHA 2022 心血管健康總分）：8 項各 0–100，取可得項平均
+function calcLE8(I){
+  const C=[]; const add=(name,pts,detail)=>{ if(pts!=null)C.push({name,pts,detail}); };
+  // 1 飲食（自評 1–5 近似對映 DASH 分位）
+  if(I.diet!=null)add('飲食',[0,0,25,50,80,100][I.diet]??50,'自評品質');
+  // 2 身體活動（分鐘/週 MVPA）
+  if(I.exercise!=null)add('身體活動',I.exercise>=150?100:I.exercise>=120?90:I.exercise>=90?80:I.exercise>=60?60:I.exercise>=30?40:I.exercise>=1?20:0,I.exercise+' 分/週');
+  // 3 尼古丁暴露
+  if(I.smoke)add('菸品暴露',I.smoke==='never'?100:I.smoke==='former'?75:0,I.smoke==='never'?'不吸菸':I.smoke==='former'?'已戒菸':'吸菸中');
+  // 4 睡眠（小時/日）
+  if(I.sleep!=null){const s=I.sleep;add('睡眠',(s>=7&&s<9)?100:(s>=9&&s<10)?90:(s>=6&&s<7)?70:((s>=5&&s<6)||s>=10)?40:(s>=4&&s<5)?20:0,s+' 小時');}
+  // 5 BMI
+  if(I.bmi!=null)add('體重 BMI',I.bmi<25?100:I.bmi<30?70:I.bmi<35?30:I.bmi<40?15:0,'BMI '+I.bmi);
+  // 6 血脂（非-HDL-C）
+  if(I.tc!=null&&I.hdl!=null){const nh=I.tc-I.hdl;add('血脂',nh<130?100:nh<160?60:nh<190?40:nh<220?20:0,'非-HDL '+nh);}
+  // 7 血糖（優先 HbA1c）
+  if(I.hba1c!=null){const a=I.hba1c;add('血糖',(!I.diabetes&&a<5.7)?100:(!I.diabetes&&a<6.5)?60:a<7?40:a<8?30:a<9?20:a<10?10:0,'HbA1c '+a+'%');}
+  else if(I.glucose!=null)add('血糖',(!I.diabetes&&I.glucose<100)?100:(!I.diabetes&&I.glucose<126)?60:40,'空腹 '+I.glucose);
+  // 8 血壓（治療中扣 20）
+  if(I.sbp!=null&&I.dbp!=null){let bp=(I.sbp<120&&I.dbp<80)?100:(I.sbp<130&&I.dbp<80)?75:((I.sbp<140)||(I.dbp<90))?50:((I.sbp<160)||(I.dbp<100))?25:0; if(I.onBpMed)bp=Math.max(0,bp-20); add('血壓',bp,I.sbp+'/'+I.dbp);}
+  if(C.length<4)return null;
+  const score=Math.round(C.reduce((s,x)=>s+x.pts,0)/C.length);
+  return {score,C};
 }
 function renderMedScore(){
   const el=document.getElementById('medscoreBody'); if(!el)return;
@@ -3773,9 +3799,43 @@ function renderMedScore(){
         (n>=3?`<div style="font-size:.82rem;margin-top:6px;">代謝症候群使心血管與糖尿病風險上升，整體生活型態介入（減重、運動、地中海飲食）最有效。</div>`:'')));
     }else cards.push(miss('🔥','代謝症候群','NCEP ATP III（亞洲切點）','腰圍、血脂、血壓、血糖等至少 3 項'));
   }
-  el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
+  // 7) TyG 指數（胰島素阻抗）
+  if(I.tg&&I.glucose){
+    const t=calcTyG(I);
+    const c= t<8.5?['正常（胰島素敏感）','var(--ok)']: t<8.8?['邊緣偏高','var(--warn)']:['偏高（胰島素阻抗可能）','var(--err)'];
+    cards.push(box('🍬','胰島素阻抗 TyG 指數','TyG Index（三酸甘油酯–血糖指數）',
+      big(t,c[1])+`<div style="font-weight:800;color:${c[1]};margin-top:4px;">${c[0]}</div>`+
+      `<div style="font-size:.82rem;margin-top:6px;line-height:1.6;">由三酸甘油酯與空腹血糖計算，是胰島素阻抗的替代指標，與糖尿病、脂肪肝、心血管風險相關。${t>=8.8?'偏高：減糖、減重與規律運動可改善胰島素敏感度。':'維持目前良好代謝狀態。'}</div>`+
+      `<div class="hint" style="margin-top:8px;">採用：三酸甘油酯 ${I.tg}・空腹血糖 ${I.glucose}（切點依文獻約 8.5–8.8，族群略有差異）</div>`));
+  }else cards.push(miss('🍬','胰島素阻抗 TyG 指數','TyG Index',[!I.tg?'三酸甘油酯':'',!I.glucose?'空腹血糖':''].filter(Boolean).join('、')));
+  // 8) 血脂比值 / 非-HDL-C
+  if(I.tc!=null&&I.hdl!=null){
+    const nonHDL=I.tc-I.hdl, tchdl=+(I.tc/I.hdl).toFixed(1), tghdl=I.tg!=null?+(I.tg/I.hdl).toFixed(1):null;
+    const nc= nonHDL<130?['理想','var(--ok)']: nonHDL<160?['邊緣','var(--warn)']:['偏高','var(--err)'];
+    const rc= tchdl<3.5?['理想','var(--ok)']: tchdl<5?['尚可','var(--warn)']:['偏高','var(--err)'];
+    cards.push(box('🧪','血脂比值與非-HDL 膽固醇','Non-HDL-C ＋ 動脈硬化血脂比值',
+      big(nonHDL+' <span style="font-size:.9rem;">mg/dL</span>',nc[1])+`<div style="font-weight:800;color:${nc[1]};margin-top:4px;">非-HDL-C：${nc[0]}（一般目標 <130，高風險 <100）</div>`+
+      `<div style="font-size:.82rem;margin-top:8px;line-height:1.9;">總膽固醇/HDL 比值：<b style="color:${rc[1]};">${tchdl}</b>（<3.5 理想）${tghdl!=null?`<br>三酸甘油酯/HDL 比值：<b>${tghdl}</b>（≥3 可能為胰島素阻抗、小而密 LDL）`:''}</div>`+
+      `<div style="font-size:.82rem;margin-top:6px;line-height:1.6;">非-HDL-C＝總膽固醇−HDL，涵蓋所有致動脈硬化的膽固醇，比單看 LDL 更能反映風險。</div>`+
+      `<div class="hint" style="margin-top:8px;">採用：總膽固醇 ${I.tc}・HDL ${I.hdl}${I.tg!=null?'・三酸甘油酯 '+I.tg:''}</div>`));
+  }else cards.push(miss('🧪','血脂比值與非-HDL 膽固醇','Non-HDL-C ＋ 血脂比值',[!I.tc?'總膽固醇':'',!I.hdl?'HDL':''].filter(Boolean).join('、')));
+  // 9) Life's Essential 8
+  {
+    const le=calcLE8(I);
+    if(le){
+      const c= le.score>=80?['理想的心血管健康','var(--ok)']: le.score>=50?['中等，仍有進步空間','var(--warn)']:['偏低，建議積極改善','var(--err)'];
+      const bars=le.C.map(x=>{const col=x.pts>=80?'var(--ok)':x.pts>=50?'var(--warn)':'var(--err)';
+        return `<div style="display:flex;align-items:center;gap:8px;margin:3px 0;font-size:.8rem;"><span style="min-width:64px;">${x.name}</span><span style="flex:1;height:8px;background:var(--g100);border-radius:5px;overflow:hidden;"><span style="display:block;height:100%;width:${x.pts}%;background:${col};"></span></span><span style="min-width:60px;text-align:right;color:${col};font-weight:700;">${x.pts}｜${x.detail}</span></div>`;}).join('');
+      cards.push(box('💚','心血管健康總分 Life’s Essential 8','AHA 2022 Life’s Essential 8（'+le.C.length+'/8 項可得）',
+        big(le.score+' <span style="font-size:.9rem;">/100</span>',c[1])+`<div style="font-weight:800;color:${c[1]};margin-top:4px;">${c[0]}</div>`+
+        `<div style="margin-top:10px;">${bars}</div>`+
+        `<div style="font-size:.82rem;margin-top:8px;line-height:1.6;">美國心臟協會 2022 年提出的整體心血管健康指標，涵蓋飲食、運動、菸品、睡眠、體重、血脂、血糖、血壓。分數越高、未來心血管與死亡風險越低。從最低分的項目改善，效益最大。</div>`+
+        `<div class="hint" style="margin-top:6px;">飲食為自評近似、血糖/血壓治療中依 AHA 規則調整；補齊各項數據會更準。</div>`));
+    }else cards.push(miss('💚','心血管健康總分 Life’s Essential 8','AHA 2022 Life’s Essential 8','飲食、運動、睡眠、體重、血脂、血糖、血壓等至少 4 項'));
+  }
+  el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.23-fontsize';
+const APP_VERSION='2026.07.23-medscore-plus';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
