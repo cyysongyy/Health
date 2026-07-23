@@ -708,6 +708,9 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <button class="btn bg" id="remindNotifyBtn" onclick="requestNotifyPerm()">🔔 開啟瀏覽器通知</button>
     </div>
     <div id="remindNotifyState" class="hint" style="margin-top:8px;"></div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;margin-top:10px;">
+      <input type="checkbox" id="remindSound" onchange="toggleRemindSound(this.checked)"> 🔊 提醒同時發出聲音（取消勾選＝<b>只跳畫面、不出聲</b>）
+    </label>
   </div>
 
   <div class="card" style="background:#f0fdf4;">
@@ -1244,7 +1247,7 @@ function load(){
   return s;
 }
 function defaults(){
-  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], reminders:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00'}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], reminders:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));}
 
@@ -1885,6 +1888,7 @@ function renderRemind(){
   const a=visitAhead();
   const dEl=document.getElementById('visitAheadDays'); if(dEl)dEl.value=a.days;
   const tEl=document.getElementById('visitAheadTime'); if(tEl)tEl.value=a.time;
+  const sEl=document.getElementById('remindSound'); if(sEl)sEl.checked=(state.settings.remindSilent===false);
   renderRemindDueInto('remindDueCard',true);
   const rems=(state.reminders||[]).slice();
   const cnt=document.getElementById('remindCount'), empty=document.getElementById('remindEmpty'), list=document.getElementById('remindList');
@@ -2193,6 +2197,10 @@ function scanVisitPaste(){
 function addDays(dayKey,delta){ const d=new Date(dayKey+'T00:00:00'); d.setDate(d.getDate()+delta); return localDayKey(d); }
 function visitAhead(){ return {days:(state.settings&&state.settings.visitAheadDays!=null?Math.max(0,+state.settings.visitAheadDays):1),
   time:(state.settings&&state.settings.visitAheadTime)||'07:00'}; }
+function toggleRemindSound(on){
+  state.settings.remindSilent=!on; save();
+  toast(on?'🔊 提醒會發出聲音':'🔕 已設為靜音（只跳畫面）');
+}
 function saveVisitAhead(){
   const dEl=document.getElementById('visitAheadDays'), tEl=document.getElementById('visitAheadTime');
   if(dEl)state.settings.visitAheadDays=Math.max(0,Math.min(14,+dEl.value||0));
@@ -2255,7 +2263,7 @@ function checkDueNotifications(){
   let changed=false;
   due.forEach(x=>{ if(done.has(x.rem.id))return;
     const meta=remTypeMeta(x.rem.type);
-    try{ new Notification(meta.icon+' '+(x.rem.title||meta.label),{body:(x.rem.note||'健康提醒到期了')+(x.rem.time?'（'+x.rem.time+'）':''),tag:x.rem.id}); done.add(x.rem.id); changed=true; }catch(e){}
+    try{ new Notification(meta.icon+' '+(x.rem.title||meta.label),{body:(x.rem.note||'健康提醒到期了')+(x.rem.time?'（'+x.rem.time+'）':''),tag:x.rem.id,silent:state.settings.remindSilent!==false}); done.add(x.rem.id); changed=true; }catch(e){}
   });
   if(changed){try{localStorage.setItem(remNotifiedKey(),JSON.stringify([...done]));}catch(e){}}
 }
@@ -3731,7 +3739,7 @@ function renderMedScore(){
   }
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.23-visit-daybefore';
+const APP_VERSION='2026.07.23-silent-opt';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
