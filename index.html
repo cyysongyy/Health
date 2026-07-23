@@ -2338,6 +2338,44 @@ function crossFindings(){
     const t=Math.max(latestLabT('egfr')||0,latestLabT('cr')||0)||null; const dd=t?daysAgo(t):Infinity;
     if(dd>365)push('info','🫘','長期用藥建議追蹤腎功能',(isFinite(dd)?'已約 '+dd+' 天':'查無紀錄')+'未檢查腎功能（eGFR／肌酸酐）。','慢性用藥 × 腎功能','多數慢性病用藥需定期監測腎功能，建議至少一年一次。');
   }
+  // 4) 藥物 × 檢驗：安全性與治療達標的交叉比對（實證衛教，非診斷）
+  const v=k=>L[k]!=null?parseFloat(L[k].v):null;
+  const p=state.profile||{};
+  const onRx=rx=>recentMeds(200).some(m=>rx.test(m.name||''));
+  const NSAID_RX=/ibuprofen|naproxen|diclofenac|meloxicam|celecoxib|etoricoxib|indomethacin|ketorolac|mefenamic|piroxicam|aceclofenac|dexibuprofen|非類固醇/i;
+  const METF_RX=/metformin/i;
+  let egfr=v('egfr'); if(egfr==null&&v('cr')!=null&&p.sex&&p.age)egfr=calcCKDEPI({sex:p.sex,age:+p.age,scr:v('cr')}).egfr;
+  // NSAID × 腎功能下降
+  if(onRx(NSAID_RX)&&egfr!=null&&egfr<60)
+    push('warn','💊','止痛藥（NSAID）× 腎功能下降','近期有非類固醇消炎止痛藥，而 eGFR 約 '+Math.round(egfr)+'（<60）。','NSAID × eGFR','NSAID 可能加重腎損傷；避免長期／高劑量使用、多補充水分，需長期止痛請與醫師討論替代方案。');
+  // NSAID × 抗凝/抗血小板 併用
+  if(onRx(NSAID_RX)&&cls.antithrombotic)
+    push('warn','💊','止痛藥 × 抗凝／抗血小板併用','同期有 NSAID 與抗凝／抗血小板藥。','NSAID × 抗凝血','兩者併用明顯增加消化道出血風險；如需止痛，建議與醫師討論護胃或改用乙醯胺酚（普拿疼）。');
+  // Metformin × 低 eGFR
+  if(onRx(METF_RX)&&egfr!=null){
+    if(egfr<30)push('crit','💊','Metformin × 腎功能過低','有使用 metformin，而 eGFR 約 '+Math.round(egfr)+'（<30）。','Metformin × eGFR','eGFR<30 通常不建議使用 metformin（乳酸中毒風險），請儘速回診由醫師評估。');
+    else if(egfr<45)push('warn','💊','Metformin × 腎功能下降','有使用 metformin，eGFR 約 '+Math.round(egfr)+'（<45）。','Metformin × eGFR','此範圍常需減量並密切監測腎功能，請與醫師確認劑量。');
+  }
+  // Statin × 肝指數明顯升高
+  if(cls.statin){ const alt=v('alt'),ast=v('ast'); if((alt!=null&&alt>120)||(ast!=null&&ast>120))
+    push('warn','💊','降血脂藥 × 肝指數升高','服用 statin，且 GOT/GPT 偏高（>3 倍上限）。','Statin × 肝功能','多數輕微可逆，但顯著升高需醫師評估是否調整；請勿自行停藥。'); }
+  // 抗凝/抗血小板 × 貧血
+  if(cls.antithrombotic&&v('hb')!=null&&v('hb')<11)
+    push('warn','💊','抗凝／抗血小板 × 貧血','使用抗凝／抗血小板藥，且血紅素 Hb '+v('hb')+' 偏低。','抗凝血 × Hb','貧血合併抗凝需留意慢性出血（如腸胃道）；建議回診評估出血來源、必要時驗糞便潛血。');
+  // 降壓藥（含 ARB/ACEI）× 高血鉀
+  if(cls.bp&&v('k')!=null&&v('k')>5.5)
+    push('warn','💊','降壓藥 × 血鉀偏高','使用降壓藥（部分 ARB/ACEI 會升血鉀），血鉀 '+v('k')+' 偏高。','降壓藥 × K','高血鉀可能影響心律；回診評估用藥，暫避高鉀飲食與含鉀補充劑。');
+  // 降尿酸 × 尿酸未達標
+  if(cls.uricLowering&&v('ua')!=null&&v('ua')>6)
+    push('info','💊','降尿酸治療 × 尿酸未達標','服用降尿酸藥，最新尿酸 '+v('ua')+'（痛風目標常 <6.0）。','降尿酸 × UA','未達標可回診討論劑量，切勿因暫時無症狀而自行停藥。');
+  // 正向：慢性病控制達標（鼓勵維持）
+  {
+    const good=[];
+    if(cls.statin&&v('ldl')!=null&&v('ldl')<100)good.push('LDL '+v('ldl'));
+    if(cls.bp&&v('sbp')!=null&&v('sbp')<130)good.push('收縮壓 '+v('sbp'));
+    if(cls.dm&&v('hba1c')!=null&&v('hba1c')<7)good.push('糖化血色素 '+v('hba1c')+'%');
+    if(good.length>=2)push('info','✅','慢性病控制達標','用藥＋檢驗顯示：'+good.join('、')+' 已達控制目標。','用藥 × 檢驗達標','控制良好，請維持規律服藥與生活型態，並持續定期追蹤。');
+  }
   const rank={crit:0,warn:1,info:2};
   F.sort((a,b)=>rank[a.lvl]-rank[b.lvl]);
   return F;
@@ -2346,7 +2384,11 @@ function renderCrossFindings(){
   const el=document.getElementById('repCross'); if(!el)return;
   const F=crossFindings();
   const col={crit:'var(--err)',warn:'var(--warn)',info:'var(--acc)'};
-  el.innerHTML=F.length?F.map(f=>`<div class="rec" style="border-left-color:${col[f.lvl]};background:${f.lvl==='crit'?'#fef2f2':f.lvl==='warn'?'#fffbeb':'#f0f9ff'};"><div class="rec-icon">${f.icon}</div><div class="rec-body"><div class="rec-title">${esc(f.title)}</div><div class="rec-desc">${esc(f.detail)}</div><div class="rec-gain">🔗 依據：${esc(f.evidence)}　·　💡 ${esc(f.action)}</div></div></div>`).join(''):'<div class="hint" style="color:var(--ok);font-weight:600;">✅ 交叉比對目前未發現需要注意的跨資料訊號（檢驗×用藥×影像）。</div>';
+  const nc=F.filter(f=>f.lvl==='crit').length, nw=F.filter(f=>f.lvl==='warn').length, ni=F.filter(f=>f.lvl==='info').length;
+  const nMed=(state.meds||[]).length, nLab=(state.labs||[]).length, nRep=(state.reports||[]).length;
+  const head=`<div class="hint" style="margin-bottom:8px;line-height:1.6;">已交叉比對 <b>${nLab}</b> 筆檢驗 × <b>${nMed}</b> 筆用藥${nRep?` × <b>${nRep}</b> 份影像/病理`:''}：`+
+    (F.length?`發現 ${nc?`<b style="color:var(--err);">${nc} 緊急</b>・`:''}${nw?`<b style="color:var(--warn);">${nw} 注意</b>・`:''}${ni} 項資訊。以下為<b>藥物×檢驗</b>的安全性與治療達標交叉評估（衛教參考、非診斷）。`:'未發現需注意的跨資料訊號。')+`</div>`;
+  el.innerHTML=head+(F.length?F.map(f=>`<div class="rec" style="border-left-color:${col[f.lvl]};background:${f.lvl==='crit'?'#fef2f2':f.lvl==='warn'?'#fffbeb':'#f0f9ff'};"><div class="rec-icon">${f.icon}</div><div class="rec-body"><div class="rec-title">${esc(f.title)}</div><div class="rec-desc">${esc(f.detail)}</div><div class="rec-gain">🔗 依據：${esc(f.evidence)}　·　💡 ${esc(f.action)}</div></div></div>`).join(''):'<div class="hint" style="color:var(--ok);font-weight:600;">✅ 交叉比對目前未發現需要注意的跨資料訊號（檢驗×用藥×影像）。</div>');
 }
 function buildHealthAlerts(){
   const A=[],L=labLatest(),r=state.result,p=state.profile||{},now=Date.now();
@@ -3963,7 +4005,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.23-medstats';
+const APP_VERSION='2026.07.23-crossmed';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
