@@ -886,6 +886,11 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <div id="medsSummary" class="disc" style="margin-bottom:10px;"></div>
     </div>
     <div class="card">
+      <div class="ct">📊 用藥統計與長期使用評估 <span class="hint">依累計天數排序</span></div>
+      <div class="hint" style="margin-bottom:8px;">每種藥品的出現次數、累計處方天數、使用期間與總量；並就<b>常見長期用藥類別</b>提供衛教提示。以下為<b>參考、非診斷，切勿自行停藥</b>，用藥調整請與醫師／藥師討論。</div>
+      <div id="medsStats"></div>
+    </div>
+    <div class="card">
       <div class="ct">🗂️ 用藥清單 <span class="hint" id="medsListHint">依日期排序（新→舊）</span></div>
       <div class="seg" id="medViewSeg" style="margin-bottom:8px;">
         <div class="seg-btn on" onclick="setMedView('grouped')">📦 依藥品歸併</div>
@@ -3238,6 +3243,60 @@ function medClasses(days){
   const on={}; recentMeds(days).forEach(m=>{const n=m.name||'';Object.keys(MED_CLASS_RX).forEach(c=>{if(MED_CLASS_RX[c].test(n))on[c]=(on[c]||0)+1;});});
   return on;
 }
+// 非藥品（健保行政/處置/檢查等給付項目，非真正藥物）
+const NON_DRUG_RX=/費|服務|治療材料|材料|檢查|保健|副木|掛號|診察|處置|攝影|超音波|照會|諮詢|衛教|技術|申報|部分負擔|注射技術|給藥|預防/;
+function isRealDrug(name){ return !!name && !NON_DRUG_RX.test(name); }
+// 常見「長期使用」藥物類別：watch=需留意；chronic=慢性病用藥（規律使用有益、勿自停）
+const MED_LONGTERM=[
+  {rx:/ibuprofen|naproxen|diclofenac|meloxicam|celecoxib|etoricoxib|indomethacin|ketorolac|mefenamic|piroxicam|aceclofenac|dexibuprofen|非類固醇/i, level:'watch', label:'非類固醇消炎止痛藥（NSAID）', note:'長期使用可能傷胃（潰瘍、出血）、影響腎功能、升高血壓。若需長期止痛，建議與醫師討論護胃或替代方案。'},
+  {rx:/omeprazole|esomeprazole|lansoprazole|pantoprazole|rabeprazole|dexlansoprazole|耐適恩|泰克胃通|質子幫浦/i, level:'watch', label:'胃藥（質子幫浦阻斷劑 PPI）', note:'長期使用與維生素 B12／鎂／鈣吸收下降、骨質流失、腸道感染風險相關。建議定期評估是否仍需長期使用。'},
+  {rx:/diazepam|lorazepam|alprazolam|clonazepam|estazolam|bromazepam|flunitrazepam|zolpidem|zopiclone|zaleplon|使蒂諾斯|贊安諾|安眠/i, level:'watch', label:'鎮靜安眠藥（BZD／Z-drug）', note:'長期使用有依賴、耐受、跌倒與記憶／認知影響風險。切勿驟停，需在醫師指導下逐步減量。'},
+  {rx:/morphine|tramadol|codeine|oxycodone|fentanyl|嗎啡|曲馬多|可待因/i, level:'watch', label:'鴉片類止痛藥', note:'長期使用有依賴、便祕與呼吸抑制風險，請嚴格遵醫囑使用。'},
+  {rx:/prednisolone|prednisone|methylprednisolone|dexamethasone|betamethasone|deflazacort|可體松|培尼皮質醇/i, level:'watch', label:'口服／全身性類固醇', note:'長期使用可能骨質疏鬆、血糖上升、免疫下降、腎上腺抑制。切勿自行停藥（需逐步減量）；外用、點眼、吸入劑型全身影響較小。'},
+  {rx:/acetaminophen|paracetamol|普拿疼|scanol|panadol|安佳熱/i, level:'watch', label:'乙醯胺酚（普拿疼類）', note:'一般成人每日總量勿超過 3–4 公克；長期過量或合併飲酒可能傷肝，注意複方感冒藥常也含此成分。'},
+  {rx:MED_CLASS_RX.statin, level:'chronic', label:'降血脂（statin）', note:'慢性病用藥，規律長期使用可降低心血管風險，通常利大於弊；勿自行停藥。少數人肌肉痠痛，若明顯請告知醫師。'},
+  {rx:MED_CLASS_RX.bp, level:'chronic', label:'降血壓藥', note:'慢性病用藥，規律服用可保護心、腦、腎；勿自行停藥或漏服，量血壓追蹤。'},
+  {rx:MED_CLASS_RX.dm, level:'chronic', label:'降血糖藥／胰島素', note:'慢性病用藥，規律使用控制血糖很重要；勿自行停藥，並注意低血糖徵兆。'},
+  {rx:MED_CLASS_RX.antithrombotic, level:'chronic', label:'抗凝血／抗血小板藥', note:'預防中風／血栓的重要用藥，勿自行停藥；留意出血徵兆（可參考「醫療級評估」的 HAS-BLED）。'},
+  {rx:MED_CLASS_RX.uricLowering, level:'chronic', label:'降尿酸藥', note:'痛風控制用藥，需長期規律使用維持尿酸達標；勿因暫時無症狀而自行停藥。'}
+];
+function medLongterm(name){ for(const c of MED_LONGTERM){ if(c.rx.test(name||''))return c; } return null; }
+function medStats(){
+  const g={};
+  (state.meds||[]).forEach(m=>{
+    const name=m.name||'（未命名）'; if(!isRealDrug(name))return;
+    const t=m.date?new Date(m.date).getTime():null;
+    const e=g[name]||(g[name]={name,count:0,days:0,first:null,last:null,qty:0,qtyN:0});
+    e.count++;
+    if(m.days!=null&&!isNaN(+m.days))e.days+=+m.days;
+    if(t){ if(e.first==null||t<e.first)e.first=t; if(e.last==null||t>e.last)e.last=t; }
+    const qm=/(\d+(?:\.\d+)?)/.exec(m.qty||''); if(qm){e.qty+=+qm[1];e.qtyN++;}
+  });
+  return Object.values(g).map(e=>{ e.span=(e.first&&e.last)?Math.round((e.last-e.first)/864e5):0; e.lt=medLongterm(e.name); return e; })
+    .sort((a,b)=> b.days-a.days || b.count-a.count);
+}
+function renderMedStats(){
+  const el=document.getElementById('medsStats'); if(!el)return;
+  const stats=medStats();
+  if(!stats.length){ el.innerHTML='<div class="hint">尚無可統計的藥品（已排除掛號費、檢查、處置等非藥品項目）。</div>'; return; }
+  const fmt=t=>t?new Date(t).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'}):'—';
+  const lvlCol={watch:'var(--warn)',chronic:'var(--ok)'};
+  const lvlBg={watch:'#fffbeb',chronic:'#f0fdf4'};
+  const lvlTag={watch:'⚠️ 長期使用注意',chronic:'💠 慢性病用藥'};
+  const top=stats.slice(0,40);
+  el.innerHTML=top.map(e=>{
+    const lt=e.lt;
+    const metrics=`<div style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:.8rem;margin-top:4px;">`+
+      `<span>出現 <b>${e.count}</b> 次</span>`+
+      `<span>累計處方 <b>${e.days||'—'}</b>${e.days?' 天':''}</span>`+
+      (e.span?`<span>期間 ${fmt(e.first)}～${fmt(e.last)}（${e.span} 天）</span>`:`<span>最近 ${fmt(e.last)}</span>`)+
+      (e.qtyN?`<span>總量約 <b>${+e.qty.toFixed(1)}</b>（單位不一，僅估）</span>`:'')+
+      `</div>`;
+    const note=lt?`<div style="margin-top:6px;padding:7px 10px;border-radius:8px;background:${lvlBg[lt.level]};font-size:.8rem;line-height:1.6;"><b style="color:${lvlCol[lt.level]};">${lvlTag[lt.level]}・${esc(lt.label)}</b><br>${lt.note}${lt.level==='watch'&&e.days>=90?'　<b style="color:var(--err);">（你累計處方已達 '+e.days+' 天，屬長期使用，建議主動與醫師／藥師確認。）</b>':''}</div>`:'';
+    return `<div class="rec" style="border-left-color:${lt?lvlCol[lt.level]:'var(--acc)'};align-items:flex-start;flex-direction:column;">`+
+      `<div style="font-weight:700;">${esc(e.name)}</div>${metrics}${note}</div>`;
+  }).join('')+(stats.length>top.length?`<div class="hint" style="margin-top:6px;">（僅顯示累計天數最多的前 ${top.length} 種，共 ${stats.length} 種藥品）</div>`:'');
+}
 function renderMeds(){
   const meds=(state.meds||[]).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
   const empty=document.getElementById('medsEmpty'),content=document.getElementById('medsContent');
@@ -3257,6 +3316,7 @@ function renderMeds(){
   const alert=document.getElementById('medsAlert');
   const many=recentNames.length>=5;
   alert.innerHTML=many?`<div class="disc" style="border-left:3px solid var(--warn);background:#fffbeb;color:#92400e;margin-bottom:10px;">⚠️ 近 90 天內用藥種類較多（${recentNames.length} 種），就醫時建議主動告知醫師目前所有用藥，避免重複或交互作用。</div>`:'';
+  renderMedStats();
   // 依檢視模式與搜尋渲染清單
   const q=(medSearch||'').trim().toLowerCase();
   const seg=document.getElementById('medViewSeg');
@@ -3903,7 +3963,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.23-medscore-plus2';
+const APP_VERSION='2026.07.23-medstats';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
