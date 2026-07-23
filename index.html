@@ -719,12 +719,20 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   </div>
 
   <div class="card" style="background:#f0f9ff;">
-    <div class="ct">💡 為什麼要「加入手機行事曆」？</div>
+    <div class="ct">💡 三種提醒方式，怎麼選？</div>
     <div class="hint" style="line-height:1.8;">
-      網頁在手機上「關閉後」通常無法主動推播通知（iPhone Safari 尤其嚴格）。因此最可靠的做法，是把提醒寫進手機原生的「行事曆／提醒事項」。<br>
-      • 按「📅 加入手機行事曆」會下載一個 <b>.ics</b> 檔，手機點開即可把提醒（含重複規則與提前 10 分鐘的鬧鈴）加進行事曆。<br>
-      • App 開著時，到了時間也會直接跳「瀏覽器通知」提醒你。<br>
-      • 兩種一起用，最不會漏。
+      網頁在手機「關閉後」通常無法主動推播（iPhone Safari 尤其嚴格），所以最可靠的是把提醒交給手機原生行事曆。<br>
+      • <b>📆 Google 日曆</b>：每筆提醒按一下，直接開啟 Google 日曆並自動填好（含重複規則），按「儲存」即可。<b>不需登入本 App、不需任何金鑰</b>，最適合公開分享。<br>
+      • <b>📅 .ics</b>：下載行事曆檔（含重複規則與提前 10 分鐘鬧鈴），適用 iPhone／Apple 行事曆、Outlook，也可在 Google 日曆「設定 → 匯入」一次匯入多筆。<br>
+      • <b>🔔 瀏覽器通知</b>：App 開著時，到時間直接跳通知。<br>
+      三種一起用最不會漏。
+    </div>
+  </div>
+  <div class="card" style="background:#fffbeb;">
+    <div class="ct">🔒 為什麼用「連結」而不是帳號串接？</div>
+    <div class="hint" style="line-height:1.8;">
+      本 App 是<b>公開原始碼</b>，因此刻意採用「Google 日曆範本連結」與「.ics 檔」——這兩種都<b>不需要登入、不需要任何 API 金鑰或密鑰</b>，程式碼裡沒有任何機密可外洩，也不會碰到你的 Google 帳號權限。<br>
+      若日後想做「自動雙向同步」，才會用到 Google OAuth；屆時只會用到「公開的 Client ID」（本就設計為公開，並在 Google 後台鎖定只有本網域可用），<b>絕不會、也不需要把任何密鑰放進公開程式碼</b>。
     </div>
   </div>
 </div>
@@ -1849,7 +1857,8 @@ function remCardHtml(rem){
       <div class="rec-desc">${esc(remDesc(rem))}${nextTxt?` · <span class="hint">${nextTxt}</span>`:''}</div>
       ${rem.note?`<div class="hint" style="margin-top:2px;">📝 ${esc(rem.note)}</div>`:''}
       <div class="row-btn" style="margin-top:8px;gap:6px;flex-wrap:wrap;">
-        <button class="btn bg" style="padding:4px 10px;font-size:.72rem;" onclick="exportOneRemindIcs('${rem.id}')">📅 行事曆</button>
+        <button class="btn bg" style="padding:4px 10px;font-size:.72rem;" onclick="openGcal('${rem.id}')">📆 Google 日曆</button>
+        <button class="btn bg" style="padding:4px 10px;font-size:.72rem;" onclick="exportOneRemindIcs('${rem.id}')">📅 .ics</button>
         <button class="btn bg" style="padding:4px 10px;font-size:.72rem;" onclick="openRemindEditor('${rem.id}')">✏️ 編輯</button>
         <button class="btn bg" style="padding:4px 10px;font-size:.72rem;" onclick="remToggle('${rem.id}')">${off?'▶️ 啟用':'⏸ 暫停'}</button>
         <button class="btn bg" style="padding:4px 10px;font-size:.72rem;color:var(--err);" onclick="remDelete('${rem.id}')">🗑️</button>
@@ -1962,6 +1971,27 @@ function exportAllRemindIcs(){
 function exportOneRemindIcs(id){
   const rem=(state.reminders||[]).find(r=>r.id===id); if(!rem)return;
   dlIcs(buildIcs([rem]),'reminder-'+id+'.ics'); toast('📅 已下載，點開即可加入行事曆');
+}
+/* --- Google 日曆「範本連結」：零登入、零金鑰、零 secret，公開 repo 最安全 --- */
+function gcalUrl(rem){
+  const meta=remTypeMeta(rem.type);
+  const startMin=timeToMin(rem.time), endMin=Math.min(startMin+15,23*60+59);
+  const dk=rem.startDate.replace(/-/g,'');
+  const start=dk+'T'+pad2(Math.floor(startMin/60))+pad2(startMin%60)+'00';
+  const end=dk+'T'+pad2(Math.floor(endMin/60))+pad2(endMin%60)+'00';
+  const p=new URLSearchParams();
+  p.set('action','TEMPLATE');
+  p.set('text',meta.icon+' '+(rem.title||meta.label));
+  p.set('dates',start+'/'+end);
+  p.set('ctz','Asia/Taipei');
+  if(rem.note)p.set('details',rem.note);
+  let u='https://calendar.google.com/calendar/render?'+p.toString();
+  const rr=remRrule(rem); if(rr)u+='&recur='+encodeURIComponent(rr);
+  return u;
+}
+function openGcal(id){
+  const rem=(state.reminders||[]).find(r=>r.id===id); if(!rem)return;
+  window.open(gcalUrl(rem),'_blank','noopener'); toast('📆 已開啟 Google 日曆，按「儲存」即可');
 }
 /* --- 瀏覽器通知（App 開著時） --- */
 function notifySupported(){return typeof Notification!=='undefined';}
@@ -3460,7 +3490,7 @@ function renderMedScore(){
   }
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.23-reminders';
+const APP_VERSION='2026.07.23-reminders-gcal';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
