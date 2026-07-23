@@ -337,6 +337,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   <div class="nt" data-sec="meds">💊 用藥紀錄</div>
   <div class="nt" data-sec="surgery">🔧 手術紀錄</div>
   <div class="nt" data-sec="reports">🩻 影像病理</div>
+  <div class="nt" data-sec="remind">⏰ 提醒</div>
   <div class="nt" data-sec="habit">✅ 每日習慣</div>
   <div class="nt" data-sec="advice">💡 建議 & AI</div>
   <div class="nt" data-sec="report">📋 綜合報告</div>
@@ -348,6 +349,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== DASHBOARD ========== -->
 <div class="sec active" id="sec-dash">
+  <div id="dashRemindDue"></div>
   <div id="dashReminders"></div>
   <div id="dashEmpty" class="card empty">
     <div class="em">🫀</div>
@@ -692,6 +694,38 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   <div class="card">
     <div class="ct">🔥 近 14 天完成度</div>
     <div class="cw"><canvas id="habitChart"></canvas></div>
+  </div>
+</div>
+
+<!-- ========== REMINDERS ========== -->
+<div class="sec" id="sec-remind">
+  <div class="card">
+    <div class="ct">⏰ 提醒與行事曆 <span class="hint">用藥 · 回診 · 復健 · 檢驗追蹤</span></div>
+    <div class="hint" style="line-height:1.7;">建立自己的健康提醒。App 開著時會在到期時間跳出「瀏覽器通知」；更可靠的方式是按下方「加入手機行事曆」，把提醒交給手機內建的行事曆／提醒事項——即使關掉 App 也會準時響鈴。</div>
+    <div class="row-btn" style="margin-top:12px;flex-wrap:wrap;gap:8px;">
+      <button class="btn bp" onclick="openRemindEditor('')">➕ 新增提醒</button>
+      <button class="btn bg" onclick="exportAllRemindIcs()">📅 全部加入手機行事曆</button>
+      <button class="btn bg" id="remindNotifyBtn" onclick="requestNotifyPerm()">🔔 開啟瀏覽器通知</button>
+    </div>
+    <div id="remindNotifyState" class="hint" style="margin-top:8px;"></div>
+  </div>
+
+  <div id="remindDueCard"></div>
+
+  <div class="card">
+    <div class="ct">📋 全部提醒 <span class="hint" id="remindCount"></span></div>
+    <div id="remindEmpty" class="hint" style="padding:8px 0;">尚未建立任何提醒。按上方「➕ 新增提醒」開始，例如：每天早上 8:00 吃血壓藥、每 3 個月抽血追蹤腎功能、下週三回診神經內科。</div>
+    <div id="remindList"></div>
+  </div>
+
+  <div class="card" style="background:#f0f9ff;">
+    <div class="ct">💡 為什麼要「加入手機行事曆」？</div>
+    <div class="hint" style="line-height:1.8;">
+      網頁在手機上「關閉後」通常無法主動推播通知（iPhone Safari 尤其嚴格）。因此最可靠的做法，是把提醒寫進手機原生的「行事曆／提醒事項」。<br>
+      • 按「📅 加入手機行事曆」會下載一個 <b>.ics</b> 檔，手機點開即可把提醒（含重複規則與提前 10 分鐘的鬧鈴）加進行事曆。<br>
+      • App 開著時，到了時間也會直接跳「瀏覽器通知」提醒你。<br>
+      • 兩種一起用，最不會漏。
+    </div>
   </div>
 </div>
 
@@ -1154,10 +1188,11 @@ function load(){
       }
     }
   }catch(e){}
+  if(s&&!Array.isArray(s.reminders))s.reminders=[];
   return s;
 }
 function defaults(){
-  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh'}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], reminders:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh'}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));}
 
@@ -1166,7 +1201,8 @@ const LANG_EN={
   // 導覽
   '📊 總覽':'📊 Overview','📝 健康評估':'📝 Assessment','🔗 匯入串接':'🔗 Import','🔬 風險預測':'🔬 Risk','🚨 智慧預警':'🚨 Alerts',
   '📈 趨勢追蹤':'📈 Trends','🧪 檢驗數據庫':'🧪 Lab Data','💊 用藥紀錄':'💊 Medications','🔧 手術紀錄':'🔧 Surgeries','🩻 影像病理':'🩻 Imaging/Path',
-  '✅ 每日習慣':'✅ Habits','💡 建議 & AI':'💡 Advice & AI','📋 綜合報告':'📋 Report','🦶 足部訓練':'🦶 Foot Training','⚙️ 設定':'⚙️ Settings',
+  '⏰ 提醒':'⏰ Reminders','✅ 每日習慣':'✅ Habits','💡 建議 & AI':'💡 Advice & AI','📋 綜合報告':'📋 Report','🦶 足部訓練':'🦶 Foot Training','⚙️ 設定':'⚙️ Settings',
+  '⏰ 提醒與行事曆':'⏰ Reminders & Calendar','⏰ 今日提醒':'⏰ Today’s Reminders','📋 全部提醒':'📋 All Reminders','➕ 新增提醒':'➕ Add Reminder','📅 全部加入手機行事曆':'📅 Add All to Phone Calendar','🔔 開啟瀏覽器通知':'🔔 Enable Browser Notifications','⏰ 管理提醒':'⏰ Manage Reminders',
   '選單':'Menu','LifeSpan 健康預測':'LifeSpan Health','🫀 LifeSpan 健康預測':'🫀 LifeSpan Health',
   // 徽章
   'AI 未設定':'AI off','AI 已啟用':'AI on','☁️ 未連線':'☁️ Offline','☁️ 已連結':'☁️ Linked','🔥 雲端':'🔥 Cloud',
@@ -1246,6 +1282,7 @@ function go(sec){
   if(sec==='reports')renderReports();
   if(sec==='report')renderReport();
   if(sec==='habit')renderHabits();
+  if(sec==='remind')renderRemind();
   if(sec==='dash')renderDash();
   if(sec==='risk')renderRisk();
   if(sec==='medscore')renderMedScore();
@@ -1504,6 +1541,7 @@ function barColor(v){return v>=75?'#10b981':v>=55?'#0d9488':v>=40?'#f59e0b':'#ef
 
 function renderDash(){
   const r=state.result;
+  renderRemindDue();   // 今日／逾期的個人提醒（用藥、回診、復健、檢驗追蹤）
   renderReminders();   // 主動提醒／紅旗待辦（即使沒完成評估、只要有檢驗也顯示）
   document.getElementById('dashEmpty').style.display=r?'none':'block';
   document.getElementById('dashContent').style.display=r?'block':'none';
@@ -1709,6 +1747,249 @@ function renderReminders(){
     rem.map(x=>`<div class="rec" style="border-left-color:${col[x.lvl]};background:${x.lvl==='crit'?'#fef2f2':x.lvl==='warn'?'#fffbeb':'#f0f9ff'};"><div class="rec-icon">${x.icon}</div><div class="rec-body"><div class="rec-desc">${x.text}</div></div></div>`).join('')+
     `<div class="row-btn" style="margin-top:10px;">${checkBtn}</div></div>`;
 }
+
+/* ============ 個人提醒系統（用藥／回診／復健／檢驗追蹤 ＋ 手機行事曆匯出） ============ */
+const REM_TYPES={
+  med:{icon:'💊',label:'用藥'},
+  visit:{icon:'🏥',label:'回診'},
+  rehab:{icon:'🦶',label:'復健／運動'},
+  lab:{icon:'🧪',label:'檢驗追蹤'},
+  measure:{icon:'🩸',label:'量測'},
+  water:{icon:'💧',label:'喝水'},
+  custom:{icon:'📌',label:'自訂'}
+};
+const REM_FREQ={once:'單次',daily:'每天',weekly:'每週',monthly:'每月',months:'每 N 個月'};
+const WD_ZH=['日','一','二','三','四','五','六'];
+function remId(){return 'rem_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);}
+function remTypeMeta(t){return REM_TYPES[t]||REM_TYPES.custom;}
+function pad2(n){return String(n).padStart(2,'0');}
+function localDayKey(d){d=d||new Date();return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate());}
+function daysInMonth(y,m){return new Date(y,m+1,0).getDate();}
+function timeToMin(t){if(!t)return 0;const m=/^(\d{1,2}):(\d{2})/.exec(t);return m?(+m[1])*60+(+m[2]):0;}
+function curMinutes(){const d=new Date();return d.getHours()*60+d.getMinutes();}
+function remDoneOn(rem,dayKey){return (rem.doneDates||[]).indexOf(dayKey)>=0;}
+function monthlyFallback(d,startDay){const dim=daysInMonth(d.getFullYear(),d.getMonth());return startDay>dim && d.getDate()===dim;}
+function remScheduledOn(rem,dayKey){
+  if(!rem.enabled||!rem.startDate)return false;
+  if(dayKey<rem.startDate)return false;
+  const d=new Date(dayKey+'T00:00:00'), start=new Date(rem.startDate+'T00:00:00');
+  switch(rem.freq){
+    case 'once': return dayKey===rem.startDate;
+    case 'daily': return true;
+    case 'weekly': return d.getDay()===(rem.weekday!=null?rem.weekday:start.getDay());
+    case 'monthly': return d.getDate()===start.getDate()||monthlyFallback(d,start.getDate());
+    case 'months': {
+      const n=Math.max(1,rem.interval||1);
+      const md=(d.getFullYear()-start.getFullYear())*12+(d.getMonth()-start.getMonth());
+      return md>=0 && md%n===0 && (d.getDate()===start.getDate()||monthlyFallback(d,start.getDate()));
+    }
+  }
+  return false;
+}
+function remNextDate(rem,fromKey){
+  fromKey=fromKey||localDayKey();
+  if(rem.freq==='once')return rem.startDate>=fromKey?rem.startDate:null;
+  let d=new Date(((fromKey<rem.startDate)?rem.startDate:fromKey)+'T00:00:00');
+  for(let i=0;i<800;i++){ const k=localDayKey(d); if(remScheduledOn(rem,k))return k; d.setDate(d.getDate()+1); }
+  return null;
+}
+function remDueList(){
+  const today=localDayKey(), nowMin=curMinutes(), out=[];
+  (state.reminders||[]).forEach(rem=>{
+    if(!rem.enabled)return;
+    if(rem.freq==='once' && rem.startDate<today && !remDoneOn(rem,rem.startDate)){ out.push({rem,state:'overdue'}); return; }
+    if(remScheduledOn(rem,today) && !remDoneOn(rem,today)){
+      out.push({rem,state:(nowMin>=timeToMin(rem.time))?'due':'today'});
+    }
+  });
+  const rank={overdue:0,due:1,today:2};
+  out.sort((a,b)=>(rank[a.state]-rank[b.state])||(timeToMin(a.rem.time)-timeToMin(b.rem.time)));
+  return out;
+}
+function remDesc(rem){
+  const t=rem.time||'';
+  switch(rem.freq){
+    case 'once': return '單次 '+(rem.startDate||'')+(t?' '+t:'');
+    case 'daily': return '每天'+(t?' '+t:'');
+    case 'weekly': {const wd=rem.weekday!=null?rem.weekday:(rem.startDate?new Date(rem.startDate+'T00:00:00').getDay():0);return '每週'+WD_ZH[wd]+(t?' '+t:'');}
+    case 'monthly': {const day=rem.startDate?new Date(rem.startDate+'T00:00:00').getDate():1;return '每月 '+day+' 號'+(t?' '+t:'');}
+    case 'months': return '每 '+Math.max(1,rem.interval||1)+' 個月'+(t?' '+t:'')+(rem.startDate?'（從 '+rem.startDate+' 起）':'');
+  }
+  return '';
+}
+function remMarkDone(id){
+  const rem=(state.reminders||[]).find(r=>r.id===id); if(!rem)return;
+  const key=rem.freq==='once'?rem.startDate:localDayKey();
+  rem.doneDates=rem.doneDates||[];
+  if(rem.doneDates.indexOf(key)<0)rem.doneDates.push(key);
+  if(rem.doneDates.length>400)rem.doneDates=rem.doneDates.slice(-400);
+  save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  renderRemind(); renderRemindDue(); toast('✅ 已完成');
+}
+function remToggle(id){const r=(state.reminders||[]).find(x=>x.id===id);if(!r)return;r.enabled=!r.enabled;save();if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});renderRemind();renderRemindDue();}
+function remDelete(id){ if(!confirm('確定刪除這個提醒？'))return; state.reminders=(state.reminders||[]).filter(x=>x.id!==id); save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{}); renderRemind(); renderRemindDue(); toast('已刪除'); }
+function renderRemind(){
+  updateNotifyState();
+  renderRemindDueInto('remindDueCard',true);
+  const rems=(state.reminders||[]).slice();
+  const cnt=document.getElementById('remindCount'), empty=document.getElementById('remindEmpty'), list=document.getElementById('remindList');
+  if(cnt)cnt.textContent=rems.length?('共 '+rems.length+' 項'):'';
+  if(!rems.length){ if(empty)empty.style.display='block'; if(list)list.innerHTML=''; return; }
+  if(empty)empty.style.display='none';
+  rems.sort((a,b)=>{ if(a.enabled!==b.enabled)return a.enabled?-1:1; const na=remNextDate(a)||'9999-99-99', nb=remNextDate(b)||'9999-99-99'; return na<nb?-1:na>nb?1:0; });
+  if(list)list.innerHTML=rems.map(remCardHtml).join('');
+}
+function remCardHtml(rem){
+  const meta=remTypeMeta(rem.type), next=remNextDate(rem), off=!rem.enabled;
+  const nextTxt=rem.freq==='once'?'':(next?('下次 '+next):'已結束');
+  return `<div class="rec" style="opacity:${off?.5:1};border-left-color:var(--acc);align-items:flex-start;">
+    <div class="rec-icon">${meta.icon}</div>
+    <div class="rec-body" style="flex:1;">
+      <div class="rec-desc"><b>${esc(rem.title||meta.label)}</b> <span class="pill mod">${meta.label}</span></div>
+      <div class="rec-desc">${esc(remDesc(rem))}${nextTxt?` · <span class="hint">${nextTxt}</span>`:''}</div>
+      ${rem.note?`<div class="hint" style="margin-top:2px;">📝 ${esc(rem.note)}</div>`:''}
+      <div class="row-btn" style="margin-top:8px;gap:6px;flex-wrap:wrap;">
+        <button class="btn bg" style="padding:4px 10px;font-size:.72rem;" onclick="exportOneRemindIcs('${rem.id}')">📅 行事曆</button>
+        <button class="btn bg" style="padding:4px 10px;font-size:.72rem;" onclick="openRemindEditor('${rem.id}')">✏️ 編輯</button>
+        <button class="btn bg" style="padding:4px 10px;font-size:.72rem;" onclick="remToggle('${rem.id}')">${off?'▶️ 啟用':'⏸ 暫停'}</button>
+        <button class="btn bg" style="padding:4px 10px;font-size:.72rem;color:var(--err);" onclick="remDelete('${rem.id}')">🗑️</button>
+      </div>
+    </div></div>`;
+}
+function renderRemindDue(){ renderRemindDueInto('dashRemindDue',false); }
+function renderRemindDueInto(elId,inSection){
+  const el=document.getElementById(elId); if(!el)return;
+  const due=remDueList();
+  if(!due.length){ el.innerHTML=inSection?'<div class="card" style="background:#f0fdf4;"><div class="hint">今天沒有到期的提醒 🎉</div></div>':''; return; }
+  const sc={overdue:{c:'var(--err)',bg:'#fef2f2',t:'逾期'},due:{c:'var(--warn)',bg:'#fffbeb',t:'到期'},today:{c:'var(--acc)',bg:'#f0f9ff',t:'今天'}};
+  el.innerHTML=`<div class="card"><div class="ct" style="display:flex;align-items:center;justify-content:space-between;">⏰ 今日提醒 <span class="hint">${due.length} 項</span></div>`+
+    due.map(x=>{const meta=remTypeMeta(x.rem.type),s=sc[x.state];
+      return `<div class="rec" style="border-left-color:${s.c};background:${s.bg};align-items:center;">
+        <div class="rec-icon">${meta.icon}</div>
+        <div class="rec-body" style="flex:1;"><div class="rec-desc"><b>${esc(x.rem.title||meta.label)}</b> <span class="pill mod">${s.t}${x.rem.time?' '+x.rem.time:''}</span>${x.rem.note?`<br><span class="hint">${esc(x.rem.note)}</span>`:''}</div></div>
+        <button class="btn bp" style="padding:5px 12px;font-size:.74rem;white-space:nowrap;" onclick="remMarkDone('${x.rem.id}')">✓ 完成</button>
+      </div>`;}).join('')+
+    (inSection?'':`<div class="row-btn" style="margin-top:10px;"><button class="btn bg" style="padding:5px 12px;font-size:.74rem;" onclick="go('remind')">⏰ 管理提醒</button></div>`)+
+    `</div>`;
+}
+function openRemindEditor(id){
+  const editing=id?((state.reminders||[]).find(r=>r.id===id)):null;
+  const e=editing||{type:'med',freq:'daily',time:'08:00',startDate:localDayKey()};
+  let m=document.getElementById('remModal');
+  if(!m){m=document.createElement('div');m.id='remModal';m.className='modal-overlay';document.body.appendChild(m);}
+  const typeOpts=Object.keys(REM_TYPES).map(k=>`<option value="${k}" ${e.type===k?'selected':''}>${REM_TYPES[k].icon} ${REM_TYPES[k].label}</option>`).join('');
+  const freqOpts=Object.keys(REM_FREQ).map(k=>`<option value="${k}" ${e.freq===k?'selected':''}>${REM_FREQ[k]}</option>`).join('');
+  const wd=e.weekday!=null?e.weekday:(e.startDate?new Date(e.startDate+'T00:00:00').getDay():1);
+  const wdOpts=WD_ZH.map((w,i)=>`<option value="${i}" ${wd===i?'selected':''}>星期${w}</option>`).join('');
+  m.innerHTML=`<div class="modal-box">
+    <div class="ct">${editing?'✏️ 編輯提醒':'➕ 新增提醒'}</div>
+    <div class="fg"><label class="fl">類型</label><select class="fi" id="remIn_type">${typeOpts}</select></div>
+    <div class="fg"><label class="fl">標題 <span class="hint">必填</span></label><input class="fi" id="remIn_title" value="${esc(e.title||'')}" placeholder="例：早上血壓藥、神經內科回診、抽血追蹤腎功能"></div>
+    <div class="fg"><label class="fl">頻率</label><select class="fi" id="remIn_freq" onchange="remFreqFields()">${freqOpts}</select></div>
+    <div class="fg" id="remFld_weekday" style="display:none;"><label class="fl">星期幾</label><select class="fi" id="remIn_weekday">${wdOpts}</select></div>
+    <div class="fg" id="remFld_interval" style="display:none;"><label class="fl">間隔（幾個月）</label><input class="fi" type="number" inputmode="numeric" id="remIn_interval" value="${e.interval||3}" min="1"></div>
+    <div class="fg" id="remFld_date"><label class="fl"><span id="remDateLbl">起始日期</span></label><input class="fi" type="date" id="remIn_date" value="${e.startDate||localDayKey()}"></div>
+    <div class="fg"><label class="fl">時間</label><input class="fi" type="time" id="remIn_time" value="${e.time||'08:00'}"></div>
+    <div class="fg"><label class="fl">備註</label><input class="fi" id="remIn_note" value="${esc(e.note||'')}" placeholder="例：飯後服用、記得帶健保卡與上次報告"></div>
+    <div class="row-btn" style="margin-top:14px;">
+      <button class="btn bp" onclick="saveRemindEditor('${editing?editing.id:''}')">💾 儲存</button>
+      <button class="btn bg" onclick="closeRemindEditor()">取消</button>
+    </div></div>`;
+  m.style.display='flex';
+  remFreqFields();
+}
+function remFreqFields(){
+  const f=document.getElementById('remIn_freq'); if(!f)return; const v=f.value;
+  const wd=document.getElementById('remFld_weekday'), iv=document.getElementById('remFld_interval'), lbl=document.getElementById('remDateLbl');
+  if(wd)wd.style.display=v==='weekly'?'block':'none';
+  if(iv)iv.style.display=v==='months'?'block':'none';
+  if(lbl)lbl.textContent=v==='once'?'日期':'起始日期';
+}
+function closeRemindEditor(){const m=document.getElementById('remModal');if(m){m.style.display='none';m.innerHTML='';}}
+function saveRemindEditor(id){
+  const title=(document.getElementById('remIn_title').value||'').trim();
+  if(!title){toast('請填入標題');return;}
+  const type=document.getElementById('remIn_type').value;
+  const freq=document.getElementById('remIn_freq').value;
+  const time=document.getElementById('remIn_time').value||'08:00';
+  const startDate=document.getElementById('remIn_date').value||localDayKey();
+  const note=(document.getElementById('remIn_note').value||'').trim();
+  const weekday=+document.getElementById('remIn_weekday').value;
+  const interval=Math.max(1,+document.getElementById('remIn_interval').value||1);
+  state.reminders=state.reminders||[];
+  if(id){const r=state.reminders.find(x=>x.id===id); if(r)Object.assign(r,{type,title,freq,time,startDate,note,weekday,interval});}
+  else{ state.reminders.push({id:remId(),type,title,freq,time,startDate,note,weekday,interval,enabled:true,doneDates:[],createdAt:new Date().toISOString()}); }
+  save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  closeRemindEditor(); renderRemind(); renderRemindDue(); toast(id?'✅ 已更新':'✅ 已新增提醒');
+}
+/* --- .ics 行事曆匯出（可靠的手機原生提醒） --- */
+function icsEsc(s){return String(s||'').replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');}
+function icsStamp(){return new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'');}
+function icsDateLocal(dayKey,time){const mm=timeToMin(time);return dayKey.replace(/-/g,'')+'T'+pad2(Math.floor(mm/60))+pad2(mm%60)+'00';}
+function remRrule(rem){
+  switch(rem.freq){
+    case 'daily': return 'RRULE:FREQ=DAILY';
+    case 'weekly': {const wd=['SU','MO','TU','WE','TH','FR','SA'][rem.weekday!=null?rem.weekday:new Date(rem.startDate+'T00:00:00').getDay()];return 'RRULE:FREQ=WEEKLY;BYDAY='+wd;}
+    case 'monthly': return 'RRULE:FREQ=MONTHLY';
+    case 'months': return 'RRULE:FREQ=MONTHLY;INTERVAL='+Math.max(1,rem.interval||1);
+  }
+  return null;
+}
+function remToVevent(rem){
+  const meta=remTypeMeta(rem.type);
+  const summary=icsEsc(meta.icon+' '+(rem.title||meta.label));
+  const lines=['BEGIN:VEVENT','UID:'+rem.id+'@lifespan','DTSTAMP:'+icsStamp(),'DTSTART:'+icsDateLocal(rem.startDate,rem.time),'DURATION:PT15M','SUMMARY:'+summary];
+  if(rem.note)lines.push('DESCRIPTION:'+icsEsc(rem.note));
+  const rr=remRrule(rem); if(rr)lines.push(rr);
+  lines.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+summary,'TRIGGER:-PT10M','END:VALARM','END:VEVENT');
+  return lines.join('\r\n');
+}
+function buildIcs(rems){
+  return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//LifeSpan//Reminders//ZH','CALSCALE:GREGORIAN','METHOD:PUBLISH']
+    .concat(rems.map(remToVevent)).concat(['END:VCALENDAR']).join('\r\n');
+}
+function dlIcs(text,name){
+  const blob=new Blob([text],{type:'text/calendar;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+function exportAllRemindIcs(){
+  const rems=(state.reminders||[]).filter(r=>r.enabled);
+  if(!rems.length){toast('沒有可匯出的提醒（請先新增並啟用）');return;}
+  dlIcs(buildIcs(rems),'lifespan-reminders-'+todayKey()+'.ics');
+  toast('📅 已下載行事曆檔，用手機點開即可加入');
+}
+function exportOneRemindIcs(id){
+  const rem=(state.reminders||[]).find(r=>r.id===id); if(!rem)return;
+  dlIcs(buildIcs([rem]),'reminder-'+id+'.ics'); toast('📅 已下載，點開即可加入行事曆');
+}
+/* --- 瀏覽器通知（App 開著時） --- */
+function notifySupported(){return typeof Notification!=='undefined';}
+function requestNotifyPerm(){
+  if(!notifySupported()){toast('此裝置／瀏覽器不支援通知，請改用行事曆匯出');updateNotifyState();return;}
+  Notification.requestPermission().then(p=>{updateNotifyState();toast(p==='granted'?'🔔 已開啟通知':'通知未開啟');if(p==='granted')checkDueNotifications();});
+}
+function updateNotifyState(){
+  const btn=document.getElementById('remindNotifyBtn'), st=document.getElementById('remindNotifyState'); if(!st)return;
+  if(!notifySupported()){st.textContent='此瀏覽器不支援通知，請改用「加入手機行事曆」。';if(btn)btn.style.display='none';return;}
+  const p=Notification.permission;
+  st.textContent=p==='granted'?'✅ 通知已開啟：App 開著時，到期會跳通知。':(p==='denied'?'⚠️ 通知被封鎖，請到瀏覽器設定開啟，或改用行事曆匯出。':'尚未開啟通知；也可直接用「加入手機行事曆」（更可靠）。');
+  if(btn)btn.style.display=p==='granted'?'none':'inline-block';
+}
+function remNotifiedKey(){return 'rem_notified_'+localDayKey();}
+function checkDueNotifications(){
+  if(!notifySupported()||Notification.permission!=='granted')return;
+  const due=remDueList().filter(x=>x.state==='due'||x.state==='overdue');
+  if(!due.length)return;
+  let done; try{done=new Set(JSON.parse(localStorage.getItem(remNotifiedKey())||'[]'));}catch(e){done=new Set();}
+  let changed=false;
+  due.forEach(x=>{ if(done.has(x.rem.id))return;
+    const meta=remTypeMeta(x.rem.type);
+    try{ new Notification(meta.icon+' '+(x.rem.title||meta.label),{body:(x.rem.note||'健康提醒到期了')+(x.rem.time?'（'+x.rem.time+'）':''),tag:x.rem.id}); done.add(x.rem.id); changed=true; }catch(e){}
+  });
+  if(changed){try{localStorage.setItem(remNotifiedKey(),JSON.stringify([...done]));}catch(e){}}
+}
+
 /* ============ 健康警戒系統（彈出提醒＋解決之道，可每日自動） ============ */
 /* 跨資料交叉分析引擎：把檢驗×用藥×影像病理×手術串起來找早期警訊 */
 const IMG_FLAG_RX=/\b(mass|nodule|lesion|tumou?r|cyst|suspicious|carcinoma|malignan|metasta|neoplasm|polyp|effusion|calculus|stone|stenosis|obstruct|aneurysm)\b|腫瘤|腫塊|結節|囊腫|病灶|疑似|惡性|息肉|結石|積水|積液|鈣化|陰影|狹窄|阻塞|動脈瘤|增生/i;
@@ -3179,7 +3460,7 @@ function renderMedScore(){
   }
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.22-footdrop-full';
+const APP_VERSION='2026.07.23-reminders';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -3218,6 +3499,8 @@ function init(){
   applyI18n();
   if(state._nhiPurged){const n=state._nhiPurged;delete state._nhiPurged;save();setTimeout(()=>{toast('已清除 '+n+' 筆舊的健保檢驗，請到「匯入串接」重新匯入一次');},400);}
   setTimeout(maybeDailyAlert,600);
+  setTimeout(checkDueNotifications,1200);
+  setInterval(checkDueNotifications,60000);
 }
 /* ============ PWA：安裝與離線快取 ============ */
 let deferredInstallPrompt=null;
