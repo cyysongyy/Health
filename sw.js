@@ -4,7 +4,7 @@
    - 同源靜態檔（icon/manifest）：快取優先
    - 跨網域 CDN（Chart.js/Firebase/pdf.js/字型…）：快取優先，未命中則抓取並存入（含 opaque 回應）
    換版：改 CACHE 版本號即會在 activate 時清掉舊快取。 */
-const CACHE = 'lifespan-cache-2026.07.23-gcal-search';
+const CACHE = 'lifespan-cache-2026.07.23-gcal-oauth';
 
 /* App shell（同源，必存）*/
 const CORE = [
@@ -61,6 +61,16 @@ self.addEventListener('message', (e) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
+
+  // Google 登入／日曆 API：一律網路直通，絕不快取（避免快取到私人日曆或登入元件）
+  try {
+    const h = new URL(req.url).hostname;
+    if (h === 'accounts.google.com' || h === 'apis.google.com' ||
+        h === 'oauth2.googleapis.com' || /\.googleapis\.com$/.test(h) || h === 'googleapis.com') {
+      e.respondWith(fetch(req).catch(() => Response.error()));
+      return;
+    }
+  } catch (_) {}
 
   // 導覽請求：網路優先，離線回退 index.html
   if (req.mode === 'navigate') {

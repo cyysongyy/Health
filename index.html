@@ -711,19 +711,22 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   </div>
 
   <div class="card" style="background:#f0fdf4;">
-    <div class="ct">🏥 貼上看診資訊，自動抓「診」的日期</div>
-    <div class="hint" style="line-height:1.7;">把<b>回診單、看診通知、簡訊</b>的文字貼進來（或任何含日期的文字）。系統會找出含「診」（回診／門診／看診／複診…）的日期，一鍵建成看診提醒——建好後每筆都能按「📆 Google 日曆」加入你的行事曆。支援西元與民國日期。</div>
-    <div class="hint" style="margin-top:8px;background:#fff;border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:10px;line-height:1.7;">
-      📆 <b>想從 Google 日曆找「診」？</b> 按下面「在 Google 日曆搜尋『診』」，會直接打開你的 Google 日曆並搜尋「診」，列出所有含診的活動；把那幾筆<b>複製</b>貼回下面框裡，再按「擷取」即可。（我無法自動讀取你的日曆，這一步需要你本人操作。）
+    <div class="ct">🏥 看診提醒：從 Google 日曆自動抓「診」</div>
+    <div class="hint" style="line-height:1.7;">按一下，登入你的 Google 日曆，系統會自動找出所有含「診」（回診／門診／看診／複診…）的活動，列在下方讓你勾選建成提醒。建好後每筆都能加回行事曆。</div>
+    <div class="row-btn" style="margin-top:12px;flex-wrap:wrap;gap:8px;">
+      <button class="btn bp" onclick="connectGcalVisits()">📆 從 Google 日曆自動抓「診」</button>
     </div>
-    <div class="row-btn" style="margin-top:10px;flex-wrap:wrap;gap:8px;">
-      <button class="btn bg" onclick="openGcalSearch()">🔍 在 Google 日曆搜尋「診」</button>
-    </div>
-    <textarea id="visitPaste" class="fi" rows="4" style="margin-top:10px;resize:vertical;" placeholder="例：&#10;神經內科 回診 2026/08/05 上午 09:30&#10;114年9月12日 心臟內科門診 下午2點&#10;複診 10/20 帶上次抽血報告"></textarea>
-    <div class="row-btn" style="margin-top:10px;flex-wrap:wrap;gap:8px;">
-      <button class="btn bp" onclick="scanVisitPaste()">🔍 擷取看診日期</button>
-      <button class="btn bg" onclick="document.getElementById('visitPaste').value='';document.getElementById('visitFound').innerHTML='';">↺ 清空</button>
-    </div>
+    <div id="gcalVisitState" class="hint" style="margin-top:8px;"></div>
+
+    <details style="margin-top:14px;">
+      <summary style="cursor:pointer;color:var(--acc);font-weight:600;font-size:.86rem;">▸ 或：手動貼上文字（回診單／簡訊，離線也可用）</summary>
+      <div class="hint" style="margin-top:8px;line-height:1.7;">把回診單、看診通知、簡訊文字貼進來（支援西元與民國日期）。系統會抓出含「診」的日期，一鍵建成看診提醒。</div>
+      <textarea id="visitPaste" class="fi" rows="4" style="margin-top:10px;resize:vertical;" placeholder="例：&#10;神經內科 回診 2026/08/05 上午 09:30&#10;114年9月12日 心臟內科門診 下午2點&#10;複診 10/20 帶上次抽血報告"></textarea>
+      <div class="row-btn" style="margin-top:10px;flex-wrap:wrap;gap:8px;">
+        <button class="btn bp" onclick="scanVisitPaste()">🔍 擷取看診日期</button>
+        <button class="btn bg" onclick="document.getElementById('visitPaste').value='';document.getElementById('visitFound').innerHTML='';">↺ 清空</button>
+      </div>
+    </details>
     <div id="visitFound" style="margin-top:10px;"></div>
   </div>
 
@@ -746,10 +749,11 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
     </div>
   </div>
   <div class="card" style="background:#fffbeb;">
-    <div class="ct">🔒 為什麼用「連結」而不是帳號串接？</div>
+    <div class="ct">🔒 連結 Google 日曆安全嗎？</div>
     <div class="hint" style="line-height:1.8;">
-      本 App 是<b>公開原始碼</b>，因此刻意採用「Google 日曆範本連結」與「.ics 檔」——這兩種都<b>不需要登入、不需要任何 API 金鑰或密鑰</b>，程式碼裡沒有任何機密可外洩，也不會碰到你的 Google 帳號權限。<br>
-      若日後想做「自動雙向同步」，才會用到 Google OAuth；屆時只會用到「公開的 Client ID」（本就設計為公開，並在 Google 後台鎖定只有本網域可用），<b>絕不會、也不需要把任何密鑰放進公開程式碼</b>。
+      安全。「從 Google 日曆自動抓『診』」用的是 Google 官方 OAuth <b>唯讀</b>授權（只讀不寫、也不刪），而且只讀取含「診」的活動。<br>
+      你貼進「設定」的是 <b>Client ID</b>——它<b>本來就設計為公開、不是密鑰</b>，只存在你的瀏覽器、<b>不會進入公開程式碼</b>；真正的保護是在 Google 後台把「授權來源」鎖成只有本網域可用。全程<b>沒有任何密鑰</b>會外洩。<br>
+      不想登入也沒關係：改用下方「手動貼上文字」或每筆提醒的「📆 Google 日曆／📅 .ics」，一樣免登入、離線可用。
     </div>
   </div>
 </div>
@@ -1143,6 +1147,23 @@ service cloud.firestore {
     <div class="row-btn" style="margin-top:12px;"><button class="btn bp" onclick="saveSettings()">💾 儲存設定</button></div>
   </div>
   <div class="card">
+    <div class="ct">📆 Google 日曆連結 <span class="hint">（讓提醒自動抓「診」）</span></div>
+    <div class="hint" style="margin-bottom:10px;line-height:1.7;">貼上你自己的 <b>OAuth Client ID</b>，「提醒」分頁就能一鍵登入你的 Google 日曆、自動抓出含「診」的活動。Client ID 只存在你的瀏覽器、<b>不會進入公開程式碼</b>，也沒有任何密鑰。（唯讀，只讀不寫；僅線上版可用。）</div>
+    <div class="fg"><label class="fl">Google OAuth Client ID</label><input class="fi" id="set-gcal-cid" type="text" placeholder="xx…-xxxx.apps.googleusercontent.com"></div>
+    <details style="font-size:.8rem;line-height:1.75;">
+      <summary style="cursor:pointer;color:var(--acc);font-weight:600;">▸ 如何取得 Client ID（一次性，約 5 分鐘）</summary>
+      <ol style="margin:8px 0 4px 18px;padding:0;">
+        <li>到 <a class="link" href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a>，右上角建立一個新專案（或用現有的）。</li>
+        <li>左側「API 和服務 → 程式庫」，搜尋 <b>Google Calendar API</b>，按「啟用」。</li>
+        <li>「API 和服務 → OAuth 同意畫面」：User Type 選 <b>External</b>；填 App 名稱與你的 Email；「範圍」不用加；「測試使用者」<b>加入你自己的 Gmail</b>。</li>
+        <li>「API 和服務 → 憑證 → 建立憑證 → OAuth 用戶端 ID」：應用程式類型選 <b>網頁應用程式</b>；在「已授權的 JavaScript 來源」加入 <b>https://cyysongyy.github.io</b> ，按建立。</li>
+        <li>複製跳出的「用戶端 ID」（<code>…apps.googleusercontent.com</code>），貼到上面欄位，按下方「儲存設定」。</li>
+      </ol>
+      <div class="hint" style="margin-top:6px;">⚠️ 登入時會出現一次「Google 尚未驗證此應用程式」，點「繼續」即可（因為這是你自己的個人 App）。此功能需連線，離線下載版請改用「貼上文字」。</div>
+    </details>
+    <div class="row-btn" style="margin-top:12px;"><button class="btn bp" onclick="saveSettings()">💾 儲存設定</button></div>
+  </div>
+  <div class="card">
     <div class="ct">💾 資料管理</div>
     <div class="hint" style="margin-bottom:10px;">所有資料儲存於本機瀏覽器 localStorage。</div>
     <div class="row-btn">
@@ -1217,7 +1238,7 @@ function load(){
   return s;
 }
 function defaults(){
-  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], reminders:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh'}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], reminders:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:''}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));}
 
@@ -2010,9 +2031,74 @@ function openGcal(id){
   const rem=(state.reminders||[]).find(r=>r.id===id); if(!rem)return;
   window.open(gcalUrl(rem),'_blank','noopener'); toast('📆 已開啟 Google 日曆，按「儲存」即可');
 }
-function openGcalSearch(){
-  window.open('https://calendar.google.com/calendar/r/search?q='+encodeURIComponent('診'),'_blank','noopener');
-  toast('📆 已打開 Google 日曆搜尋「診」，把活動複製貼回擷取框');
+/* --- Google 日曆唯讀連結：自動抓含「診」的活動（OAuth token 流程，Client ID 由使用者於設定填入，不進 repo） --- */
+let gcalTokenClient=null, gcalToken=null;
+function gcalSetState(msg){ const el=document.getElementById('gcalVisitState'); if(el)el.innerHTML=msg; }
+function loadGsi(){
+  return new Promise((res,rej)=>{
+    if(window.google&&google.accounts&&google.accounts.oauth2)return res();
+    const s=document.createElement('script'); s.src='https://accounts.google.com/gsi/client'; s.async=true; s.defer=true;
+    s.onload=()=>res(); s.onerror=()=>rej(new Error('無法載入 Google 登入元件（請確認已連線）'));
+    document.head.appendChild(s);
+  });
+}
+function connectGcalVisits(){
+  const cid=(state.settings&&state.settings.gcalClientId||'').trim();
+  if(!cid){
+    gcalSetState('尚未設定 Client ID。請到「⚙️ 設定 → 📆 Google 日曆連結」貼上你的 OAuth Client ID（一次性，約 5 分鐘）。');
+    toast('請先到「設定」貼上 Google Client ID'); go('settings'); return;
+  }
+  if(!navigator.onLine){ gcalSetState('目前離線，此功能需連線；離線請改用下方「手動貼上文字」。'); return; }
+  gcalSetState('⏳ 開啟 Google 登入中…（若跳「未驗證」提示，點「繼續」即可）');
+  loadGsi().then(()=>{
+    try{
+      gcalTokenClient=google.accounts.oauth2.initTokenClient({
+        client_id:cid,
+        scope:'https://www.googleapis.com/auth/calendar.events.readonly',
+        callback:(resp)=>{
+          if(resp&&resp.error){ gcalSetState('❌ 授權失敗：'+esc(resp.error)+'（請確認 Client ID 與「已授權來源」設定正確）'); return; }
+          gcalToken=resp.access_token; fetchGcalVisits();
+        }
+      });
+      gcalTokenClient.requestAccessToken({prompt:''});
+    }catch(e){ gcalSetState('❌ 初始化失敗：'+esc(e.message||String(e))); }
+  }).catch(e=>{ gcalSetState('❌ '+esc(e.message||String(e))); });
+}
+function taipeiParts(d){
+  try{
+    return {date:d.toLocaleDateString('en-CA',{timeZone:'Asia/Taipei'}),
+            time:d.toLocaleTimeString('en-GB',{timeZone:'Asia/Taipei',hour:'2-digit',minute:'2-digit',hour12:false})};
+  }catch(e){ return {date:localDayKey(d),time:pad2(d.getHours())+':'+pad2(d.getMinutes())}; }
+}
+function fetchGcalVisits(){
+  gcalSetState('⏳ 讀取日曆中…');
+  const now=Date.now();
+  const p=new URLSearchParams({q:'診',
+    timeMin:new Date(now-90*864e5).toISOString(), timeMax:new Date(now+400*864e5).toISOString(),
+    singleEvents:'true', orderBy:'startTime', maxResults:'250'});
+  fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?'+p.toString(),
+    {headers:{Authorization:'Bearer '+gcalToken}})
+    .then(r=>{ if(!r.ok)throw new Error('讀取失敗 HTTP '+r.status); return r.json(); })
+    .then(data=>{
+      const items=data.items||[]; const seen=new Set(); const cand=[];
+      items.forEach(ev=>{
+        const hay=(ev.summary||'')+' '+(ev.description||'')+' '+(ev.location||'');
+        if(hay.indexOf('診')<0)return;
+        let date,time;
+        if(ev.start&&ev.start.dateTime){const tp=taipeiParts(new Date(ev.start.dateTime));date=tp.date;time=tp.time;}
+        else if(ev.start&&ev.start.date){date=ev.start.date;time='09:00';}
+        else return;
+        const title=((ev.summary||'回診').trim()+(ev.location?(' '+ev.location.trim()):'')).slice(0,40);
+        const key=date+'|'+time+'|'+title; if(seen.has(key))return; seen.add(key);
+        cand.push({date,time,title});
+      });
+      VISIT_CAND=cand;
+      if(!cand.length){ gcalSetState('✅ 已連結，但日曆裡找不到含「診」的活動。'); document.getElementById('visitFound').innerHTML=''; return; }
+      gcalSetState('✅ 已從 Google 日曆找到 '+cand.length+' 筆含「診」的活動：');
+      showVisitCandidates();
+      document.getElementById('visitFound').scrollIntoView({behavior:'smooth',block:'nearest'});
+    })
+    .catch(e=>{ gcalSetState('❌ '+esc(e.message||String(e))+'（請確認已啟用 Google Calendar API）'); });
 }
 /* --- 看診日期擷取：文字內含「診」的日期 → 建成回診提醒 --- */
 const VISIT_RX=/[門回複初約看]?診|就醫|回院|追蹤門診/;  // 關鍵字「診」及常見看診字眼
@@ -2069,18 +2155,21 @@ function extractVisits(text){
   return out;
 }
 let VISIT_CAND=[];
-function scanVisitPaste(){
-  const txt=(document.getElementById('visitPaste').value||'');
-  VISIT_CAND=extractVisits(txt);
-  const box=document.getElementById('visitFound');
-  if(!txt.trim()){ box.innerHTML='<div class="hint">請先貼上文字。</div>'; return; }
-  if(!VISIT_CAND.length){ box.innerHTML='<div class="hint">沒有找到含「診」的日期。可手動用上方「➕ 新增提醒」，或確認文字是否含「回診／門診」與日期。</div>'; return; }
+function showVisitCandidates(emptyMsg){
+  const box=document.getElementById('visitFound'); if(!box)return;
+  if(!VISIT_CAND.length){ box.innerHTML='<div class="hint">'+(emptyMsg||'沒有找到含「診」的日期。')+'</div>'; return; }
   box.innerHTML='<div class="hint" style="margin-bottom:6px;">找到 '+VISIT_CAND.length+' 筆，勾選要建立的：</div>'+
     VISIT_CAND.map((v,i)=>`<label class="rec" style="border-left-color:var(--acc);align-items:center;cursor:pointer;">
       <input type="checkbox" class="visitChk" data-i="${i}" checked style="width:18px;height:18px;margin-right:6px;">
       <div class="rec-body" style="flex:1;"><div class="rec-desc">🏥 <b>${esc(v.title)}</b></div><div class="hint">${v.date} ${v.time}</div></div>
     </label>`).join('')+
     `<div class="row-btn" style="margin-top:10px;"><button class="btn bp" onclick="createVisitReminders()">➕ 建立勾選的看診提醒</button></div>`;
+}
+function scanVisitPaste(){
+  const txt=(document.getElementById('visitPaste').value||'');
+  if(!txt.trim()){ document.getElementById('visitFound').innerHTML='<div class="hint">請先貼上文字。</div>'; return; }
+  VISIT_CAND=extractVisits(txt);
+  showVisitCandidates('沒有找到含「診」的日期。可手動用上方「➕ 新增提醒」，或確認文字是否含「回診／門診」與日期。');
 }
 function createVisitReminders(){
   const chks=[...document.querySelectorAll('.visitChk:checked')];
@@ -3469,6 +3558,7 @@ function saveSettings(){
   const da=document.getElementById('set-dailyalert');if(da)state.settings.dailyAlert=da.checked;
   state.settings.fb=document.getElementById('set-fb').value.trim();
   state.settings.fbEmail=document.getElementById('set-fb-email').value.trim();
+  const gc=document.getElementById('set-gcal-cid');if(gc)state.settings.gcalClientId=gc.value.trim();
   save();refreshAiBadge();refreshCloudBadge();toast('✅ 設定已儲存');
 }
 const SCHEMA_VERSION=1;
@@ -3596,7 +3686,7 @@ function renderMedScore(){
   }
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.23-gcal-search';
+const APP_VERSION='2026.07.23-gcal-oauth';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -3626,6 +3716,7 @@ function init(){
   document.getElementById('set-autosync').checked=!!state.settings.autosync;
   document.getElementById('set-fb').value=state.settings.fb||'';
   document.getElementById('set-fb-email').value=state.settings.fbEmail||'';
+  const gcEl=document.getElementById('set-gcal-cid');if(gcEl)gcEl.value=state.settings.gcalClientId||'';
   refreshAiBadge();refreshCloudBadge();
   const bt=document.getElementById('buildTag');if(bt)bt.textContent=APP_VERSION;
   const da=document.getElementById('set-dailyalert');if(da)da.checked=state.settings.dailyAlert!==false;
