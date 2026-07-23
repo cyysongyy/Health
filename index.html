@@ -594,7 +594,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== MEDICAL-GRADE SCORES ========== -->
 <div class="sec" id="sec-medscore">
-  <div class="disc" style="border-left:3px solid var(--pri);">🩺 <b>醫療級評估：</b>採用國際實證、臨床實際使用的風險模型（ASCVD Pooled Cohort Equations、FINDRISC、CKD-EPI 2021、FIB-4、脂肪肝指數、代謝症候群準則、TyG 胰島素阻抗指數、血脂比值/非-HDL-C、AHA Life’s Essential 8 心血管健康總分），依你的個人資料與最新檢驗值精算。<b>仍為衛教與自我管理參考、非醫療診斷</b>；模型多源自歐美族群，套用於台灣人可能高估或低估，實際判讀請以醫師為準。</div>
+  <div class="disc" style="border-left:3px solid var(--pri);">🩺 <b>醫療級評估：</b>採用國際實證、臨床實際使用的風險模型（ASCVD Pooled Cohort Equations、FINDRISC、CKD-EPI 2021、FIB-4、脂肪肝指數、代謝症候群準則、TyG 胰島素阻抗指數、血脂比值/非-HDL-C、AHA Life’s Essential 8 心血管健康總分、CHA₂DS₂-VASc 中風風險、HAS-BLED 出血風險、OSTA 骨鬆風險），依你的個人資料與最新檢驗值精算。<b>仍為衛教與自我管理參考、非醫療診斷</b>；模型多源自歐美族群，套用於台灣人可能高估或低估，實際判讀請以醫師為準。</div>
   <div id="medscoreBody"></div>
 </div>
 
@@ -1264,10 +1264,11 @@ function load(){
   }catch(e){}
   if(s&&!Array.isArray(s.reminders))s.reminders=[];
   if(s&&s.settings&&s.settings.fontScale==null)s.settings.fontScale=1.5;
+  if(s&&!s.mhx)s.mhx={};
   return s;
 }
 function defaults(){
-  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], reminders:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true,fontScale:1.5}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], reminders:[], mhx:{}, habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true,fontScale:1.5}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));}
 
@@ -3659,7 +3660,7 @@ function medInputs(){
   const cls=(typeof medClasses==='function')?medClasses(180):{};
   const bmi=r.bmi||(p.height&&p.weight?+(p.weight/Math.pow(p.height/100,2)).toFixed(1):null);
   return {
-    sex:p.sex||null, age:num(p.age), bmi, waist:num(p.waist),
+    sex:p.sex||null, age:num(p.age), bmi, waist:num(p.waist), weight:num(p.weight),
     tc:v('chol')!=null?v('chol'):num(p.chol), hdl:v('hdl')!=null?v('hdl'):num(p.hdl), ldl:v('ldl'), tg:v('tg'),
     sbp:v('sbp')!=null?v('sbp'):num(p.sbp), dbp:v('dbp')!=null?v('dbp'):num(p.dbp),
     glucose:v('glucose')!=null?v('glucose'):num(p.glucose), hba1c:v('hba1c'),
@@ -3730,8 +3731,38 @@ function calcLE8(I){
   const score=Math.round(C.reduce((s,x)=>s+x.pts,0)/C.length);
   return {score,C};
 }
+// CHA₂DS₂-VASc：心房顫動患者中風風險（Lip 2010）
+function calcCHADSVASc(I,mh){
+  let s=0; const d=[];
+  if(mh.chf){s+=1;d.push('心衰竭 +1');}
+  const htn=(I.sbp!=null&&I.sbp>=140)||(I.dbp!=null&&I.dbp>=90)||I.onBpMed; if(htn){s+=1;d.push('高血壓 +1');}
+  if(I.age!=null){ if(I.age>=75){s+=2;d.push('年齡 ≥75 +2');} else if(I.age>=65){s+=1;d.push('年齡 65–74 +1');} }
+  if(I.diabetes){s+=1;d.push('糖尿病 +1');}
+  if(mh.stroke){s+=2;d.push('曾中風/TIA +2');}
+  if(mh.vascular){s+=1;d.push('血管疾病 +1');}
+  if(I.sex==='female'){s+=1;d.push('女性 +1');}
+  return {score:s,detail:d};
+}
+// HAS-BLED：抗凝血治療出血風險（Pisters 2010）
+function calcHASBLED(I,mh){
+  let s=0; const d=[];
+  if(I.sbp!=null&&I.sbp>160){s+=1;d.push('高血壓未控（收縮壓>160）+1');}
+  const renal=(I.scr!=null&&I.sex&&I.age)?(calcCKDEPI(I).egfr<60):false; if(renal){s+=1;d.push('腎功能異常（eGFR<60）+1');}
+  const liver=(I.alt!=null&&I.alt>120)||(I.ast!=null&&I.ast>120); if(liver){s+=1;d.push('肝功能異常 +1');}
+  if(mh.stroke){s+=1;d.push('曾中風 +1');}
+  if(mh.bleed){s+=1;d.push('出血病史/易出血 +1');}
+  if(mh.labileINR){s+=1;d.push('INR 不穩定 +1');}
+  if(I.age!=null&&I.age>65){s+=1;d.push('年齡 >65 +1');}
+  if(mh.antiplt){s+=1;d.push('抗血小板藥/NSAID +1');}
+  if(mh.alcohol){s+=1;d.push('長期大量飲酒 +1');}
+  return {score:s,detail:d};
+}
+// OSTA：亞洲人骨質疏鬆自我篩檢（Koh 2001）＝ (體重kg − 年齡) × 0.2
+function calcOSTA(I){ return Math.round((I.weight-I.age)*0.2*10)/10; }
+function toggleMhx(k,v){ state.mhx=state.mhx||{}; state.mhx[k]=v; save(); renderMedScore(); }
 function renderMedScore(){
   const el=document.getElementById('medscoreBody'); if(!el)return;
+  const mh=state.mhx||{};
   const I=medInputs(); const cards=[];
   const box=(icon,title,src,inner)=>`<div class="card"><div class="ct">${icon} ${title}</div><div class="hint" style="margin:-2px 0 8px;">模型：${src}</div>${inner}</div>`;
   const miss=(icon,title,src,need)=>`<div class="card" style="opacity:.7;"><div class="ct">${icon} ${title}</div><div class="hint" style="margin:-2px 0 6px;">模型：${src}</div><div class="hint">尚缺 <b>${need}</b>，補齊即可計算（到「📝 健康評估」填寫，或「🔗 匯入串接」匯入檢驗）。</div></div>`;
@@ -3833,9 +3864,46 @@ function renderMedScore(){
         `<div class="hint" style="margin-top:6px;">飲食為自評近似、血糖/血壓治療中依 AHA 規則調整；補齊各項數據會更準。</div>`));
     }else cards.push(miss('💚','心血管健康總分 Life’s Essential 8','AHA 2022 Life’s Essential 8','飲食、運動、睡眠、體重、血脂、血糖、血壓等至少 4 項'));
   }
-  el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
+  // 10) CHA₂DS₂-VASc（中風風險）
+  if(I.age!=null&&I.sex){
+    const r=calcCHADSVASc(I,mh);
+    const c= r.score<=1?['低','var(--ok)']: r.score<=3?['中','var(--warn)']:['高','var(--err)'];
+    cards.push(box('🧠','中風風險 CHA₂DS₂-VASc','心房顫動患者中風風險評分（0–9）',
+      big(r.score+' 分',c[1])+`<div style="font-weight:800;color:${c[1]};margin-top:4px;">${c[0]}風險</div>`+
+      `<div style="font-size:.82rem;margin-top:6px;line-height:1.8;">${r.detail.length?r.detail.join('　'):'目前無加分項目'}</div>`+
+      `<div style="font-size:.82rem;margin-top:6px;line-height:1.6;">${mh.af?'你有心房顫動：':'此分數主要用於<b>心房顫動</b>患者評估中風風險（你未勾選心房顫動，僅供整體血管風險參考）。'}${r.score>=2?'≥2 分通常建議與醫師討論是否需要抗凝血藥物預防中風。':'分數較低，維持血壓、血糖與血管健康。'}</div>`+
+      `<div class="hint" style="margin-top:8px;">採用：年齡・性別・血壓・糖尿病＋病史勾選（心衰竭/中風/血管疾病）</div>`));
+  }
+  // 11) HAS-BLED（出血風險）
+  if(I.age!=null){
+    const r=calcHASBLED(I,mh);
+    const c= r.score<=2?['較低','var(--ok)']:['偏高（需注意出血）','var(--err)'];
+    cards.push(box('🩸','出血風險 HAS-BLED','抗凝血治療出血風險評分（0–9）',
+      big(r.score+' 分',c[1])+`<div style="font-weight:800;color:${c[1]};margin-top:4px;">${c[0]}</div>`+
+      `<div style="font-size:.82rem;margin-top:6px;line-height:1.8;">${r.detail.length?r.detail.join('　'):'目前無加分項目'}</div>`+
+      `<div style="font-size:.82rem;margin-top:6px;line-height:1.6;">用於服用抗凝血藥（如 warfarin、NOAC）者評估出血風險。≥3 分屬偏高，代表需更謹慎監測、矯正可控因子（血壓、飲酒、併用藥物），並非不能用藥。</div>`+
+      `<div class="hint" style="margin-top:8px;">肝腎功能由檢驗值推估、其餘依病史勾選；請以醫師評估為準。</div>`));
+  }
+  // 12) OSTA（骨質疏鬆自我篩檢，亞洲版）
+  if(I.weight!=null&&I.age!=null){
+    const o=calcOSTA(I);
+    const c= o>-1?['低風險','var(--ok)']: o>=-4?['中風險','var(--warn)']:['高風險','var(--err)'];
+    cards.push(box('🦴','骨質疏鬆風險 OSTA','OSTA 亞洲人自我篩檢指標',
+      big(o,c[1])+`<div style="font-weight:800;color:${c[1]};margin-top:4px;">${c[0]}</div>`+
+      `<div style="font-size:.82rem;margin-top:6px;line-height:1.6;">由體重與年齡估算（體重越輕、年齡越大風險越高）。${o<-1?'屬中／高風險：建議與醫師討論骨密度（DXA）檢查，補充鈣與維生素 D、負重運動、防跌。':'目前較低，仍建議維持負重運動與足夠鈣質。'}</div>`+
+      `<div class="hint" style="margin-top:8px;">採用：體重 ${I.weight} kg・年齡 ${I.age}（對停經後婦女與長者最具參考性；確診需骨密度檢查）</div>`));
+  }else cards.push(miss('🦴','骨質疏鬆風險 OSTA','OSTA 亞洲版',[!I.weight?'體重':'',!I.age?'年齡':''].filter(Boolean).join('、')));
+  // 病史勾選卡（置於最前，供中風/出血評分）
+  const chk=(k,label)=>`<label style="display:flex;align-items:center;gap:8px;font-size:.85rem;padding:4px 0;"><input type="checkbox" style="width:18px;height:18px;" ${mh[k]?'checked':''} onchange="toggleMhx('${k}',this.checked)"> ${label}</label>`;
+  cards.unshift(`<div class="card"><div class="ct">🗂️ 病史勾選 <span class="hint">供中風／出血風險評估</span></div>`+
+    `<div class="hint" style="margin-bottom:6px;">勾選符合的項目，下方「中風風險」「出血風險」會即時重新計算（僅存於本機）。</div>`+
+    chk('af','心房顫動（AF，心律不整）')+chk('chf','心臟衰竭')+chk('stroke','曾中風／小中風（TIA）')+
+    chk('vascular','血管疾病（心肌梗塞／周邊動脈／主動脈斑塊）')+chk('bleed','出血病史或容易出血')+
+    chk('antiplt','服用抗血小板藥（阿斯匹靈等）或常用 NSAID 止痛藥')+chk('alcohol','長期大量飲酒')+
+    chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
+  el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.23-medscore-plus';
+const APP_VERSION='2026.07.23-medscore-plus2';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
