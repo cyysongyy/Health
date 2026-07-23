@@ -2054,7 +2054,7 @@ function connectGcalVisits(){
     try{
       gcalTokenClient=google.accounts.oauth2.initTokenClient({
         client_id:cid,
-        scope:'https://www.googleapis.com/auth/calendar.events.readonly',
+        scope:'https://www.googleapis.com/auth/calendar.readonly',
         callback:(resp)=>{
           if(resp&&resp.error){ gcalSetState('❌ 授權失敗：'+esc(resp.error)+'（請確認 Client ID 與「已授權來源」設定正確）'); return; }
           gcalToken=resp.access_token; fetchGcalVisits();
@@ -2073,17 +2073,26 @@ function taipeiParts(d){
 function fetchGcalVisits(){
   gcalSetState('⏳ 讀取日曆中…');
   const now=Date.now();
-  const p=new URLSearchParams({q:'診',
-    timeMin:new Date(now-90*864e5).toISOString(), timeMax:new Date(now+400*864e5).toISOString(),
-    singleEvents:'true', orderBy:'startTime', maxResults:'250'});
-  fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?'+p.toString(),
-    {headers:{Authorization:'Bearer '+gcalToken}})
-    .then(r=>{ if(!r.ok)throw new Error('讀取失敗 HTTP '+r.status); return r.json(); })
-    .then(data=>{
-      const items=data.items||[]; const seen=new Set(); const cand=[];
-      items.forEach(ev=>{
+  const timeMin=new Date(now).toISOString();               // 從今天起
+  const timeMax=new Date(now+366*864e5).toISOString();     // 到一年後
+  const auth={Authorization:'Bearer '+gcalToken};
+  // 先取「所有日曆」清單（活動可能不在主要日曆）；失敗就退回只讀 primary
+  fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList',{headers:auth})
+    .then(r=>r.ok?r.json():{items:[{id:'primary'}]}).catch(()=>({items:[{id:'primary'}]}))
+    .then(list=>{
+      let cals=(list.items||[]).map(c=>c.id); if(!cals.length)cals=['primary'];
+      // 不用 q（中文單字搜尋不可靠）：整段抓回來，改在本機比對「診」
+      const params=new URLSearchParams({timeMin,timeMax,singleEvents:'true',orderBy:'startTime',maxResults:'250'});
+      return Promise.all(cals.map(id=>
+        fetch('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(id)+'/events?'+params.toString(),{headers:auth})
+          .then(r=>r.ok?r.json():{items:[]}).catch(()=>({items:[]}))
+      ));
+    })
+    .then(results=>{
+      const seen=new Set(), cand=[];
+      results.forEach(data=>{(data.items||[]).forEach(ev=>{
         const hay=(ev.summary||'')+' '+(ev.description||'')+' '+(ev.location||'');
-        if(hay.indexOf('診')<0)return;
+        if(hay.indexOf('診')<0)return;                       // 本機比對關鍵字「診」
         let date,time;
         if(ev.start&&ev.start.dateTime){const tp=taipeiParts(new Date(ev.start.dateTime));date=tp.date;time=tp.time;}
         else if(ev.start&&ev.start.date){date=ev.start.date;time='09:00';}
@@ -2091,12 +2100,13 @@ function fetchGcalVisits(){
         const title=((ev.summary||'回診').trim()+(ev.location?(' '+ev.location.trim()):'')).slice(0,40);
         const key=date+'|'+time+'|'+title; if(seen.has(key))return; seen.add(key);
         cand.push({date,time,title});
-      });
+      });});
+      cand.sort((a,b)=>((a.date+a.time)<(b.date+b.time)?-1:1));
       VISIT_CAND=cand;
-      if(!cand.length){ gcalSetState('✅ 已連結，但日曆裡找不到含「診」的活動。'); document.getElementById('visitFound').innerHTML=''; return; }
-      gcalSetState('✅ 已從 Google 日曆找到 '+cand.length+' 筆含「診」的活動：');
+      if(!cand.length){ gcalSetState('✅ 已連結，但「從今天到一年後」的所有日曆裡都找不到含「診」的活動。若活動在更早以前，或用了別的字（例如只寫「內科」「回院」），跟我說我幫你調。'); document.getElementById('visitFound').innerHTML=''; return; }
+      gcalSetState('✅ 已從你的 Google 日曆（所有日曆、今天起一年內）找到 '+cand.length+' 筆含「診」的活動：');
       showVisitCandidates();
-      document.getElementById('visitFound').scrollIntoView({behavior:'smooth',block:'nearest'});
+      const vf=document.getElementById('visitFound'); if(vf)vf.scrollIntoView({behavior:'smooth',block:'nearest'});
     })
     .catch(e=>{ gcalSetState('❌ '+esc(e.message||String(e))+'（請確認已啟用 Google Calendar API）'); });
 }
@@ -3686,7 +3696,7 @@ function renderMedScore(){
   }
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.23-gcal-oauth';
+const APP_VERSION='2026.07.23-gcal-allcals';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
