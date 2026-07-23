@@ -710,6 +710,17 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
     <div id="remindNotifyState" class="hint" style="margin-top:8px;"></div>
   </div>
 
+  <div class="card" style="background:#f0fdf4;">
+    <div class="ct">🏥 貼上看診資訊，自動抓「診」的日期</div>
+    <div class="hint" style="line-height:1.7;">把<b>回診單、看診通知、簡訊</b>的文字貼進來（或任何含日期的文字）。系統會找出含「診」（回診／門診／看診／複診…）的日期，一鍵建成看診提醒——建好後每筆都能按「📆 Google 日曆」加入你的行事曆。支援西元與民國日期。</div>
+    <textarea id="visitPaste" class="fi" rows="4" style="margin-top:10px;resize:vertical;" placeholder="例：&#10;神經內科 回診 2026/08/05 上午 09:30&#10;114年9月12日 心臟內科門診 下午2點&#10;複診 10/20 帶上次抽血報告"></textarea>
+    <div class="row-btn" style="margin-top:10px;flex-wrap:wrap;gap:8px;">
+      <button class="btn bp" onclick="scanVisitPaste()">🔍 擷取看診日期</button>
+      <button class="btn bg" onclick="document.getElementById('visitPaste').value='';document.getElementById('visitFound').innerHTML='';">↺ 清空</button>
+    </div>
+    <div id="visitFound" style="margin-top:10px;"></div>
+  </div>
+
   <div id="remindDueCard"></div>
 
   <div class="card">
@@ -1992,6 +2003,91 @@ function gcalUrl(rem){
 function openGcal(id){
   const rem=(state.reminders||[]).find(r=>r.id===id); if(!rem)return;
   window.open(gcalUrl(rem),'_blank','noopener'); toast('📆 已開啟 Google 日曆，按「儲存」即可');
+}
+/* --- 看診日期擷取：文字內含「診」的日期 → 建成回診提醒 --- */
+const VISIT_RX=/[門回複初約看]?診|就醫|回院|追蹤門診/;  // 關鍵字「診」及常見看診字眼
+function ymdStr(y,mo,da){ if(mo<1||mo>12||da<1||da>31)return null; return y+'-'+pad2(mo)+'-'+pad2(da); }
+function nextYmd(mo,da){ // 無年份 → 取今年，若已過則明年
+  if(mo<1||mo>12||da<1||da>31)return null;
+  const now=new Date(), y=now.getFullYear();
+  const cand=y+'-'+pad2(mo)+'-'+pad2(da);
+  return cand>=localDayKey()?cand:((y+1)+'-'+pad2(mo)+'-'+pad2(da));
+}
+function findDateInStr(s){
+  let m;
+  if(m=/(\d{2,4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?/.exec(s)){let y=+m[1];if(y<1911)y+=1911;return ymdStr(y,+m[2],+m[3]);}
+  if(m=/(\d{3,4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/.exec(s)){let y=+m[1];if(y<1911)y+=1911;return ymdStr(y,+m[2],+m[3]);}
+  if(m=/(\d{1,2})\s*月\s*(\d{1,2})\s*日?/.exec(s)){return nextYmd(+m[1],+m[2]);}
+  if(m=/\b(\d{1,2})[\/\-](\d{1,2})\b/.exec(s)){return nextYmd(+m[1],+m[2]);}
+  return null;
+}
+function findTimeInStr(s){
+  let m;
+  if(m=/(上午|早上|下午|晚上|中午)\s*(\d{1,2})\s*[點时:：]\s*(\d{1,2})?\s*分?/.exec(s)){
+    let h=+m[2]; const ap=m[1]; if((ap==='下午'||ap==='晚上')&&h<12)h+=12; if(ap==='中午')h=12;
+    return pad2(h%24)+':'+pad2(m[3]?+m[3]:0);
+  }
+  if(m=/\b(\d{1,2})\s*[:：]\s*(\d{2})\b/.exec(s)){let h=+m[1];return pad2(h%24)+':'+pad2(+m[2]);}
+  if(m=/(上午|早上|下午|晚上|中午)\s*(\d{1,2})\s*[點时]/.exec(s)){let h=+m[2];const ap=m[1];if((ap==='下午'||ap==='晚上')&&h<12)h+=12;if(ap==='中午')h=12;return pad2(h%24)+':00';}
+  return null;
+}
+function cleanVisitTitle(line){
+  let t=line.replace(/(\d{2,4})\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日?/g,'')
+    .replace(/(\d{3,4})[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}/g,'')
+    .replace(/\d{1,2}\s*月\s*\d{1,2}\s*日?/g,'')
+    .replace(/\b\d{1,2}[\/\-]\d{1,2}\b/g,'')
+    .replace(/(上午|早上|下午|晚上|中午)?\s*\d{1,2}\s*[點时:：]\s*\d{0,2}\s*分?/g,'')
+    .replace(/[，,、。;；|｜\-\/\.\s]+/g,' ').trim();
+  if(!t)t='回診';
+  return t.slice(0,40);
+}
+function extractVisits(text){
+  const out=[], seen=new Set();
+  if(!text)return out;
+  const lines=text.split(/[\n\r]+/).map(s=>s.trim()).filter(Boolean);
+  const scan=(str)=>{
+    if(!VISIT_RX.test(str))return;
+    const d=findDateInStr(str); if(!d)return;
+    const t=findTimeInStr(str)||'09:00';
+    const title=cleanVisitTitle(str);
+    const key=d+'|'+t+'|'+title;
+    if(seen.has(key))return; seen.add(key);
+    out.push({date:d,time:t,title});
+  };
+  lines.forEach(scan);
+  if(!out.length && VISIT_RX.test(text)) scan(text.replace(/[\n\r]+/g,' '));
+  return out;
+}
+let VISIT_CAND=[];
+function scanVisitPaste(){
+  const txt=(document.getElementById('visitPaste').value||'');
+  VISIT_CAND=extractVisits(txt);
+  const box=document.getElementById('visitFound');
+  if(!txt.trim()){ box.innerHTML='<div class="hint">請先貼上文字。</div>'; return; }
+  if(!VISIT_CAND.length){ box.innerHTML='<div class="hint">沒有找到含「診」的日期。可手動用上方「➕ 新增提醒」，或確認文字是否含「回診／門診」與日期。</div>'; return; }
+  box.innerHTML='<div class="hint" style="margin-bottom:6px;">找到 '+VISIT_CAND.length+' 筆，勾選要建立的：</div>'+
+    VISIT_CAND.map((v,i)=>`<label class="rec" style="border-left-color:var(--acc);align-items:center;cursor:pointer;">
+      <input type="checkbox" class="visitChk" data-i="${i}" checked style="width:18px;height:18px;margin-right:6px;">
+      <div class="rec-body" style="flex:1;"><div class="rec-desc">🏥 <b>${esc(v.title)}</b></div><div class="hint">${v.date} ${v.time}</div></div>
+    </label>`).join('')+
+    `<div class="row-btn" style="margin-top:10px;"><button class="btn bp" onclick="createVisitReminders()">➕ 建立勾選的看診提醒</button></div>`;
+}
+function createVisitReminders(){
+  const chks=[...document.querySelectorAll('.visitChk:checked')];
+  if(!chks.length){toast('請至少勾選一筆');return;}
+  state.reminders=state.reminders||[];
+  let n=0;
+  chks.forEach(c=>{
+    const v=VISIT_CAND[+c.dataset.i]; if(!v)return;
+    const dup=state.reminders.some(r=>r.type==='visit'&&r.startDate===v.date&&(r.title||'')===v.title);
+    if(dup)return;
+    state.reminders.push({id:remId(),type:'visit',title:v.title,freq:'once',time:v.time,startDate:v.date,note:'由看診資訊擷取',weekday:1,interval:3,enabled:true,doneDates:[],createdAt:new Date().toISOString()});
+    n++;
+  });
+  save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  document.getElementById('visitFound').innerHTML='';document.getElementById('visitPaste').value='';
+  renderRemind(); renderRemindDue();
+  toast(n?('✅ 已建立 '+n+' 筆看診提醒'):'這些提醒已存在');
 }
 /* --- 瀏覽器通知（App 開著時） --- */
 function notifySupported(){return typeof Notification!=='undefined';}
@@ -3490,7 +3586,7 @@ function renderMedScore(){
   }
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.23-reminders-gcal';
+const APP_VERSION='2026.07.23-visit-extract';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
