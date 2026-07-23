@@ -712,7 +712,13 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
   <div class="card" style="background:#f0fdf4;">
     <div class="ct">🏥 看診提醒：從 Google 日曆自動抓「診」</div>
-    <div class="hint" style="line-height:1.7;">按一下，登入你的 Google 日曆，系統會自動找出所有含「診」（回診／門診／看診／複診…）的活動，列在下方讓你勾選建成提醒。建好後每筆都能加回行事曆。</div>
+    <div class="hint" style="line-height:1.7;">按一下，登入你的 Google 日曆，系統會自動找出所有含「診」（回診／門診／看診／複診…）的活動，建成「看診前提醒」，並可加進手機行事曆——這樣<b>即使關閉 App，手機也會準時響鈴</b>。</div>
+    <div class="hint" style="margin-top:10px;background:#fff;border:1px solid #d1d5db;border-radius:10px;padding:10px 12px;">
+      ⏰ 提醒時間：看診前
+      <input id="visitAheadDays" type="number" min="0" max="14" onchange="saveVisitAhead()" style="width:52px;padding:4px 6px;border:1px solid #d1d5db;border-radius:6px;text-align:center;"> 天的
+      <input id="visitAheadTime" type="time" onchange="saveVisitAhead()" style="padding:4px 6px;border:1px solid #d1d5db;border-radius:6px;">
+      <div class="hint" style="margin-top:4px;font-size:.74rem;">（例如「1 天 07:00」＝看診前一天早上 7 點提醒）</div>
+    </div>
     <div class="row-btn" style="margin-top:12px;flex-wrap:wrap;gap:8px;">
       <button class="btn bp" onclick="connectGcalVisits()">📆 從 Google 日曆自動抓「診」</button>
     </div>
@@ -743,7 +749,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
     <div class="hint" style="line-height:1.8;">
       網頁在手機「關閉後」通常無法主動推播（iPhone Safari 尤其嚴格），所以最可靠的是把提醒交給手機原生行事曆。<br>
       • <b>📆 Google 日曆</b>：每筆提醒按一下，直接開啟 Google 日曆並自動填好（含重複規則），按「儲存」即可。<b>不需登入本 App、不需任何金鑰</b>，最適合公開分享。<br>
-      • <b>📅 .ics</b>：下載行事曆檔（含重複規則與提前 10 分鐘鬧鈴），適用 iPhone／Apple 行事曆、Outlook，也可在 Google 日曆「設定 → 匯入」一次匯入多筆。<br>
+      • <b>📅 .ics</b>：下載行事曆檔（含重複規則與準時鬧鈴），適用 iPhone／Apple 行事曆、Outlook，也可在 Google 日曆「設定 → 匯入」一次匯入多筆。<br>
       • <b>🔔 瀏覽器通知</b>：App 開著時，到時間直接跳通知。<br>
       三種一起用最不會漏。
     </div>
@@ -1238,7 +1244,7 @@ function load(){
   return s;
 }
 function defaults(){
-  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], reminders:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:''}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], reminders:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00'}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));}
 
@@ -1876,6 +1882,9 @@ function remToggle(id){const r=(state.reminders||[]).find(x=>x.id===id);if(!r)re
 function remDelete(id){ if(!confirm('確定刪除這個提醒？'))return; state.reminders=(state.reminders||[]).filter(x=>x.id!==id); save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{}); renderRemind(); renderRemindDue(); toast('已刪除'); }
 function renderRemind(){
   updateNotifyState();
+  const a=visitAhead();
+  const dEl=document.getElementById('visitAheadDays'); if(dEl)dEl.value=a.days;
+  const tEl=document.getElementById('visitAheadTime'); if(tEl)tEl.value=a.time;
   renderRemindDueInto('remindDueCard',true);
   const rems=(state.reminders||[]).slice();
   const cnt=document.getElementById('remindCount'), empty=document.getElementById('remindEmpty'), list=document.getElementById('remindList');
@@ -1988,7 +1997,7 @@ function remToVevent(rem){
   const lines=['BEGIN:VEVENT','UID:'+rem.id+'@lifespan','DTSTAMP:'+icsStamp(),'DTSTART:'+icsDateLocal(rem.startDate,rem.time),'DURATION:PT15M','SUMMARY:'+summary];
   if(rem.note)lines.push('DESCRIPTION:'+icsEsc(rem.note));
   const rr=remRrule(rem); if(rr)lines.push(rr);
-  lines.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+summary,'TRIGGER:-PT10M','END:VALARM','END:VEVENT');
+  lines.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+summary,'TRIGGER:-PT0M','END:VALARM','END:VEVENT');
   return lines.join('\r\n');
 }
 function buildIcs(rems){
@@ -2181,22 +2190,48 @@ function scanVisitPaste(){
   VISIT_CAND=extractVisits(txt);
   showVisitCandidates('沒有找到含「診」的日期。可手動用上方「➕ 新增提醒」，或確認文字是否含「回診／門診」與日期。');
 }
+function addDays(dayKey,delta){ const d=new Date(dayKey+'T00:00:00'); d.setDate(d.getDate()+delta); return localDayKey(d); }
+function visitAhead(){ return {days:(state.settings&&state.settings.visitAheadDays!=null?Math.max(0,+state.settings.visitAheadDays):1),
+  time:(state.settings&&state.settings.visitAheadTime)||'07:00'}; }
+function saveVisitAhead(){
+  const dEl=document.getElementById('visitAheadDays'), tEl=document.getElementById('visitAheadTime');
+  if(dEl)state.settings.visitAheadDays=Math.max(0,Math.min(14,+dEl.value||0));
+  if(tEl)state.settings.visitAheadTime=tEl.value||'07:00';
+  save(); toast('✅ 已設定：看診前 '+state.settings.visitAheadDays+' 天 '+state.settings.visitAheadTime+' 提醒');
+}
+function makeVisitReminder(v){
+  const a=visitAhead();
+  const remindDate=addDays(v.date,-a.days);
+  const whenTxt=a.days===0?'當天':(a.days===1?'前一天':('前 '+a.days+' 天'));
+  return {id:remId(),type:'visit',title:v.title,freq:'once',time:a.time,startDate:remindDate,
+    note:'看診：'+v.date+' '+v.time+'（'+whenTxt+' '+a.time+' 提醒）',
+    apptDate:v.date, apptTime:v.time, weekday:1, interval:3, enabled:true, doneDates:[], createdAt:new Date().toISOString()};
+}
 function createVisitReminders(){
   const chks=[...document.querySelectorAll('.visitChk:checked')];
   if(!chks.length){toast('請至少勾選一筆');return;}
   state.reminders=state.reminders||[];
-  let n=0;
+  const created=[];
   chks.forEach(c=>{
     const v=VISIT_CAND[+c.dataset.i]; if(!v)return;
-    const dup=state.reminders.some(r=>r.type==='visit'&&r.startDate===v.date&&(r.title||'')===v.title);
+    const dup=state.reminders.some(r=>r.type==='visit'&&(r.apptDate||r.startDate)===v.date&&(r.title||'')===v.title);
     if(dup)return;
-    state.reminders.push({id:remId(),type:'visit',title:v.title,freq:'once',time:v.time,startDate:v.date,note:'由看診資訊擷取',weekday:1,interval:3,enabled:true,doneDates:[],createdAt:new Date().toISOString()});
-    n++;
+    const rem=makeVisitReminder(v); state.reminders.push(rem); created.push(rem);
   });
   save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
-  document.getElementById('visitFound').innerHTML='';document.getElementById('visitPaste').value='';
+  document.getElementById('visitFound').innerHTML='';
+  const pv=document.getElementById('visitPaste'); if(pv)pv.value='';
   renderRemind(); renderRemindDue();
-  toast(n?('✅ 已建立 '+n+' 筆看診提醒'):'這些提醒已存在');
+  if(!created.length){ toast('這些提醒已存在'); return; }
+  const a=visitAhead();
+  toast('✅ 已建立 '+created.length+' 筆看診提醒');
+  // 關鍵：加進手機行事曆，關 App 也能在「看診前」準時響鈴
+  setTimeout(()=>{
+    if(confirm('已建立 '+created.length+' 筆看診提醒（看診前 '+a.days+' 天 '+a.time+'）。\n\n要「加入手機行事曆」嗎？\n加入後即使關閉 App，手機也會準時響鈴提醒你——這是關 App 也能提醒的唯一可靠方式。')){
+      dlIcs(buildIcs(created),'lifespan-visits-'+todayKey()+'.ics');
+      toast('📅 已下載，手機點開即可加入行事曆');
+    }
+  },350);
 }
 /* --- 瀏覽器通知（App 開著時） --- */
 function notifySupported(){return typeof Notification!=='undefined';}
@@ -3696,7 +3731,7 @@ function renderMedScore(){
   }
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.23-gcal-allcals';
+const APP_VERSION='2026.07.23-visit-daybefore';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
