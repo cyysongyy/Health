@@ -85,6 +85,7 @@ body{font-family:'Microsoft JhengHei','Noto Sans TC',system-ui,sans-serif;backgr
   font-size:.84rem;font-weight:600;cursor:pointer;border:none;transition:all .18s;font-family:inherit;}
 .bp{background:var(--pri);color:#fff;}.bp:hover{background:var(--prid);}
 .bg{background:var(--g100);color:var(--g700);}.bg:hover{background:var(--g200);}
+.fs-preset.on{background:var(--acc,#0891b2);color:#fff;}
 .bd{background:#fef2f2;color:var(--err);}.bd:hover{background:#fee2e2;}
 .btn:disabled{opacity:.5;cursor:not-allowed;}
 .row-btn{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;}
@@ -1058,6 +1059,23 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== SETTINGS ========== -->
 <div class="sec" id="sec-settings">
+  <div class="card">
+    <div class="ct">🔎 文字大小 <span class="hint">（老花友善）</span></div>
+    <div class="hint" style="margin-bottom:10px;">把整個 App 的文字放大，設定會記住，下次自動套用。</div>
+    <div class="row-btn" style="flex-wrap:wrap;gap:8px;">
+      <button class="btn bg fs-preset" data-s="1" onclick="setFontScale(1)">標準</button>
+      <button class="btn bg fs-preset" data-s="1.25" onclick="setFontScale(1.25)">放大 1.25×</button>
+      <button class="btn bg fs-preset" data-s="1.5" onclick="setFontScale(1.5)">特大 1.5×</button>
+      <button class="btn bg fs-preset" data-s="1.75" onclick="setFontScale(1.75)">超大 1.75×</button>
+      <button class="btn bg fs-preset" data-s="2" onclick="setFontScale(2)">巨大 2×</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:14px;">
+      <span class="hint">小</span>
+      <input type="range" id="fontScaleRange" min="1" max="2.2" step="0.05" style="flex:1;" oninput="setFontScale(this.value)">
+      <span class="hint">大</span>
+      <span style="min-width:52px;text-align:right;font-weight:700;" id="fontScaleLbl">150%</span>
+    </div>
+  </div>
   <div class="card" id="fbCard" style="display:none;">
     <div class="ct">🔥 Firebase 雲端同步 <span class="hint">（僅擁有者）</span></div>
     <div class="hint" style="line-height:1.6;margin-bottom:10px;">
@@ -1245,10 +1263,11 @@ function load(){
     }
   }catch(e){}
   if(s&&!Array.isArray(s.reminders))s.reminders=[];
+  if(s&&s.settings&&s.settings.fontScale==null)s.settings.fontScale=1.5;
   return s;
 }
 function defaults(){
-  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], reminders:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], reminders:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true,fontScale:1.5}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));}
 
@@ -1312,6 +1331,16 @@ function applyI18n(){
   document.documentElement.lang=en?'en':'zh-TW';
 }
 function toggleLang(){ state.settings.lang=curLang()==='en'?'zh':'en'; save(); applyI18n(); toast(curLang()==='en'?'Switched to English (UI shell)':'已切換回中文'); }
+/* ============ 文字大小（老花友善，rem 基準縮放） ============ */
+function fontScale(){ const v=state.settings&&+state.settings.fontScale; return (v&&v>=1&&v<=2.2)?v:1; }
+function applyFontScale(){ document.documentElement.style.fontSize=(16*fontScale())+'px'; }
+function setFontScale(v){
+  state.settings.fontScale=Math.max(1,Math.min(2.2,+v||1)); save(); applyFontScale();
+  const lbl=document.getElementById('fontScaleLbl'); if(lbl)lbl.textContent=Math.round(fontScale()*100)+'%';
+  const rng=document.getElementById('fontScaleRange'); if(rng)rng.value=fontScale();
+  document.querySelectorAll('.fs-preset').forEach(b=>b.classList.toggle('on',Math.abs(+b.dataset.s-fontScale())<0.01));
+  toast('🔎 文字大小：'+Math.round(fontScale()*100)+'%');
+}
 
 /* ============ 導覽 ============ */
 document.querySelectorAll('.nt').forEach(t=>t.onclick=()=>go(t.dataset.sec));
@@ -3746,7 +3775,7 @@ function renderMedScore(){
   }
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.23-visit-batch';
+const APP_VERSION='2026.07.23-fontsize';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -3777,12 +3806,16 @@ function init(){
   document.getElementById('set-fb').value=state.settings.fb||'';
   document.getElementById('set-fb-email').value=state.settings.fbEmail||'';
   const gcEl=document.getElementById('set-gcal-cid');if(gcEl)gcEl.value=state.settings.gcalClientId||'';
+  const rng=document.getElementById('fontScaleRange'); if(rng)rng.value=fontScale();
+  const flbl=document.getElementById('fontScaleLbl'); if(flbl)flbl.textContent=Math.round(fontScale()*100)+'%';
+  document.querySelectorAll('.fs-preset').forEach(b=>b.classList.toggle('on',Math.abs(+b.dataset.s-fontScale())<0.01));
   refreshAiBadge();refreshCloudBadge();
   const bt=document.getElementById('buildTag');if(bt)bt.textContent=APP_VERSION;
   const da=document.getElementById('set-dailyalert');if(da)da.checked=state.settings.dailyAlert!==false;
   setupCloudGate();
   setupPWA();
   renderDash();
+  applyFontScale();
   applyI18n();
   if(state._nhiPurged){const n=state._nhiPurged;delete state._nhiPurged;save();setTimeout(()=>{toast('已清除 '+n+' 筆舊的健保檢驗，請到「匯入串接」重新匯入一次');},400);}
   setTimeout(maybeDailyAlert,600);
