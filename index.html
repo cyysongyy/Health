@@ -724,6 +724,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
     </div>
     <div class="row-btn" style="margin-top:12px;flex-wrap:wrap;gap:8px;">
       <button class="btn bp" onclick="connectGcalVisits()">📆 從 Google 日曆自動抓「診」</button>
+      <button class="btn bg" onclick="exportVisitIcs()">📅 全部看診一次加入行事曆</button>
     </div>
     <div id="gcalVisitState" class="hint" style="margin-top:8px;"></div>
 
@@ -2023,6 +2024,12 @@ function exportOneRemindIcs(id){
   const rem=(state.reminders||[]).find(r=>r.id===id); if(!rem)return;
   dlIcs(buildIcs([rem]),'reminder-'+id+'.ics'); toast('📅 已下載，點開即可加入行事曆');
 }
+function exportVisitIcs(){
+  const vs=(state.reminders||[]).filter(r=>r.enabled&&r.type==='visit');
+  if(!vs.length){toast('目前沒有看診提醒；先用上面「📆 從 Google 日曆自動抓『診』」建立');return;}
+  dlIcs(buildIcs(vs),'lifespan-visits-'+todayKey()+'.ics');
+  toast('📅 已下載 '+vs.length+' 筆看診提醒：手機點開後選「加入全部」，一次加好');
+}
 /* --- Google 日曆「範本連結」：零登入、零金鑰、零 secret，公開 repo 最安全 --- */
 function gcalUrl(rem){
   const meta=remTypeMeta(rem.type);
@@ -2235,9 +2242,9 @@ function createVisitReminders(){
   toast('✅ 已建立 '+created.length+' 筆看診提醒');
   // 關鍵：加進手機行事曆，關 App 也能在「看診前」準時響鈴
   setTimeout(()=>{
-    if(confirm('已建立 '+created.length+' 筆看診提醒（看診前 '+a.days+' 天 '+a.time+'）。\n\n要「加入手機行事曆」嗎？\n加入後即使關閉 App，手機也會準時響鈴提醒你——這是關 App 也能提醒的唯一可靠方式。')){
+    if(confirm('已建立 '+created.length+' 筆看診提醒（看診前 '+a.days+' 天 '+a.time+'）。\n\n要一次「加入手機行事曆」嗎？\n下載後用手機點開，選「加入全部」即可一次加好；加入後即使關閉 App，手機也會準時響鈴提醒你。')){
       dlIcs(buildIcs(created),'lifespan-visits-'+todayKey()+'.ics');
-      toast('📅 已下載，手機點開即可加入行事曆');
+      toast('📅 已下載 '+created.length+' 筆：手機點開後選「加入全部」');
     }
   },350);
 }
@@ -3739,7 +3746,7 @@ function renderMedScore(){
   }
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.23-silent-opt';
+const APP_VERSION='2026.07.23-visit-batch';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
