@@ -891,6 +891,11 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <div id="medsStats"></div>
     </div>
     <div class="card">
+      <div class="ct">⚠️ 可能需注意的併用組合 <span class="hint">藥物交互作用比對</span></div>
+      <div class="hint" style="margin-bottom:8px;">從你近期用藥中，比對<b>臨床上常見、重要</b>的交互作用組合，並列出具體是哪兩種藥。<b>此非完整藥物審查、也不代表一定不能併用</b>；請把完整用藥清單交給醫師／藥師確認。</div>
+      <div id="medsInteract"></div>
+    </div>
+    <div class="card">
       <div class="ct">🗂️ 用藥清單 <span class="hint" id="medsListHint">依日期排序（新→舊）</span></div>
       <div class="seg" id="medViewSeg" style="margin-bottom:8px;">
         <div class="seg-btn on" onclick="setMedView('grouped')">📦 依藥品歸併</div>
@@ -2376,6 +2381,11 @@ function crossFindings(){
     if(cls.dm&&v('hba1c')!=null&&v('hba1c')<7)good.push('糖化血色素 '+v('hba1c')+'%');
     if(good.length>=2)push('info','✅','慢性病控制達標','用藥＋檢驗顯示：'+good.join('、')+' 已達控制目標。','用藥 × 檢驗達標','控制良好，請維持規律服藥與生活型態，並持續定期追蹤。');
   }
+  // 5) 用藥交互作用（僅將高風險組合併入交叉洞察／預警，完整清單見用藥頁）
+  (typeof medInteractions==='function'?medInteractions():[]).filter(x=>x.sev==='high').forEach(x=>{
+    const pr=x.pairs[0];
+    push('warn','💊','用藥併用注意：'+pr[0]+' × '+pr[1],x.why,'藥物交互作用比對',x.adv+'（完整清單見「用藥紀錄」頁）');
+  });
   const rank={crit:0,warn:1,info:2};
   F.sort((a,b)=>rank[a.lvl]-rank[b.lvl]);
   return F;
@@ -3317,6 +3327,61 @@ function medStats(){
   return Object.values(g).map(e=>{ e.span=(e.first&&e.last)?Math.round((e.last-e.first)/864e5):0; e.lt=medLongterm(e.name); return e; })
     .sort((a,b)=> b.days-a.days || b.count-a.count);
 }
+// 藥物交互作用比對：只列臨床公認、重要的組合，並指出具體是哪兩種藥
+const IX_RX={
+  nsaid:/ibuprofen|naproxen|diclofenac|meloxicam|celecoxib|etoricoxib|indomethacin|ketorolac|mefenamic|piroxicam|aceclofenac|dexibuprofen|非類固醇/i,
+  anticoag:/warfarin|rivaroxaban|apixaban|dabigatran|edoxaban|可邁丁|可化凝/i,
+  antiplatelet:/aspirin|acetylsalicylic|clopidogrel|ticagrelor|prasugrel|dipyridamole|cilostazol|阿斯匹靈|伯基|保栓通/i,
+  aceiarb:/lisinopril|ramipril|enalapril|perindopril|captopril|benazepril|imidapril|fosinopril|losartan|valsartan|irbesartan|candesartan|telmisartan|olmesartan|azilsartan|得安穩|可悅您|汰復妥/i,
+  ksparing:/spironolactone|eplerenone|amiloride|triamterene|安達通/i,
+  statin:MED_CLASS_RX.statin, fibrate:/gemfibrozil|fenofibrate|bezafibrate|ciprofibrate|非諾/i,
+  bzd:/diazepam|lorazepam|alprazolam|clonazepam|estazolam|bromazepam|flunitrazepam|midazolam|zolpidem|zopiclone|zaleplon|使蒂諾斯|贊安諾/i,
+  opioid:/morphine|tramadol|codeine|oxycodone|fentanyl|hydromorphone|嗎啡|曲馬多|可待因/i,
+  mrelax:/chlorzoxazone|baclofen|tizanidine|cyclobenzaprine|eperisone|methocarbamol|orphenadrine|舒肉筋/i,
+  ppiClop:/omeprazole|esomeprazole|耐適恩/i, clopidogrel:/clopidogrel|保栓通/i,
+  bblock:/bisoprolol|atenolol|metoprolol|carvedilol|propranolol|nebivolol|labetalol/i,
+  ssri:/fluoxetine|sertraline|paroxetine|escitalopram|citalopram|venlafaxine|duloxetine|fluvoxamine|喜普妙|克憂果/i,
+  cyp3a:/clarithromycin|erythromycin|itraconazole|ketoconazole|fluconazole|voriconazole|posaconazole/i,
+  dm:MED_CLASS_RX.dm
+};
+function medInteractions(){
+  const names=[...new Set(recentMeds(120).map(m=>m.name).filter(Boolean))];
+  if(names.length<2)return [];
+  const tag=t=>names.filter(n=>IX_RX[t].test(n));
+  const out=[], sevRank={high:0,mod:1,low:2};
+  const emit=(sev,as,bs,why,adv)=>{
+    const A=tag(as),B=tag(bs); if(!A.length||!B.length)return;
+    const seen=new Set(),pairs=[];
+    A.forEach(a=>B.forEach(b=>{ if(a===b)return; const k=[a,b].sort().join('|'); if(!seen.has(k)){seen.add(k);pairs.push([a,b]);} }));
+    if(pairs.length)out.push({sev,why,adv,pairs});
+  };
+  emit('high','nsaid','anticoag','消化道出血風險明顯增加','避免併用；如需止痛優先考慮乙醯胺酚（普拿疼），或請醫師評估護胃藥。');
+  emit('high','nsaid','antiplatelet','消化道出血風險增加','避免長期併用；必要時與醫師討論護胃或替代止痛。');
+  emit('high','anticoag','antiplatelet','雙重抗血栓、出血風險上升','有時臨床會刻意併用，但需醫師評估必要性與期程，並監測出血徵兆。');
+  emit('high','statin','fibrate','肌肉病變／橫紋肌溶解風險增加','需醫師評估（fenofibrate 風險較 gemfibrozil 低）；留意肌肉痠痛、尿色變深。');
+  emit('high','bzd','opioid','過度鎮靜、呼吸抑制（FDA 黑框警示）','盡量避免併用；若必要需最低劑量並密切觀察嗜睡／呼吸。');
+  emit('mod','nsaid','aceiarb','降低降壓效果、可能傷腎（合併利尿劑時更明顯）','短期偶用影響小；長期使用請監測血壓與腎功能。');
+  emit('mod','aceiarb','ksparing','血鉀升高風險','定期監測血鉀，避免額外補鉀或高鉀飲食過量。');
+  emit('mod','statin','cyp3a','部分 statin 血中濃度上升、肌肉副作用風險','抗生素／抗黴菌藥多為短期，醫師可能暫停 statin；用藥請主動告知。');
+  emit('mod','bzd','mrelax','中樞鎮靜加乘、嗜睡與跌倒風險','長者尤其小心跌倒；避免同時使用或請醫師減量。');
+  emit('mod','ppiClop','clopidogrel','omeprazole／esomeprazole 可能降低 clopidogrel 抗血小板效果','可與醫師討論改用 pantoprazole 等影響較小的胃藥。');
+  emit('mod','ssri','nsaid','消化道出血風險增加','留意腸胃不適／黑便；長期併用與醫師討論護胃。');
+  emit('mod','ssri','anticoag','出血風險增加','監測出血徵兆，與醫師討論。');
+  emit('low','bblock','dm','β 阻斷劑可能遮蔽低血糖的心悸警訊','注意其他低血糖徵兆（冒汗、飢餓、無力）。');
+  { const A=tag('nsaid'); if(A.length>=2)out.push({sev:'mod',why:'同時多種非類固醇消炎止痛藥，加乘傷胃／腎',adv:'避免同時使用多種 NSAID，請與醫師／藥師確認。',pairs:[[A[0],A[1]]]}); }
+  out.sort((a,b)=>sevRank[a.sev]-sevRank[b.sev]);
+  return out;
+}
+function renderMedInteract(){
+  const el=document.getElementById('medsInteract'); if(!el)return;
+  const ix=medInteractions();
+  if(!ix.length){ el.innerHTML='<div class="hint" style="color:var(--ok);font-weight:600;">✅ 在你近期用藥中，未偵測到常見的明顯交互作用組合。（僅比對常見重要組合，非完整藥物審查）</div>'; return; }
+  const col={high:'var(--err)',mod:'var(--warn)',low:'var(--acc)'}, bg={high:'#fef2f2',mod:'#fffbeb',low:'#f0f9ff'}, tg={high:'需注意',mod:'留意',low:'提醒'};
+  el.innerHTML=ix.map(x=>{
+    const pairs=x.pairs.slice(0,3).map(([a,b])=>`<div style="font-weight:700;line-height:1.5;">💊 ${esc(a)} <span style="color:${col[x.sev]};">⇄</span> 💊 ${esc(b)}</div>`).join('')+(x.pairs.length>3?`<div class="hint">…等 ${x.pairs.length} 組</div>`:'');
+    return `<div class="rec" style="border-left-color:${col[x.sev]};background:${bg[x.sev]};align-items:flex-start;flex-direction:column;"><div style="font-size:.72rem;font-weight:800;color:${col[x.sev]};margin-bottom:2px;">${tg[x.sev]}</div>${pairs}<div style="font-size:.82rem;margin-top:5px;line-height:1.6;">⚠️ ${esc(x.why)}<br>💡 ${esc(x.adv)}</div></div>`;
+  }).join('')+`<div class="hint" style="margin-top:6px;">此為常見重要交互作用的自動比對，<b>並非完整藥物審查、也不代表一定不能併用</b>；請把完整用藥清單交給醫師／藥師確認。</div>`;
+}
 function renderMedStats(){
   const el=document.getElementById('medsStats'); if(!el)return;
   const stats=medStats();
@@ -3358,7 +3423,7 @@ function renderMeds(){
   const alert=document.getElementById('medsAlert');
   const many=recentNames.length>=5;
   alert.innerHTML=many?`<div class="disc" style="border-left:3px solid var(--warn);background:#fffbeb;color:#92400e;margin-bottom:10px;">⚠️ 近 90 天內用藥種類較多（${recentNames.length} 種），就醫時建議主動告知醫師目前所有用藥，避免重複或交互作用。</div>`:'';
-  renderMedStats();
+  renderMedStats(); renderMedInteract();
   // 依檢視模式與搜尋渲染清單
   const q=(medSearch||'').trim().toLowerCase();
   const seg=document.getElementById('medViewSeg');
@@ -4005,7 +4070,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.23-crossmed';
+const APP_VERSION='2026.07.23-ddi';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
