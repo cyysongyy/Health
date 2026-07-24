@@ -1282,10 +1282,11 @@ function load(){
   if(s&&!Array.isArray(s.reminders))s.reminders=[];
   if(s&&s.settings&&s.settings.fontScale==null)s.settings.fontScale=1.5;
   if(s&&!s.mhx)s.mhx={};
+  if(s&&!s.goals)s.goals={sbp:130,ldl:100,hba1c:7};
   return s;
 }
 function defaults(){
-  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], reminders:[], mhx:{}, habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true,fontScale:1.5}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], reminders:[], mhx:{}, goals:{sbp:130,ldl:100,hba1c:7}, habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true,fontScale:1.5}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));}
 
@@ -2418,8 +2419,8 @@ function buildHealthAlerts(){
   if(highs.length)push(highs.length>=3?'crit':'warn','⚠️',highs.length+' 項檢驗過高',highs.slice(0,6).map(k=>LAB_META[k].label+' '+L[k].v+(labDateStr(L[k])?'（'+labDateStr(L[k])+'）':'')).join('、')+(highs.length>6?'…':''),'安排回診追蹤；針對偏高項目調整飲食與運動，必要時與醫師討論用藥。');
   const worse=LAB_ORDER.filter(m=>{const st=labStats(m);return st&&st.n>=2&&st.dir==='worse';});
   if(worse.length)push('warn','📈','惡化趨勢 '+worse.length+' 項',worse.map(k=>LAB_META[k].label).join('、')+' 較先前變差。','檢視近 1–3 個月生活型態改變，並固定週期複檢觀察走向。');
-  if(r){if(r.risks.cvd.level==='vhigh')push('warn','❤️','心血管風險極高','綜合評估屬極高風險族群。','積極控制血壓／血脂／血糖並戒菸，與醫師討論預防策略。');
-        if(r.risks.dm.level==='vhigh')push('warn','🩸','糖尿病風險極高','綜合評估屬極高風險族群。','檢查糖化血色素、減重與規律運動，必要時就醫。');}
+  if(r&&r.risks){if(r.risks.cvd&&r.risks.cvd.level==='vhigh')push('warn','❤️','心血管風險極高','綜合評估屬極高風險族群。','積極控制血壓／血脂／血糖並戒菸，與醫師討論預防策略。');
+        if(r.risks.dm&&r.risks.dm.level==='vhigh')push('warn','🩸','糖尿病風險極高','綜合評估屬極高風險族群。','檢查糖化血色素、減重與規律運動，必要時就醫。');}
   const cls=medClasses(120);
   if(cls.statin&&v('ldl')!=null&&v('ldl')>=100)push('warn','💊','降血脂治療未達標','服藥中但最新 LDL '+v('ldl')+' 仍偏高。','回診討論劑量、用藥順從性與飲食，切勿自行停藥。');
   if(cls.bp){const s=v('sbp')!=null?v('sbp'):p.sbp;if(s&&s>=140)push('warn','💊','血壓控制未達標','服藥中但收縮壓 '+s+' 仍偏高。','規律量測並記錄，回診評估，切勿自行調整藥量。');}
@@ -2511,7 +2512,12 @@ function renderAdvisor(){
     `<div class="row-btn" style="margin-top:12px;flex-wrap:wrap;gap:8px;"><button class="btn bp" onclick="showDoctorSheet()">🏥 產生就醫準備單</button><button class="btn bg" onclick="go('report')">📋 綜合報告</button>${aiBtn}</div></div>`+
     `<div class="card"><div class="ct">🎯 建議你優先做的事 <span class="hint">依影響力排序</span></div>`+
     (top.length?top.map((a,i)=>`<div class="rec" style="border-left-color:${col[a.pri]};background:${bg[a.pri]};align-items:flex-start;flex-direction:column;"><div style="font-weight:700;line-height:1.5;">${i+1}. ${a.icon} ${esc(a.title)} <span class="pill mod" style="background:${col[a.pri]};color:#fff;">${tag[a.pri]}</span></div><div style="font-size:.85rem;margin-top:5px;line-height:1.6;">💡 <b>怎麼做：</b>${esc(a.action||'')}</div><div class="hint" style="margin-top:3px;">🎁 好處：${esc(a.benefit)}</div></div>`).join(''):'<div class="hint" style="color:var(--ok);font-weight:600;padding:6px 0;">✅ 目前沒有需要優先處理的項目，繼續保持良好習慣！</div>')+
-    (acts.length>top.length?`<div class="hint" style="margin-top:6px;">…共 ${acts.length} 項，完整清單見「🚨 智慧預警」。</div>`:'')+`</div>`;
+    (acts.length>top.length?`<div class="hint" style="margin-top:6px;">…共 ${acts.length} 項，完整清單見「🚨 智慧預警」。</div>`:'')+`</div>`+
+    goalsHtml()+
+    `<div class="card"><div class="ct">🤖 AI 深度行動計畫 <span class="hint">用你自己的 API 金鑰</span></div>`+
+    `<div class="hint">把上面所有整合資料交給 AI，產出白話、可執行的「三個月行動計畫」。Key 僅存於本機、直接呼叫，不經第三方。</div>`+
+    `<div class="row-btn" style="margin-top:10px;"><button class="btn bp" onclick="advisorAI()">🤖 產生 AI 行動計畫</button></div>`+
+    `<div id="advisorAI" style="display:none;white-space:pre-wrap;margin-top:10px;padding:12px;background:var(--g50,#f8fafc);border:1px solid var(--g200);border-radius:10px;font-size:.86rem;line-height:1.7;"></div></div>`;
 }
 /* ---- 就醫準備單：一頁帶去給醫師 ---- */
 function buildDoctorSheet(){
@@ -2575,6 +2581,74 @@ function copyDocSheet(){
   const t=window._docSheetTxt||'';
   if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(()=>toast('📋 已複製，可貼到記事本或 LINE')).catch(()=>toast('複製失敗，請長按選取'));
   else toast('此環境不支援自動複製，請長按選取文字');
+}
+/* ---- 個人健康目標追蹤 ---- */
+const GOAL_DEFS=[
+  {k:'sbp',label:'收縮壓',unit:'mmHg',dir:'below',def:130},
+  {k:'dbp',label:'舒張壓',unit:'mmHg',dir:'below',def:80},
+  {k:'ldl',label:'LDL 膽固醇',unit:'mg/dL',dir:'below',def:100},
+  {k:'hba1c',label:'糖化血色素',unit:'%',dir:'below',def:7},
+  {k:'glucose',label:'空腹血糖',unit:'mg/dL',dir:'below',def:100},
+  {k:'tg',label:'三酸甘油酯',unit:'mg/dL',dir:'below',def:150},
+  {k:'hdl',label:'HDL',unit:'mg/dL',dir:'above',def:40},
+  {k:'ua',label:'尿酸',unit:'mg/dL',dir:'below',def:6},
+  {k:'egfr',label:'腎功能 eGFR',unit:'mL/min',dir:'above',def:60},
+  {k:'weight',label:'體重',unit:'kg',dir:'below',def:null},
+  {k:'waist',label:'腰圍',unit:'cm',dir:'below',def:null}
+];
+function goalCurrent(k){ const L=labLatest(),p=state.profile||{}; if(L[k]!=null)return parseFloat(L[k].v); if(k==='weight')return p.weight||null; if(k==='waist')return p.waist||null; if(k==='sbp')return p.sbp||null; if(k==='dbp')return p.dbp||null; if(k==='glucose')return p.glucose||null; return null; }
+function goalsHtml(){
+  const goals=state.goals||{}, keys=Object.keys(goals).filter(k=>goals[k]!=null);
+  const rows=keys.map(k=>{ const g=GOAL_DEFS.find(x=>x.k===k); if(!g)return ''; const c=goalCurrent(k), tgt=goals[k], op=g.dir==='below'?'≤':'≥';
+    if(c==null)return `<div class="rec" style="opacity:.6;border-left-color:var(--g300);"><div class="rec-body"><div class="rec-desc">${g.label}：目標 ${op}${tgt}${g.unit}　<span class="hint">尚無數據，做一次檢驗即可追蹤</span></div></div></div>`;
+    const met=g.dir==='below'?c<=tgt:c>=tgt, col=met?'var(--ok)':'var(--warn)';
+    const st=(typeof labStats==='function')?labStats(k):null; const tr=st&&st.n>=2?(st.dir==='better'?'　📉 趨勢改善中':st.dir==='worse'?'　📈 趨勢需注意':''):'';
+    return `<div class="rec" style="border-left-color:${col};"><div class="rec-body"><div class="rec-desc"><b>${g.label}</b>　目前 <b style="color:${col};">${c}</b> ／ 目標 ${op}${tgt}${g.unit} ${met?'<span class="pill mod" style="background:var(--ok);color:#fff;">已達標 ✓</span>':'<span class="pill mod" style="background:var(--warn);color:#fff;">未達標</span>'}<span class="hint">${tr}</span></div></div></div>`;
+  }).join('');
+  return `<div class="card"><div class="ct">🎯 個人健康目標 <span class="hint">達標追蹤</span></div>`+
+    (keys.length?rows:'<div class="hint">尚未設定目標，按下方「設定目標」開始。</div>')+
+    `<div class="row-btn" style="margin-top:10px;"><button class="btn bg" onclick="openGoalEditor()">⚙️ 設定目標</button></div></div>`;
+}
+function openGoalEditor(){
+  const goals=state.goals||{};
+  let m=document.getElementById('goalModal'); if(!m){m=document.createElement('div');m.id='goalModal';m.className='modal-overlay';document.body.appendChild(m);}
+  m.innerHTML=`<div class="modal-box" style="max-height:86vh;overflow:auto;"><div class="ct">🎯 設定健康目標</div>`+
+    `<div class="hint" style="margin-bottom:10px;">勾選要追蹤的項目、設定目標值；系統會用你<b>最新的檢驗值</b>比對達標與趨勢。目標值可依醫師建議調整。</div>`+
+    GOAL_DEFS.map(g=>{const on=goals[g.k]!=null, val=on?goals[g.k]:(g.def!=null?g.def:'');
+      return `<div class="fg" style="display:flex;align-items:center;gap:8px;"><label style="flex:1;display:flex;align-items:center;gap:8px;font-size:.85rem;"><input type="checkbox" class="goalOn" data-k="${g.k}" ${on?'checked':''} style="width:18px;height:18px;"> ${g.label} <span class="hint">${g.dir==='below'?'≤':'≥'}</span></label><input class="fi goalVal" data-k="${g.k}" type="number" step="any" value="${val}" style="width:88px;padding:6px;"><span class="hint" style="min-width:44px;">${g.unit}</span></div>`;}).join('')+
+    `<div class="row-btn" style="margin-top:12px;"><button class="btn bp" onclick="saveGoals()">💾 儲存</button><button class="btn bg" onclick="closeGoalEditor()">取消</button></div></div>`;
+  m.style.display='flex';
+}
+function closeGoalEditor(){const m=document.getElementById('goalModal');if(m){m.style.display='none';m.innerHTML='';}}
+function saveGoals(){
+  const goals={};
+  document.querySelectorAll('.goalOn').forEach(cb=>{ const k=cb.dataset.k; if(cb.checked){ const inp=document.querySelector('.goalVal[data-k="'+k+'"]'); const val=inp&&inp.value!==''?+inp.value:null; if(val!=null&&!isNaN(val))goals[k]=val; } });
+  state.goals=goals; save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  closeGoalEditor(); renderAdvisor(); toast('✅ 目標已更新');
+}
+/* ---- AI 深度行動計畫（用使用者自己的 API 金鑰） ---- */
+async function aiRunPrompt(prompt){
+  const s=state.settings;
+  const useGemini = s.engine==='gemini' || (s.engine!=='openai'&&s.gemini);
+  if(useGemini&&s.gemini)return callGemini(s.gemini,prompt);
+  if(s.openai)return callOpenAI(s.openai,prompt);
+  if(s.gemini)return callGemini(s.gemini,prompt);
+  throw new Error('未設定 API Key');
+}
+async function advisorAI(){
+  const s=state.settings;
+  if(!s.gemini&&!s.openai){toast('請先到「設定」填入 Gemini／OpenAI API Key');go('settings');return;}
+  const out=document.getElementById('advisorAI'); if(!out)return;
+  out.style.display='block'; out.textContent='🤖 AI 正在整合你的檢驗、用藥與風險，擬定個人化行動計畫…';
+  const sheet=buildDoctorSheet().txt;
+  const acts=advisorActions().slice(0,8).map((a,i)=>(i+1)+'. '+a.title+(a.action?'（'+a.action+'）':'')).join('\n');
+  const I=(typeof medInputs==='function')?medInputs():{}; const risks=[];
+  try{ if(I.sex&&I.age&&I.tc&&I.hdl&&I.sbp)risks.push('10年心血管風險(ASCVD) '+calcASCVD(I).pct+'%'); }catch(e){}
+  try{ if(I.age&&I.bmi&&I.waist&&I.sex)risks.push('糖尿病風險(FINDRISC) '+calcFINDRISC(I).score+'分'); }catch(e){}
+  const goals=state.goals||{}; const gtxt=Object.keys(goals).filter(k=>goals[k]!=null).map(k=>{const g=GOAL_DEFS.find(x=>x.k===k),c=goalCurrent(k);return g?g.label+' 目前'+(c==null?'無資料':c)+'/目標'+(g.dir==='below'?'≤':'≥')+goals[k]:'';}).filter(Boolean).join('、');
+  const prompt=`你是專業、親切又務實的個人健康顧問。以下是使用者（去識別化）的整合健康資料：\n\n${sheet}\n\n系統排序的優先事項：\n${acts||'（無）'}\n\n風險評估：${risks.join('、')||'（資料不足）'}\n個人目標達成：${gtxt||'（未設定）'}\n\n請用「繁體中文」、溫暖鼓勵但務實的口吻，讓長輩也看得懂，提供：\n1) 一份「三個月行動計畫」，分成【立即做】【這個月】【持續追蹤】三段\n2) 每項為什麼重要、預期好處\n3) 針對飲食、運動、用藥順從性、以及需要追蹤的檢查給具體建議\n4) 一段鼓勵的話\n請務必明確標註「此為衛教參考、非醫療診斷，數值異常或不適請就醫」。控制在 700 字內，多用條列與小標。`;
+  try{ const t=await aiRunPrompt(prompt); out.textContent=t; }
+  catch(e){ out.textContent='⚠️ AI 呼叫失敗：'+(e.message||e)+'\n請確認 API Key 是否正確、額度是否足夠（設定 → AI 引擎設定）。'; }
 }
 /* ---- 統一時間軸 ---- */
 function buildTimeline(){
@@ -4257,7 +4331,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.24-advisor';
+const APP_VERSION='2026.07.24-advisor-goals-ai';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
