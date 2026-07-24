@@ -594,7 +594,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== MEDICAL-GRADE SCORES ========== -->
 <div class="sec" id="sec-medscore">
-  <div class="disc" style="border-left:3px solid var(--pri);">🩺 <b>醫療級評估：</b>採用國際實證、臨床實際使用的風險模型（ASCVD Pooled Cohort Equations、FINDRISC、CKD-EPI 2021、FIB-4、脂肪肝指數、代謝症候群準則、TyG 胰島素阻抗指數、血脂比值/非-HDL-C、AHA Life’s Essential 8 心血管健康總分、CHA₂DS₂-VASc 中風風險、HAS-BLED 出血風險、OSTA 骨鬆風險），依你的個人資料與最新檢驗值精算。<b>仍為衛教與自我管理參考、非醫療診斷</b>；模型多源自歐美族群，套用於台灣人可能高估或低估，實際判讀請以醫師為準。</div>
+  <div class="disc" style="border-left:3px solid var(--pri);">🩺 <b>醫療級評估：</b>採用國際實證、臨床實際使用的風險模型（ASCVD Pooled Cohort Equations、FINDRISC、CKD-EPI 2021、FIB-4、脂肪肝指數、代謝症候群準則、TyG 胰島素阻抗指數、血脂比值/非-HDL-C、AHA Life’s Essential 8 心血管健康總分、CHA₂DS₂-VASc 中風風險、HAS-BLED 出血風險、OSTA 骨鬆風險、NAFLD 肝纖維化分數、APRI、相對體脂 RFM、估計平均血糖 eAG、白蛋白校正血鈣），依你的個人資料與最新檢驗值精算。<b>仍為衛教與自我管理參考、非醫療診斷</b>；模型多源自歐美族群，套用於台灣人可能高估或低估，實際判讀請以醫師為準。</div>
   <div id="medscoreBody"></div>
 </div>
 
@@ -3856,7 +3856,7 @@ function medInputs(){
     tc:v('chol')!=null?v('chol'):num(p.chol), hdl:v('hdl')!=null?v('hdl'):num(p.hdl), ldl:v('ldl'), tg:v('tg'),
     sbp:v('sbp')!=null?v('sbp'):num(p.sbp), dbp:v('dbp')!=null?v('dbp'):num(p.dbp),
     glucose:v('glucose')!=null?v('glucose'):num(p.glucose), hba1c:v('hba1c'),
-    scr:v('cr'), ast:v('ast'), alt:v('alt'), plt:v('plt'), ggt:v('ggt'),
+    scr:v('cr'), ast:v('ast'), alt:v('alt'), plt:v('plt'), ggt:v('ggt'), alb:v('alb'), ca:v('ca'), height:num(p.height), neut:v('neut'), lymph:v('lymph'), hb:v('hb'),
     smoker:p.smoke==='current', smoke:p.smoke||null, sleep:num(p.sleep), exercise:num(p.exercise), diet:num(p.diet), fhDiabetes:!!p.fhDiabetes,
     onBpMed:!!cls.bp, onDmMed:!!cls.dm,
     diabetes:(v('hba1c')!=null&&v('hba1c')>=6.5)||(v('glucose')!=null&&v('glucose')>=126)||!!cls.dm
@@ -4085,6 +4085,50 @@ function renderMedScore(){
       `<div style="font-size:.82rem;margin-top:6px;line-height:1.6;">由體重與年齡估算（體重越輕、年齡越大風險越高）。${o<-1?'屬中／高風險：建議與醫師討論骨密度（DXA）檢查，補充鈣與維生素 D、負重運動、防跌。':'目前較低，仍建議維持負重運動與足夠鈣質。'}</div>`+
       `<div class="hint" style="margin-top:8px;">採用：體重 ${I.weight} kg・年齡 ${I.age}（對停經後婦女與長者最具參考性；確診需骨密度檢查）</div>`));
   }else cards.push(miss('🦴','骨質疏鬆風險 OSTA','OSTA 亞洲版',[!I.weight?'體重':'',!I.age?'年齡':''].filter(Boolean).join('、')));
+  // 13) NAFLD 肝纖維化分數 NFS
+  if(I.age&&I.bmi&&I.ast&&I.alt&&I.plt!=null&&I.alb!=null){
+    const ifg=I.diabetes||(I.glucose!=null&&I.glucose>=100)?1:0;
+    const nfs=+(-1.675+0.037*I.age+0.094*I.bmi+1.13*ifg+0.99*(I.ast/I.alt)-0.013*I.plt-0.66*I.alb).toFixed(2);
+    const c= nfs<-1.455?['低（F0–F2，不太可能進行性纖維化）','var(--ok)']: nfs<=0.675?['中間帶（無法確定）','var(--warn)']:['高（F3–F4，可能進行性肝纖維化）','var(--err)'];
+    cards.push(box('🫀','NAFLD 肝纖維化分數 NFS','NAFLD Fibrosis Score（Angulo 2007）',
+      big(nfs,c[1])+`<div style="font-weight:800;color:${c[1]};margin-top:4px;">${c[0]}</div>`+
+      `<div style="font-size:.82rem;margin-top:6px;line-height:1.6;">綜合年齡、BMI、血糖、AST/ALT、血小板、白蛋白，評估脂肪肝相關的進行性纖維化風險，與 FIB-4 互補。${nfs>0.675?'偏高建議進一步肝纖維化掃描或就醫。':''}</div>`+
+      `<div class="hint" style="margin-top:8px;">採用：年齡・BMI ${I.bmi}・${ifg?'血糖偏高/糖尿病・':''}AST ${I.ast}・ALT ${I.alt}・血小板 ${I.plt}・白蛋白 ${I.alb}</div>`));
+  }else cards.push(miss('🫀','NAFLD 肝纖維化分數 NFS','NAFLD Fibrosis Score',[!I.age?'年齡':'',!I.bmi?'身高/體重':'',!I.ast?'AST':'',!I.alt?'ALT':'',I.plt==null?'血小板':'',I.alb==null?'白蛋白':''].filter(Boolean).join('、')));
+  // 14) APRI
+  if(I.ast!=null&&I.plt){
+    const apri=+(((I.ast/40)/I.plt)*100).toFixed(2);
+    const c= apri<0.5?['低（不太可能顯著纖維化）','var(--ok)']: apri<=1.5?['中間帶','var(--warn)']:['高（可能顯著纖維化/肝硬化）','var(--err)'];
+    cards.push(box('🫀','肝纖維化 APRI 指數','AST to Platelet Ratio Index',
+      big(apri,c[1])+`<div style="font-weight:800;color:${c[1]};margin-top:4px;">${c[0]}</div>`+
+      `<div style="font-size:.82rem;margin-top:6px;line-height:1.6;">由 AST 與血小板快速估計肝纖維化，操作簡單、常用於初步篩檢。</div>`+
+      `<div class="hint" style="margin-top:8px;">採用：AST ${I.ast}（上限 40）・血小板 ${I.plt}</div>`));
+  }else cards.push(miss('🫀','肝纖維化 APRI 指數','APRI',[!I.ast?'AST':'',!I.plt?'血小板':''].filter(Boolean).join('、')));
+  // 15) 相對體脂 RFM
+  if(I.height&&I.waist&&I.sex){
+    const rfm=+(64-20*(I.height/I.waist)+(I.sex==='female'?12:0)).toFixed(1);
+    const c= I.sex==='female'?(rfm<30?['健康範圍','var(--ok)']:rfm<35?['偏高','var(--warn)']:['過高','var(--err)']):(rfm<20?['健康範圍','var(--ok)']:rfm<25?['偏高','var(--warn)']:['過高','var(--err)']);
+    cards.push(box('🧍','相對體脂率 RFM','Relative Fat Mass（Woolcott 2018）',
+      big(rfm+' %',c[1])+`<div style="font-weight:800;color:${c[1]};margin-top:4px;">估計體脂率・${c[0]}</div>`+
+      `<div style="font-size:.82rem;margin-top:6px;line-height:1.6;">用身高與腰圍估計體脂肪百分比，與 DEXA（黃金標準）高度相關，比 BMI 更能反映脂肪分布。${(I.sex==='female'?rfm>=35:rfm>=25)?'偏高：減脂以減重、減腰圍、規律運動最有效。':''}</div>`+
+      `<div class="hint" style="margin-top:8px;">採用：身高 ${I.height}・腰圍 ${I.waist}・性別（同單位計算）</div>`));
+  }else cards.push(miss('🧍','相對體脂率 RFM','Relative Fat Mass',[!I.height?'身高':'',!I.waist?'腰圍':'',!I.sex?'性別':''].filter(Boolean).join('、')));
+  // 16) 估計平均血糖 eAG（由 HbA1c）
+  if(I.hba1c!=null){
+    const eag=Math.round(28.7*I.hba1c-46.7);
+    cards.push(box('🍬','估計平均血糖 eAG','ADAG（Nathan 2008）由 HbA1c 換算',
+      big(eag+' <span style="font-size:.9rem;">mg/dL</span>',eag<154?'var(--ok)':eag<183?'var(--warn)':'var(--err)')+`<div style="font-weight:800;margin-top:4px;">HbA1c ${I.hba1c}% ≈ 近 2–3 個月平均血糖 ${eag}</div>`+
+      `<div style="font-size:.82rem;margin-top:6px;line-height:1.6;">把糖化血色素換成好理解的「平均血糖」。一般糖尿病控制目標 HbA1c <7%（約 eAG 154），請與醫師確認你的個人目標。</div>`));
+  }
+  // 17) 校正鈣（依白蛋白）
+  if(I.ca!=null&&I.alb!=null){
+    const cca=+(I.ca+0.8*(4.0-I.alb)).toFixed(2);
+    const c= (cca>=8.5&&cca<=10.5)?['正常範圍','var(--ok)']: (cca<8.5?['偏低','var(--warn)']:['偏高','var(--err)']);
+    const shift=Math.abs(cca-I.ca)>=0.4;
+    cards.push(box('🦴','白蛋白校正血鈣','Corrected Calcium（Payne 公式）',
+      big(cca+' <span style="font-size:.9rem;">mg/dL</span>',c[1])+`<div style="font-weight:800;color:${c[1]};margin-top:4px;">${c[0]}</div>`+
+      `<div style="font-size:.82rem;margin-top:6px;line-height:1.6;">血鈣會受白蛋白影響；低白蛋白時實測鈣會被低估。校正後 ${cca}（實測 ${I.ca}、白蛋白 ${I.alb}）。${shift?'校正後與實測差異較大，判讀請以校正值為主。':''}</div>`));
+  }
   // 病史勾選卡（置於最前，供中風/出血評分）
   const chk=(k,label)=>`<label style="display:flex;align-items:center;gap:8px;font-size:.85rem;padding:4px 0;"><input type="checkbox" style="width:18px;height:18px;" ${mh[k]?'checked':''} onchange="toggleMhx('${k}',this.checked)"> ${label}</label>`;
   cards.unshift(`<div class="card"><div class="ct">🗂️ 病史勾選 <span class="hint">供中風／出血風險評估</span></div>`+
@@ -4093,9 +4137,9 @@ function renderMedScore(){
     chk('vascular','血管疾病（心肌梗塞／周邊動脈／主動脈斑塊）')+chk('bleed','出血病史或容易出血')+
     chk('antiplt','服用抗血小板藥（阿斯匹靈等）或常用 NSAID 止痛藥')+chk('alcohol','長期大量飲酒')+
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
-  el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
+  el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.23-medhighlights';
+const APP_VERSION='2026.07.24-medscore-world';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
