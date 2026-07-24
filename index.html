@@ -1093,8 +1093,22 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <span style="min-width:52px;text-align:right;font-weight:700;" id="fontScaleLbl">150%</span>
     </div>
   </div>
+  <div class="card">
+    <div class="ct">☁️ Google Drive 備份／同步 <span class="hint">（推薦）</span></div>
+    <div class="hint" style="line-height:1.7;margin-bottom:8px;">把資料備份到<b>你自己的 Google Drive</b>——換手機或清除快取都不會丟；在另一支手機按「還原」即可同步。<b>重用你在「📆 Google 日曆連結」設定的同一組 Client ID</b>，不需再設定。備份檔只存在你的 Drive、且只有本 App 看得到，隱私安全。</div>
+    <div id="gdriveState" class="hint" style="margin-bottom:8px;"></div>
+    <div class="row-btn" style="flex-wrap:wrap;gap:8px;">
+      <button class="btn bp" onclick="gdriveBackup()">☁️ 備份到 Google Drive</button>
+      <button class="btn bg" onclick="gdriveRestore()">⬇️ 從 Google Drive 還原</button>
+    </div>
+    <details style="margin-top:10px;font-size:.8rem;line-height:1.7;">
+      <summary style="cursor:pointer;color:var(--acc);font-weight:600;">▸ 第一次使用要先啟用「Google Drive API」（約 30 秒）</summary>
+      <div style="margin-top:6px;">點這個連結 → 按「啟用」：<br><a class="link" href="https://console.cloud.google.com/apis/library/drive.googleapis.com?project=young-app-library" target="_blank">啟用 Google Drive API</a><br>之後回來按「☁️ 備份」，第一次會跳一次 Google 授權（允許存取「本 App 建立的檔案」），點繼續／允許即可。需連線；離線版請用下方「資料管理 → 匯出 JSON」。</div>
+    </details>
+  </div>
   <div class="card" id="fbCard" style="display:none;">
-    <div class="ct">🔥 Firebase 雲端同步 <span class="hint">（僅擁有者）</span></div>
+    <div class="ct">🔥 Firebase 雲端同步 <span class="hint">（舊版·選用）</span></div>
+    <div class="hint" style="color:#92400e;background:#fffbeb;border-radius:8px;padding:8px 10px;margin-bottom:8px;">此為舊的雲端方式，先前連線有問題；<b>建議改用上方的「☁️ Google Drive 備份」</b>。</div>
     <div class="hint" style="line-height:1.6;margin-bottom:10px;">
       <b>✅ 已內建 Firebase 設定，直接輸入 Email／密碼登入或註冊即可</b>，跨裝置自動同步健康紀錄、檢驗數據與個人檔案。首次請按「🆕 註冊新帳號」，之後其他裝置用同帳密登入即同步。
     </div>
@@ -2649,6 +2663,62 @@ async function advisorAI(){
   const prompt=`你是專業、親切又務實的個人健康顧問。以下是使用者（去識別化）的整合健康資料：\n\n${sheet}\n\n系統排序的優先事項：\n${acts||'（無）'}\n\n風險評估：${risks.join('、')||'（資料不足）'}\n個人目標達成：${gtxt||'（未設定）'}\n\n請用「繁體中文」、溫暖鼓勵但務實的口吻，讓長輩也看得懂，提供：\n1) 一份「三個月行動計畫」，分成【立即做】【這個月】【持續追蹤】三段\n2) 每項為什麼重要、預期好處\n3) 針對飲食、運動、用藥順從性、以及需要追蹤的檢查給具體建議\n4) 一段鼓勵的話\n請務必明確標註「此為衛教參考、非醫療診斷，數值異常或不適請就醫」。控制在 700 字內，多用條列與小標。`;
   try{ const t=await aiRunPrompt(prompt); out.textContent=t; }
   catch(e){ out.textContent='⚠️ AI 呼叫失敗：'+(e.message||e)+'\n請確認 API Key 是否正確、額度是否足夠（設定 → AI 引擎設定）。'; }
+}
+/* ============ Google Drive 備份／同步（重用日曆 OAuth 的 Client ID，drive.file 非機敏權限） ============ */
+let gdriveToken=null, gdriveTC=null;
+const GDRIVE_FILE='lifespan-health-backup.json';
+function gdriveState(msg){ const el=document.getElementById('gdriveState'); if(el)el.innerHTML=msg; }
+function gdriveAuth(){
+  return new Promise((res,rej)=>{
+    const cid=(state.settings&&state.settings.gcalClientId||'').trim();
+    if(!cid){ toast('請先到「📆 Google 日曆連結」貼上 OAuth Client ID'); rej(new Error('尚未設定 Client ID，請先在上方「Google 日曆連結」貼上。')); return; }
+    if(!navigator.onLine){ rej(new Error('目前離線；離線請改用「資料管理 → 匯出 JSON」')); return; }
+    loadGsi().then(()=>{
+      try{
+        gdriveTC=google.accounts.oauth2.initTokenClient({ client_id:cid, scope:'https://www.googleapis.com/auth/drive.file',
+          callback:(r)=>{ if(r&&r.error){ rej(new Error('授權失敗：'+r.error)); return; } gdriveToken=r.access_token; res(); } });
+        gdriveTC.requestAccessToken({prompt:''});
+      }catch(e){ rej(e); }
+    }).catch(rej);
+  });
+}
+async function gdriveFind(){
+  const q="name='"+GDRIVE_FILE+"' and trashed=false";
+  const r=await fetch('https://www.googleapis.com/drive/v3/files?spaces=drive&fields=files(id,modifiedTime)&q='+encodeURIComponent(q),{headers:{Authorization:'Bearer '+gdriveToken}});
+  if(!r.ok)throw new Error('讀取清單 HTTP '+r.status); const d=await r.json(); return (d.files&&d.files[0])||null;
+}
+async function gdriveBackup(){
+  gdriveState('⏳ 連線中…（若跳 Google 授權，點繼續／允許）');
+  try{ await gdriveAuth(); }catch(e){ gdriveState('❌ '+(e.message||e)); return; }
+  gdriveState('⏳ 備份中…');
+  try{
+    const payload={app:'LifeSpan',schemaVersion:SCHEMA_VERSION,exportedAt:new Date().toISOString(),data:state};
+    const content=JSON.stringify(payload);
+    const existing=await gdriveFind();
+    const meta={name:GDRIVE_FILE,mimeType:'application/json'};
+    const boundary='lsb'+Date.now();
+    const body='--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(meta)+'\r\n--'+boundary+'\r\nContent-Type: application/json\r\n\r\n'+content+'\r\n--'+boundary+'--';
+    const url='https://www.googleapis.com/upload/drive/v3/files'+(existing?'/'+existing.id:'')+'?uploadType=multipart';
+    const r=await fetch(url,{method:existing?'PATCH':'POST',headers:{Authorization:'Bearer '+gdriveToken,'Content-Type':'multipart/related; boundary='+boundary},body});
+    if(!r.ok)throw new Error('上傳 HTTP '+r.status);
+    state.settings.gdriveLast=new Date().toISOString(); save();
+    gdriveState('✅ 已備份到 Google Drive（'+new Date().toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})+'）');
+    toast('☁️ 備份完成');
+  }catch(e){ gdriveState('❌ 備份失敗：'+(e.message||e)+'（若是 403，請先展開下方說明「啟用 Google Drive API」）'); }
+}
+async function gdriveRestore(){
+  if(!confirm('從 Google Drive 還原，會用雲端備份「覆蓋」這台裝置目前的資料。\n\n建議先在「有最新資料的那台」按一次備份。確定要還原嗎？'))return;
+  gdriveState('⏳ 連線中…');
+  try{ await gdriveAuth(); }catch(e){ gdriveState('❌ '+(e.message||e)); return; }
+  gdriveState('⏳ 還原中…');
+  try{
+    const f=await gdriveFind(); if(!f){ gdriveState('☁️ 雲端還沒有備份，請先在有資料的裝置按「☁️ 備份」。'); return; }
+    const r=await fetch('https://www.googleapis.com/drive/v3/files/'+f.id+'?alt=media',{headers:{Authorization:'Bearer '+gdriveToken}});
+    if(!r.ok)throw new Error('下載 HTTP '+r.status);
+    const parsed=await r.json();
+    const data=(parsed&&parsed.schemaVersion&&parsed.data)?parsed.data:parsed;
+    state=Object.assign(defaults(),data); save(); toast('✅ 已從雲端還原'); init();
+  }catch(e){ gdriveState('❌ 還原失敗：'+(e.message||e)); }
 }
 /* ---- 統一時間軸 ---- */
 function buildTimeline(){
@@ -4331,7 +4401,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.24-advisor-goals-ai';
+const APP_VERSION='2026.07.24-gdrive-sync';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
