@@ -884,6 +884,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <div class="ct">💊 用藥總覽 <span class="hint" id="medsCount"></span></div>
       <div id="medsAlert"></div>
       <div id="medsSummary" class="disc" style="margin-bottom:10px;"></div>
+      <div id="medsHighlights"></div>
     </div>
     <div class="card">
       <div class="ct">📊 用藥統計與長期使用評估 <span class="hint">依累計天數排序</span></div>
@@ -3382,6 +3383,30 @@ function renderMedInteract(){
     return `<div class="rec" style="border-left-color:${col[x.sev]};background:${bg[x.sev]};align-items:flex-start;flex-direction:column;"><div style="font-size:.72rem;font-weight:800;color:${col[x.sev]};margin-bottom:2px;">${tg[x.sev]}</div>${pairs}<div style="font-size:.82rem;margin-top:5px;line-height:1.6;">⚠️ ${esc(x.why)}<br>💡 ${esc(x.adv)}</div></div>`;
   }).join('')+`<div class="hint" style="margin-top:6px;">此為常見重要交互作用的自動比對，<b>並非完整藥物審查、也不代表一定不能併用</b>；請把完整用藥清單交給醫師／藥師確認。</div>`;
 }
+// 用藥重點提醒彙整：把交互作用、長期使用注意、藥×檢驗安全訊號集中在總覽上方
+function medHighlights(){
+  const items=[], seen=new Set();
+  const add=(sev,icon,text)=>{ if(seen.has(text))return; seen.add(text); items.push({sev,icon,text}); };
+  medInteractions().forEach(x=>{const pr=x.pairs[0]; const a=pr[0].split(/[ （(]/)[0], bb=pr[1].split(/[ （(]/)[0]; add(x.sev,'🔀','併用注意：'+a+' × '+bb+'（'+x.why+'）');});
+  medStats().forEach(e=>{ if(e.lt&&e.lt.level==='watch'&&(e.count>=2||e.days>=28)) add(e.days>=90?'high':'mod','⏳','長期使用：'+e.name.split(/[（(]/)[0].trim()+'（'+e.lt.label+'・累計 '+e.days+' 天'+(e.days>=90?'，已屬長期':'')+'）'); });
+  (typeof crossFindings==='function'?crossFindings():[]).forEach(f=>{ if(/💊/.test(f.icon)&&f.lvl!=='info'&&!/^用藥併用注意/.test(f.title)) add(f.lvl==='crit'?'high':'mod','🧪',f.title+'（'+f.detail+'）'); });
+  const rank={high:0,mod:1,low:2};
+  items.sort((a,b)=>rank[a.sev]-rank[b.sev]);
+  return items;
+}
+function renderMedHighlights(){
+  const el=document.getElementById('medsHighlights'); if(!el)return;
+  const it=medHighlights();
+  if(!it.length){ el.innerHTML=''; return; }
+  const col={high:'var(--err)',mod:'#b45309',low:'var(--acc)'};
+  const nHigh=it.filter(x=>x.sev==='high').length;
+  el.innerHTML=`<div class="disc" style="border-left:3px solid var(--warn);background:#fffbeb;color:#92400e;">`+
+    `<b>⚠️ 用藥重點提醒（共 ${it.length} 項${nHigh?'，其中 '+nHigh+' 項較重要':''}）</b>`+
+    `<div style="margin-top:6px;line-height:1.85;font-size:.85rem;">`+
+    it.slice(0,14).map(x=>`<div style="display:flex;gap:6px;align-items:flex-start;"><span>${x.icon}</span><span style="color:${col[x.sev]};font-weight:600;">${esc(x.text)}</span></div>`).join('')+
+    (it.length>14?`<div class="hint">…共 ${it.length} 項，詳見下方「統計」與「交互作用」卡片</div>`:'')+
+    `</div><div class="hint" style="margin-top:6px;">彙整自下方各卡片；衛教參考、非診斷，切勿自行停藥，請與醫師／藥師確認。</div></div>`;
+}
 function renderMedStats(){
   const el=document.getElementById('medsStats'); if(!el)return;
   const stats=medStats();
@@ -3423,7 +3448,7 @@ function renderMeds(){
   const alert=document.getElementById('medsAlert');
   const many=recentNames.length>=5;
   alert.innerHTML=many?`<div class="disc" style="border-left:3px solid var(--warn);background:#fffbeb;color:#92400e;margin-bottom:10px;">⚠️ 近 90 天內用藥種類較多（${recentNames.length} 種），就醫時建議主動告知醫師目前所有用藥，避免重複或交互作用。</div>`:'';
-  renderMedStats(); renderMedInteract();
+  renderMedStats(); renderMedInteract(); renderMedHighlights();
   // 依檢視模式與搜尋渲染清單
   const q=(medSearch||'').trim().toLowerCase();
   const seg=document.getElementById('medViewSeg');
@@ -4070,7 +4095,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.23-ddi';
+const APP_VERSION='2026.07.23-medhighlights';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};

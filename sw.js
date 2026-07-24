@@ -4,7 +4,7 @@
    - 同源靜態檔（icon/manifest）：快取優先
    - 跨網域 CDN（Chart.js/Firebase/pdf.js/字型…）：快取優先，未命中則抓取並存入（含 opaque 回應）
    換版：改 CACHE 版本號即會在 activate 時清掉舊快取。 */
-const CACHE = 'lifespan-cache-2026.07.23-ddi';
+const CACHE = 'lifespan-cache-2026.07.23-medhighlights';
 
 /* App shell（同源，必存）*/
 const CORE = [
