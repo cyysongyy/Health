@@ -328,6 +328,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 </div>
 <div class="nav" id="navMenu">
   <div class="nt active" data-sec="dash">📊 總覽</div>
+  <div class="nt" data-sec="advisor">🧭 健康顧問</div>
   <div class="nt" data-sec="assess">📝 健康評估</div>
   <div class="nt" data-sec="connect">🔗 匯入串接</div>
   <div class="nt" data-sec="risk">🔬 風險預測</div>
@@ -350,6 +351,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== DASHBOARD ========== -->
 <div class="sec active" id="sec-dash">
+  <div id="dashAdvisor"></div>
   <div id="dashRemindDue"></div>
   <div id="dashReminders"></div>
   <div id="dashEmpty" class="card empty">
@@ -599,6 +601,10 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 </div>
 
 <!-- ========== SMART ALERTS ========== -->
+<div class="sec" id="sec-advisor">
+  <div id="advisorBody"></div>
+</div>
+
 <div class="sec" id="sec-smart">
   <div id="smartEmpty" class="card empty">
     <div class="em">🚨</div>
@@ -1288,7 +1294,7 @@ const LANG_EN={
   // 導覽
   '📊 總覽':'📊 Overview','📝 健康評估':'📝 Assessment','🔗 匯入串接':'🔗 Import','🔬 風險預測':'🔬 Risk','🚨 智慧預警':'🚨 Alerts',
   '📈 趨勢追蹤':'📈 Trends','🧪 檢驗數據庫':'🧪 Lab Data','💊 用藥紀錄':'💊 Medications','🔧 手術紀錄':'🔧 Surgeries','🩻 影像病理':'🩻 Imaging/Path',
-  '⏰ 提醒':'⏰ Reminders','✅ 每日習慣':'✅ Habits','💡 建議 & AI':'💡 Advice & AI','📋 綜合報告':'📋 Report','🦶 足部訓練':'🦶 Foot Training','⚙️ 設定':'⚙️ Settings',
+  '🧭 健康顧問':'🧭 Health Advisor','⏰ 提醒':'⏰ Reminders','✅ 每日習慣':'✅ Habits','💡 建議 & AI':'💡 Advice & AI','📋 綜合報告':'📋 Report','🦶 足部訓練':'🦶 Foot Training','⚙️ 設定':'⚙️ Settings',
   '⏰ 提醒與行事曆':'⏰ Reminders & Calendar','⏰ 今日提醒':'⏰ Today’s Reminders','📋 全部提醒':'📋 All Reminders','➕ 新增提醒':'➕ Add Reminder','📅 全部加入手機行事曆':'📅 Add All to Phone Calendar','🔔 開啟瀏覽器通知':'🔔 Enable Browser Notifications','⏰ 管理提醒':'⏰ Manage Reminders',
   '選單':'Menu','LifeSpan 健康預測':'LifeSpan Health','🫀 LifeSpan 健康預測':'🫀 LifeSpan Health',
   // 徽章
@@ -1386,6 +1392,7 @@ function go(sec){
   if(sec==='advice')renderAdvice();
   if(sec==='connect')renderImportResult();
   if(sec==='smart')renderSmart();
+  if(sec==='advisor')renderAdvisor();
   if(curLang()==='en')applyI18n();
 }
 function toast(msg){
@@ -1638,6 +1645,7 @@ function barColor(v){return v>=75?'#10b981':v>=55?'#0d9488':v>=40?'#f59e0b':'#ef
 
 function renderDash(){
   const r=state.result;
+  renderDashAdvisor(); // 健康顧問精簡入口
   renderRemindDue();   // 今日／逾期的個人提醒（用藥、回診、復健、檢驗追蹤）
   renderReminders();   // 主動提醒／紅旗待辦（即使沒完成評估、只要有檢驗也顯示）
   document.getElementById('dashEmpty').style.display=r?'none':'block';
@@ -2457,6 +2465,116 @@ function maybeDailyAlert(){
   let seen=''; try{seen=localStorage.getItem('ls_alertSeen')||'';}catch(e){}
   if(seen===todayKey())return;
   showHealthAlert(false);
+}
+/* ============ 健康顧問：整合檢驗×用藥×風險×影像，收斂成整體狀態＋優先行動＋就醫準備單 ============ */
+function advisorStatus(){
+  const A=buildHealthAlerts();
+  const nc=A.filter(x=>x.lvl==='crit').length, nw=A.filter(x=>x.lvl==='warn').length;
+  const hasData=(state.labs&&state.labs.length)||state.result||(state.meds&&state.meds.length);
+  if(!hasData)return {emoji:'🧭',color:'var(--acc)',text:'先完成一次「健康評估」或匯入檢驗／用藥，我就能為你做個人化的健康顧問分析。'};
+  if(nc)return {emoji:'🚨',color:'var(--err)',text:'偵測到 '+nc+' 項需要儘速處理的訊號，請先看下方紅色項目。'};
+  if(nw>=3)return {emoji:'⚠️',color:'var(--warn)',text:'整體大致穩定，但有 '+nw+' 項值得注意；把下方前幾項做好，健康會明顯進步。'};
+  if(nw)return {emoji:'🙂',color:'var(--warn)',text:'狀況不錯，有 '+nw+' 項可以再加強。'};
+  return {emoji:'✅',color:'var(--ok)',text:'目前各項檢驗、用藥比對與風險評估都在良好範圍，繼續保持！'};
+}
+function advisorActions(){
+  const out=[], seen=new Set();
+  const push=(pri,icon,title,action,benefit)=>{ if(!title||seen.has(title))return; seen.add(title); out.push({pri,icon,title,action,benefit}); };
+  buildHealthAlerts().forEach(a=>{
+    const t=a.title||'';
+    const benefit = a.lvl==='crit'?'避免急性風險、及早處理':
+      /未達標/.test(t)?'這是把長期併發症風險降下來最有效的一步':
+      /交互作用|併用/.test(t)?'降低藥物不良反應與出血等風險':
+      /惡化趨勢|趨勢/.test(t)?'趁早介入常可逆轉走向':
+      /多重用藥/.test(t)?'精簡用藥可減少副作用與交互作用':
+      /腎功能|追蹤|缺/.test(t)?'及時監測能提早發現問題':'維持健康、預防惡化';
+    push(a.lvl==='crit'?0:a.lvl==='warn'?1:2, a.icon, t, a.solution, benefit);
+  });
+  out.sort((a,b)=>a.pri-b.pri);
+  return out;
+}
+function renderDashAdvisor(){
+  const el=document.getElementById('dashAdvisor'); if(!el)return;
+  const st=advisorStatus(), n=advisorActions().filter(a=>a.pri<2).length;
+  el.innerHTML=`<div class="card" style="border-left:4px solid ${st.color};display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;"><div style="flex:1;min-width:180px;"><div style="font-weight:800;">${st.emoji} 健康顧問</div><div class="hint" style="margin-top:2px;line-height:1.5;">${esc(st.text)}</div></div><button class="btn bp" style="padding:8px 15px;white-space:nowrap;" onclick="go('advisor')">開啟顧問${n?'（'+n+'）':''}</button></div>`;
+}
+function renderAdvisor(){
+  const el=document.getElementById('advisorBody'); if(!el)return;
+  const st=advisorStatus(), acts=advisorActions();
+  const col={0:'var(--err)',1:'var(--warn)',2:'var(--acc)'}, bg={0:'#fef2f2',1:'#fffbeb',2:'#f0f9ff'}, tag={0:'儘速處理',1:'需注意',2:'可加強'};
+  const top=acts.slice(0,8);
+  const aiBtn=(state.settings&&(state.settings.gemini||state.settings.openai))?'<button class="btn bg" onclick="go(\'advice\')">🤖 AI 深度解讀</button>':'';
+  el.innerHTML=
+    `<div class="card" style="border-left:4px solid ${st.color};"><div class="ct">🧭 你的健康顧問</div>`+
+    `<div style="font-size:1.02rem;font-weight:800;line-height:1.5;">${st.emoji} ${esc(st.text)}</div>`+
+    `<div class="hint" style="margin-top:6px;">綜合你的<b>檢驗 × 用藥 × 風險模型 × 影像</b>整合分析（衛教參考、非診斷；危急請就醫）。</div>`+
+    `<div class="row-btn" style="margin-top:12px;flex-wrap:wrap;gap:8px;"><button class="btn bp" onclick="showDoctorSheet()">🏥 產生就醫準備單</button><button class="btn bg" onclick="go('report')">📋 綜合報告</button>${aiBtn}</div></div>`+
+    `<div class="card"><div class="ct">🎯 建議你優先做的事 <span class="hint">依影響力排序</span></div>`+
+    (top.length?top.map((a,i)=>`<div class="rec" style="border-left-color:${col[a.pri]};background:${bg[a.pri]};align-items:flex-start;flex-direction:column;"><div style="font-weight:700;line-height:1.5;">${i+1}. ${a.icon} ${esc(a.title)} <span class="pill mod" style="background:${col[a.pri]};color:#fff;">${tag[a.pri]}</span></div><div style="font-size:.85rem;margin-top:5px;line-height:1.6;">💡 <b>怎麼做：</b>${esc(a.action||'')}</div><div class="hint" style="margin-top:3px;">🎁 好處：${esc(a.benefit)}</div></div>`).join(''):'<div class="hint" style="color:var(--ok);font-weight:600;padding:6px 0;">✅ 目前沒有需要優先處理的項目，繼續保持良好習慣！</div>')+
+    (acts.length>top.length?`<div class="hint" style="margin-top:6px;">…共 ${acts.length} 項，完整清單見「🚨 智慧預警」。</div>`:'')+`</div>`;
+}
+/* ---- 就醫準備單：一頁帶去給醫師 ---- */
+function buildDoctorSheet(){
+  const p=state.profile||{}, L=labLatest(), v=k=>L[k]!=null?parseFloat(L[k].v):null;
+  const date=new Date().toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'});
+  const sec=[]; // {title, items:[]}
+  // 基本資料
+  const basic=[];
+  if(p.sex||p.age)basic.push((p.sex==='female'?'女':p.sex==='male'?'男':'')+(p.age?p.age+' 歲':''));
+  const bmi=(state.result&&state.result.bmi)||(p.height&&p.weight?+(p.weight/Math.pow(p.height/100,2)).toFixed(1):null);
+  if(bmi)basic.push('BMI '+bmi);
+  if(v('sbp')||p.sbp)basic.push('血壓 '+(v('sbp')||p.sbp)+'/'+(v('dbp')||p.dbp||'?'));
+  if(basic.length)sec.push({title:'基本資料',items:[basic.join('・')]});
+  // 目前用藥
+  const meds=[...new Set(recentMeds(120).map(m=>m.name).filter(isRealDrug))];
+  if(meds.length)sec.push({title:'目前用藥（近 4 個月，'+meds.length+' 種）',items:meds.slice(0,40)});
+  // 近期異常檢驗
+  const abn=LAB_ORDER.filter(k=>L[k]!=null&&labFlag(k,L[k].v)!=='ok').map(k=>LAB_META[k].label+' '+L[k].v+LAB_META[k].unit+(labDateStr(L[k])?'（'+labDateStr(L[k])+'）':''));
+  if(abn.length)sec.push({title:'近期異常檢驗（'+abn.length+' 項）',items:abn});
+  // 用藥交互作用
+  const ix=(typeof medInteractions==='function'?medInteractions():[]).filter(x=>x.sev!=='low').map(x=>x.pairs[0][0].split(/[ （(]/)[0]+' × '+x.pairs[0][1].split(/[ （(]/)[0]+'（'+x.why+'）');
+  if(ix.length)sec.push({title:'可能需注意的併用組合',items:ix});
+  // 交叉／預警重點
+  const cross=buildHealthAlerts().filter(a=>a.lvl!=='info').map(a=>a.title);
+  if(cross.length)sec.push({title:'系統提醒重點',items:[...new Set(cross)].slice(0,10)});
+  // 想問醫師的問題（依發現自動產生）
+  const Q=[];
+  if(ix.length)Q.push('我目前的用藥有沒有交互作用或可以精簡的？');
+  const cls=medClasses(120);
+  if(cls.statin&&v('ldl')!=null&&v('ldl')>=100)Q.push('我的 LDL 還沒達標，降血脂藥需要調整嗎？');
+  if(cls.bp&&(v('sbp')||p.sbp)>=140)Q.push('我的血壓還偏高，用藥需要調整嗎？');
+  if(cls.dm&&v('hba1c')!=null&&v('hba1c')>=7)Q.push('我的糖化血色素還沒達標，控糖方案要調整嗎？');
+  if(meds.some(n=>/omeprazole|esomeprazole|lansoprazole|pantoprazole|耐適恩/i.test(n)))Q.push('我長期在吃胃藥，還需要繼續嗎？有沒有替代或可停的時機？');
+  if(abn.some(a=>/eGFR|肌酸酐|尿素氮/.test(a)))Q.push('我的腎功能數值，需要進一步檢查或調整用藥嗎？');
+  (state.reports||[]).forEach(r=>{ if(IMG_FLAG_RX.test((r.findings||'')+(r.findingsZh||'')))Q.push('影像／病理報告「'+r.name+'」提到的發現需要追蹤嗎？'); });
+  if(!Q.length)Q.push('依我目前的檢驗與用藥，有沒有需要特別注意或調整的地方？');
+  sec.push({title:'建議可以問醫師的問題',items:[...new Set(Q)]});
+  // 純文字版（供複製）
+  const txt='【就醫準備單】'+date+'\n（由 LifeSpan 健康 App 整理，衛教參考，非診斷）\n\n'+
+    sec.map(s=>'■ '+s.title+'\n'+s.items.map(i=>'  - '+i).join('\n')).join('\n\n');
+  return {date,sec,txt};
+}
+function showDoctorSheet(){
+  const {date,sec,txt}=buildDoctorSheet();
+  let m=document.getElementById('docModal');
+  if(!m){m=document.createElement('div');m.id='docModal';m.className='modal-overlay';document.body.appendChild(m);}
+  window._docSheetTxt=txt;
+  m.innerHTML=`<div class="modal-box" style="max-height:86vh;overflow:auto;">
+    <div class="ct">🏥 就醫準備單 <span class="hint">${date}</span></div>
+    <div class="hint" style="margin-bottom:10px;">看診時出示這頁，醫師能快速掌握你的狀況。以下為系統整理，<b>非診斷</b>，實際以醫師為準。</div>
+    ${sec.map(s=>`<div style="margin-bottom:12px;"><div style="font-weight:800;color:var(--pri);border-bottom:1px solid var(--g200);padding-bottom:3px;margin-bottom:5px;">${esc(s.title)}</div>`+
+      s.items.map(i=>`<div style="font-size:.86rem;line-height:1.6;">・${esc(i)}</div>`).join('')+`</div>`).join('')}
+    <div class="row-btn" style="margin-top:8px;">
+      <button class="btn bp" onclick="copyDocSheet()">📋 複製全部</button>
+      <button class="btn bg" onclick="closeDocSheet()">關閉</button>
+    </div></div>`;
+  m.style.display='flex';
+}
+function closeDocSheet(){const m=document.getElementById('docModal');if(m){m.style.display='none';m.innerHTML='';}}
+function copyDocSheet(){
+  const t=window._docSheetTxt||'';
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(()=>toast('📋 已複製，可貼到記事本或 LINE')).catch(()=>toast('複製失敗，請長按選取'));
+  else toast('此環境不支援自動複製，請長按選取文字');
 }
 /* ---- 統一時間軸 ---- */
 function buildTimeline(){
@@ -4139,7 +4257,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.24-medscore-world';
+const APP_VERSION='2026.07.24-advisor';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
