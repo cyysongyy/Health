@@ -329,6 +329,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 <div class="nav" id="navMenu">
   <div class="nt active" data-sec="dash">📊 總覽</div>
   <div class="nt" data-sec="advisor">🧭 健康顧問</div>
+  <div class="nt" data-sec="qa">❓ 健康問答</div>
   <div class="nt" data-sec="assess">📝 健康評估</div>
   <div class="nt" data-sec="connect">🔗 匯入串接</div>
   <div class="nt" data-sec="risk">🔬 風險預測</div>
@@ -603,6 +604,28 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 <!-- ========== SMART ALERTS ========== -->
 <div class="sec" id="sec-advisor">
   <div id="advisorBody"></div>
+</div>
+
+<!-- ========== 健康問答 Q&A ========== -->
+<div class="sec" id="sec-qa">
+  <div class="card">
+    <div class="ct">❓ 健康問答 <span class="hint">AI 依你的整體狀況回答</span></div>
+    <div class="hint" style="line-height:1.7;">問任何關於你健康的問題，AI 會<b>根據你 App 內的全部資料</b>（檢驗、用藥、風險評估、目標、影像報告）針對「你這個人」來回答。衛教參考、非醫療診斷。</div>
+    <div id="qaKeyNote" class="hint" style="display:none;background:#fffbeb;color:#92400e;border-radius:8px;padding:8px 10px;margin-top:8px;">尚未設定 AI 金鑰：請到「⚙️ 設定 → 🤖 AI 引擎設定」填入 Gemini 或 OpenAI API Key（Gemini 可免費申請）。</div>
+    <div id="qaLog" style="max-height:52vh;overflow:auto;margin-top:12px;padding:4px;"></div>
+    <div style="display:flex;gap:8px;margin-top:10px;">
+      <input class="fi" id="qaInput" placeholder="例：我最需要注意什麼？我的血脂怎麼改善？" style="flex:1;" onkeydown="if(event.key==='Enter')askHealthQA()">
+      <button class="btn bp" onclick="askHealthQA()">送出</button>
+    </div>
+    <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;">
+      <button class="btn bg" style="font-size:.76rem;padding:5px 10px;" onclick="qaAsk('依我目前的狀況，我最需要優先注意什麼？')">最該注意什麼？</button>
+      <button class="btn bg" style="font-size:.76rem;padding:5px 10px;" onclick="qaAsk('我的檢驗數值有哪些需要改善？該怎麼做？')">檢驗怎麼改善？</button>
+      <button class="btn bg" style="font-size:.76rem;padding:5px 10px;" onclick="qaAsk('我目前在吃的藥，有什麼需要注意的地方？')">用藥要注意什麼？</button>
+      <button class="btn bg" style="font-size:.76rem;padding:5px 10px;" onclick="qaAsk('依我的狀況，適合我的運動與飲食建議是什麼？')">運動飲食建議</button>
+      <button class="btn bg" style="font-size:.76rem;padding:5px 10px;" onclick="qaAsk('我接下來的看診與追蹤檢查該怎麼安排？')">追蹤怎麼安排？</button>
+    </div>
+    <div class="row-btn" style="margin-top:10px;"><button class="btn bg" style="font-size:.78rem;" onclick="QA_HISTORY=[];renderQALog();">🗑️ 清除對話</button></div>
+  </div>
 </div>
 
 <div class="sec" id="sec-smart">
@@ -1309,7 +1332,7 @@ const LANG_EN={
   // 導覽
   '📊 總覽':'📊 Overview','📝 健康評估':'📝 Assessment','🔗 匯入串接':'🔗 Import','🔬 風險預測':'🔬 Risk','🚨 智慧預警':'🚨 Alerts',
   '📈 趨勢追蹤':'📈 Trends','🧪 檢驗數據庫':'🧪 Lab Data','💊 用藥紀錄':'💊 Medications','🔧 手術紀錄':'🔧 Surgeries','🩻 影像病理':'🩻 Imaging/Path',
-  '🧭 健康顧問':'🧭 Health Advisor','⏰ 提醒':'⏰ Reminders','✅ 每日習慣':'✅ Habits','💡 建議 & AI':'💡 Advice & AI','📋 綜合報告':'📋 Report','🦶 足部訓練':'🦶 Foot Training','⚙️ 設定':'⚙️ Settings',
+  '🧭 健康顧問':'🧭 Health Advisor','❓ 健康問答':'❓ Health Q&A','⏰ 提醒':'⏰ Reminders','✅ 每日習慣':'✅ Habits','💡 建議 & AI':'💡 Advice & AI','📋 綜合報告':'📋 Report','🦶 足部訓練':'🦶 Foot Training','⚙️ 設定':'⚙️ Settings',
   '⏰ 提醒與行事曆':'⏰ Reminders & Calendar','⏰ 今日提醒':'⏰ Today’s Reminders','📋 全部提醒':'📋 All Reminders','➕ 新增提醒':'➕ Add Reminder','📅 全部加入手機行事曆':'📅 Add All to Phone Calendar','🔔 開啟瀏覽器通知':'🔔 Enable Browser Notifications','⏰ 管理提醒':'⏰ Manage Reminders',
   '選單':'Menu','LifeSpan 健康預測':'LifeSpan Health','🫀 LifeSpan 健康預測':'🫀 LifeSpan Health',
   // 徽章
@@ -1408,6 +1431,7 @@ function go(sec){
   if(sec==='connect')renderImportResult();
   if(sec==='smart')renderSmart();
   if(sec==='advisor')renderAdvisor();
+  if(sec==='qa')renderQA();
   if(curLang()==='en')applyI18n();
 }
 function toast(msg){
@@ -2523,7 +2547,7 @@ function renderAdvisor(){
     `<div class="card" style="border-left:4px solid ${st.color};"><div class="ct">🧭 你的健康顧問</div>`+
     `<div style="font-size:1.02rem;font-weight:800;line-height:1.5;">${st.emoji} ${esc(st.text)}</div>`+
     `<div class="hint" style="margin-top:6px;">綜合你的<b>檢驗 × 用藥 × 風險模型 × 影像</b>整合分析（衛教參考、非診斷；危急請就醫）。</div>`+
-    `<div class="row-btn" style="margin-top:12px;flex-wrap:wrap;gap:8px;"><button class="btn bp" onclick="showDoctorSheet()">🏥 產生就醫準備單</button><button class="btn bg" onclick="go('report')">📋 綜合報告</button>${aiBtn}</div></div>`+
+    `<div class="row-btn" style="margin-top:12px;flex-wrap:wrap;gap:8px;"><button class="btn bp" onclick="showDoctorSheet()">🏥 產生就醫準備單</button><button class="btn bg" onclick="go('qa')">❓ 健康問答</button><button class="btn bg" onclick="go('report')">📋 綜合報告</button>${aiBtn}</div></div>`+
     `<div class="card"><div class="ct">🎯 建議你優先做的事 <span class="hint">依影響力排序</span></div>`+
     (top.length?top.map((a,i)=>`<div class="rec" style="border-left-color:${col[a.pri]};background:${bg[a.pri]};align-items:flex-start;flex-direction:column;"><div style="font-weight:700;line-height:1.5;">${i+1}. ${a.icon} ${esc(a.title)} <span class="pill mod" style="background:${col[a.pri]};color:#fff;">${tag[a.pri]}</span></div><div style="font-size:.85rem;margin-top:5px;line-height:1.6;">💡 <b>怎麼做：</b>${esc(a.action||'')}</div><div class="hint" style="margin-top:3px;">🎁 好處：${esc(a.benefit)}</div></div>`).join(''):'<div class="hint" style="color:var(--ok);font-weight:600;padding:6px 0;">✅ 目前沒有需要優先處理的項目，繼續保持良好習慣！</div>')+
     (acts.length>top.length?`<div class="hint" style="margin-top:6px;">…共 ${acts.length} 項，完整清單見「🚨 智慧預警」。</div>`:'')+`</div>`+
@@ -2649,21 +2673,52 @@ async function aiRunPrompt(prompt){
   if(s.gemini)return callGemini(s.gemini,prompt);
   throw new Error('未設定 API Key');
 }
-async function advisorAI(){
-  const s=state.settings;
-  if(!s.gemini&&!s.openai){toast('請先到「設定」填入 Gemini／OpenAI API Key');go('settings');return;}
-  const out=document.getElementById('advisorAI'); if(!out)return;
-  out.style.display='block'; out.textContent='🤖 AI 正在整合你的檢驗、用藥與風險，擬定個人化行動計畫…';
+function buildHealthContext(){
   const sheet=buildDoctorSheet().txt;
   const acts=advisorActions().slice(0,8).map((a,i)=>(i+1)+'. '+a.title+(a.action?'（'+a.action+'）':'')).join('\n');
   const I=(typeof medInputs==='function')?medInputs():{}; const risks=[];
   try{ if(I.sex&&I.age&&I.tc&&I.hdl&&I.sbp)risks.push('10年心血管風險(ASCVD) '+calcASCVD(I).pct+'%'); }catch(e){}
   try{ if(I.age&&I.bmi&&I.waist&&I.sex)risks.push('糖尿病風險(FINDRISC) '+calcFINDRISC(I).score+'分'); }catch(e){}
+  try{ if(I.sex&&I.age&&I.scr)risks.push('腎功能 eGFR '+calcCKDEPI(I).egfr); }catch(e){}
   const goals=state.goals||{}; const gtxt=Object.keys(goals).filter(k=>goals[k]!=null).map(k=>{const g=GOAL_DEFS.find(x=>x.k===k),c=goalCurrent(k);return g?g.label+' 目前'+(c==null?'無資料':c)+'/目標'+(g.dir==='below'?'≤':'≥')+goals[k]:'';}).filter(Boolean).join('、');
-  const prompt=`你是專業、親切又務實的個人健康顧問。以下是使用者（去識別化）的整合健康資料：\n\n${sheet}\n\n系統排序的優先事項：\n${acts||'（無）'}\n\n風險評估：${risks.join('、')||'（資料不足）'}\n個人目標達成：${gtxt||'（未設定）'}\n\n請用「繁體中文」、溫暖鼓勵但務實的口吻，讓長輩也看得懂，提供：\n1) 一份「三個月行動計畫」，分成【立即做】【這個月】【持續追蹤】三段\n2) 每項為什麼重要、預期好處\n3) 針對飲食、運動、用藥順從性、以及需要追蹤的檢查給具體建議\n4) 一段鼓勵的話\n請務必明確標註「此為衛教參考、非醫療診斷，數值異常或不適請就醫」。控制在 700 字內，多用條列與小標。`;
+  return sheet+'\n\n系統排序優先事項：\n'+(acts||'（無）')+'\n\n風險評估：'+(risks.join('、')||'（資料不足）')+'\n個人目標：'+(gtxt||'（未設定）');
+}
+async function advisorAI(){
+  const s=state.settings;
+  if(!s.gemini&&!s.openai){toast('請先到「設定」填入 Gemini／OpenAI API Key');go('settings');return;}
+  const out=document.getElementById('advisorAI'); if(!out)return;
+  out.style.display='block'; out.textContent='🤖 AI 正在整合你的檢驗、用藥與風險，擬定個人化行動計畫…';
+  const prompt=`你是專業、親切又務實的個人健康顧問。以下是使用者（去識別化）的整合健康資料：\n\n${buildHealthContext()}\n\n請用「繁體中文」、溫暖鼓勵但務實的口吻，讓長輩也看得懂，提供：\n1) 一份「三個月行動計畫」，分成【立即做】【這個月】【持續追蹤】三段\n2) 每項為什麼重要、預期好處\n3) 針對飲食、運動、用藥順從性、以及需要追蹤的檢查給具體建議\n4) 一段鼓勵的話\n請務必明確標註「此為衛教參考、非醫療診斷，數值異常或不適請就醫」。控制在 700 字內，多用條列與小標。`;
   try{ const t=await aiRunPrompt(prompt); out.textContent=t; }
   catch(e){ out.textContent='⚠️ AI 呼叫失敗：'+(e.message||e)+'\n請確認 API Key 是否正確、額度是否足夠（設定 → AI 引擎設定）。'; }
 }
+/* ---- 健康問答 Q&A：AI 依使用者整體健康資料回答 ---- */
+let QA_HISTORY=[];
+function renderQA(){
+  renderQALog();
+  const note=document.getElementById('qaKeyNote');
+  if(note)note.style.display=(state.settings.gemini||state.settings.openai)?'none':'block';
+}
+function renderQALog(){
+  const el=document.getElementById('qaLog'); if(!el)return;
+  if(!QA_HISTORY.length){ el.innerHTML='<div class="hint" style="padding:8px 0;">還沒有問答。輸入問題或點下方建議開始 —— AI 會根據你所有的健康資料回答你。</div>'; return; }
+  el.innerHTML=QA_HISTORY.map(x=>`<div style="margin-bottom:14px;"><div style="text-align:right;"><span style="background:var(--pri);color:#fff;padding:8px 12px;border-radius:12px 12px 3px 12px;display:inline-block;max-width:88%;font-size:.88rem;line-height:1.6;text-align:left;">🙋 ${esc(x.q)}</span></div><div style="margin-top:6px;background:var(--g100);padding:10px 12px;border-radius:12px 12px 12px 3px;white-space:pre-wrap;font-size:.88rem;line-height:1.75;">🤖 ${esc(x.a)}</div></div>`).join('');
+  el.scrollTop=el.scrollHeight;
+}
+async function askHealthQA(){
+  const s=state.settings;
+  if(!s.gemini&&!s.openai){toast('請先到「設定」填入 Gemini／OpenAI API Key');go('settings');return;}
+  const inp=document.getElementById('qaInput'); if(!inp)return;
+  const q=(inp.value||'').trim(); if(!q){toast('請先輸入問題');return;}
+  inp.value='';
+  QA_HISTORY.push({q,a:'⏳ AI 正在根據你的健康資料回答…'}); renderQALog();
+  const hist=QA_HISTORY.slice(-6,-1).map(x=>'Q: '+x.q+'\nA: '+x.a).join('\n\n');
+  const prompt=`你是使用者專屬、親切又務實的健康顧問 AI。以下是使用者（去識別化）的完整健康狀況：\n\n${buildHealthContext()}\n\n${hist?'先前問答（供延續脈絡）：\n'+hist+'\n\n':''}使用者現在問：「${q}」\n\n請「根據他上面的實際健康資料」用繁體中文回答，要具體、盡量引用他的數值與用藥、個人化，不要空泛。提供可執行的建議。務必明確標註「此為衛教參考、非醫療診斷；診斷、用藥調整或身體不適請諮詢醫師／藥師或就醫」。控制在 500 字內，讓長輩也看得懂。`;
+  try{ const t=await aiRunPrompt(prompt); QA_HISTORY[QA_HISTORY.length-1].a=t; }
+  catch(e){ QA_HISTORY[QA_HISTORY.length-1].a='⚠️ AI 呼叫失敗：'+(e.message||e)+'（請確認 API Key 與額度，設定 → AI 引擎設定）'; }
+  renderQALog();
+}
+function qaAsk(text){ const inp=document.getElementById('qaInput'); if(inp)inp.value=text; return askHealthQA(); }
 /* ============ Google Drive 備份／同步（重用日曆 OAuth 的 Client ID，drive.file 非機敏權限） ============ */
 let gdriveToken=null, gdriveTC=null;
 const GDRIVE_FILE='lifespan-health-backup.json';
@@ -4401,7 +4456,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.24-gdrive-sync';
+const APP_VERSION='2026.07.24-qa';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
