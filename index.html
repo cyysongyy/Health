@@ -4517,7 +4517,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.25-applehealth-stream';
+const APP_VERSION='2026.07.25-extrehab';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -6053,6 +6053,21 @@ function render(){
   window.scrollTo(0,0);
 }
 
+const EXT_REHAB_URL='https://cyysongyy.github.io/5-steps-rehab-for-footdrop/';
+function openExtRehab(){
+  let m=document.getElementById('extRehab');
+  if(!m){m=document.createElement('div');m.id='extRehab';document.body.appendChild(m);}
+  m.style.cssText='position:fixed;inset:0;z-index:9999;background:#fff;display:flex;flex-direction:column;';
+  const off=!navigator.onLine;
+  m.innerHTML=`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--pri,#0d9488);color:#fff;flex-shrink:0;">
+      <button onclick="closeExtRehab()" style="background:rgba(255,255,255,.25);border:none;color:#fff;padding:7px 14px;border-radius:8px;font-size:.9rem;cursor:pointer;">‹ 返回</button>
+      <div style="flex:1;font-weight:700;font-size:1rem;">5 步驟垂足復健</div>
+      <a href="${EXT_REHAB_URL}" target="_blank" rel="noopener" style="color:#fff;font-size:.8rem;">新分頁開啟 ↗</a>
+    </div>`+
+    (off?`<div style="flex:1;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--g600);">📴 這個復健教學頁需要連線才能載入。<br>請連上網路後再開啟，或按上方「新分頁開啟」。</div>`
+        :`<iframe src="${EXT_REHAB_URL}" style="flex:1;border:0;width:100%;" allow="fullscreen"></iframe>`);
+}
+function closeExtRehab(){const m=document.getElementById('extRehab');if(m)m.remove();}
 function homeHTML(){
   return `<div class="home">
     <div class="home-hdr">
@@ -6074,6 +6089,14 @@ function homeHTML(){
           <span class="mode-badge g">每日復健 · 5動作</span>
           <div class="mode-title">垂足背屈復健</div>
           <div class="mode-sub">右腳垂足 / 腓神經恢復的每日肌力與伸展</div>
+        </div>
+      </div>
+      <div class="mode-card" onclick="openExtRehab()">
+        <div class="mode-icon blue"><i class="ti ti-stairs-up"></i></div>
+        <div class="mode-text">
+          <span class="mode-badge b">進階 · 5 步驟</span>
+          <div class="mode-title">5 步驟垂足復健（完整版）</div>
+          <div class="mode-sub">更完整的垂足復健流程教學（需連線）</div>
         </div>
       </div>
     </div>
@@ -6499,6 +6522,7 @@ function finishAll(){
 }
 
 window.FT={setMode,togV,backHome,startWarm,wRst,wgo,wSetStep,startEx,rRst,rgo,updateChip};
+window.openExtRehab=openExtRehab; window.closeExtRehab=closeExtRehab;
 
 /* ===================== INIT ===================== */
 render();
