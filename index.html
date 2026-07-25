@@ -336,10 +336,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   <div class="nt" data-sec="medscore">🩺 醫療級評估</div>
   <div class="nt" data-sec="smart">🚨 智慧預警</div>
   <div class="nt" data-sec="trend">📈 趨勢追蹤</div>
-  <div class="nt" data-sec="labs">🧪 檢驗數據庫</div>
-  <div class="nt" data-sec="meds">💊 用藥紀錄</div>
-  <div class="nt" data-sec="surgery">🔧 手術紀錄</div>
-  <div class="nt" data-sec="reports">🩻 影像病理</div>
+  <div class="nt" data-sec="records">🗂️ 醫藥紀錄</div>
   <div class="nt" data-sec="remind">⏰ 提醒</div>
   <div class="nt" data-sec="habit">✅ 每日習慣</div>
   <div class="nt" data-sec="advice">💡 建議 & AI</div>
@@ -847,8 +844,18 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   </div>
 </div>
 
+<!-- ========== 醫藥紀錄（分類入口） ========== -->
+<div class="sec" id="sec-records">
+  <div class="card">
+    <div class="ct">🗂️ 醫藥紀錄</div>
+    <div class="hint" style="margin-bottom:4px;">你的完整醫療資料，分成四類。點選進入查看與管理。</div>
+  </div>
+  <div id="recordsHub"></div>
+</div>
+
 <!-- ========== LAB DATABASE ========== -->
 <div class="sec" id="sec-labs">
+  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('records')">‹ 醫藥紀錄</button></div>
   <div id="labsEmpty" class="card empty">
     <div class="em">🧪</div>
     <div>尚無檢驗數據。到「🔗 匯入串接」拍照／上傳檢驗報告（圖片、PDF、JSON），辨識後的數值會自動彙整到這裡。</div>
@@ -901,6 +908,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== MEDICATIONS ========== -->
 <div class="sec" id="sec-meds">
+  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('records')">‹ 醫藥紀錄</button></div>
   <div id="medsEmpty" class="card empty">
     <div class="em">💊</div>
     <div>尚無用藥紀錄。到「🔗 匯入串接」匯入健保「健康存摺」的用藥資料（FHIR／JSON，含 MedicationRequest／MedicationDispense），系統會自動整理成一份用藥清單；也可在下方手動新增。</div>
@@ -946,6 +954,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== SURGERY RECORDS ========== -->
 <div class="sec" id="sec-surgery">
+  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('records')">‹ 醫藥紀錄</button></div>
   <div id="surEmpty" class="card empty">
     <div class="em">🔧</div>
     <div>尚無手術紀錄。到「🔗 匯入串接」匯入健保「健康存摺」的醫療類資料，系統會自動從住院／門診紀錄擷取手術與處置；也可在下方手動新增。</div>
@@ -974,6 +983,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== IMAGING / PATHOLOGY REPORTS ========== -->
 <div class="sec" id="sec-reports">
+  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('records')">‹ 醫藥紀錄</button></div>
   <div id="rptEmpty" class="card empty">
     <div class="em">🩻</div>
     <div>尚無影像／病理報告。到「🔗 匯入串接」匯入健保「健康存摺」醫療類，系統會自動擷取超音波／X 光／內視鏡／病理等報告（多為英文敘述），可一鍵 <b>AI 翻譯成中文</b>；也可在下方手動新增。</div>
@@ -1335,7 +1345,7 @@ const LANG_EN={
   // 導覽
   '📊 總覽':'📊 Overview','📝 健康評估':'📝 Assessment','🔗 匯入串接':'🔗 Import','🔬 風險預測':'🔬 Risk','🚨 智慧預警':'🚨 Alerts',
   '📈 趨勢追蹤':'📈 Trends','🧪 檢驗數據庫':'🧪 Lab Data','💊 用藥紀錄':'💊 Medications','🔧 手術紀錄':'🔧 Surgeries','🩻 影像病理':'🩻 Imaging/Path',
-  '🧭 健康顧問':'🧭 Health Advisor','❓ 健康問答':'❓ Health Q&A','⏰ 提醒':'⏰ Reminders','✅ 每日習慣':'✅ Habits','💡 建議 & AI':'💡 Advice & AI','📋 綜合報告':'📋 Report','🦶 足部訓練':'🦶 Foot Training','⚙️ 設定':'⚙️ Settings',
+  '🧭 健康顧問':'🧭 Health Advisor','❓ 健康問答':'❓ Health Q&A','🗂️ 醫藥紀錄':'🗂️ Medical Records','⏰ 提醒':'⏰ Reminders','✅ 每日習慣':'✅ Habits','💡 建議 & AI':'💡 Advice & AI','📋 綜合報告':'📋 Report','🦶 足部訓練':'🦶 Foot Training','⚙️ 設定':'⚙️ Settings',
   '⏰ 提醒與行事曆':'⏰ Reminders & Calendar','⏰ 今日提醒':'⏰ Today’s Reminders','📋 全部提醒':'📋 All Reminders','➕ 新增提醒':'➕ Add Reminder','📅 全部加入手機行事曆':'📅 Add All to Phone Calendar','🔔 開啟瀏覽器通知':'🔔 Enable Browser Notifications','⏰ 管理提醒':'⏰ Manage Reminders',
   '選單':'Menu','LifeSpan 健康預測':'LifeSpan Health','🫀 LifeSpan 健康預測':'🫀 LifeSpan Health',
   // 徽章
@@ -1416,9 +1426,11 @@ function go(sec){
   document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
   document.getElementById('sec-'+sec).classList.add('active');
   const cur=document.querySelector('.nt[data-sec="'+sec+'"]'), nc=document.getElementById('navCurrent');
-  if(cur&&nc)nc.textContent=cur.textContent;
+  const SUBT={labs:'🧪 檢驗數據庫',meds:'💊 用藥紀錄',surgery:'🔧 手術紀錄',reports:'🩻 影像病理'};
+  if(nc){ if(cur)nc.textContent=cur.textContent; else if(SUBT[sec])nc.textContent=SUBT[sec]; }
   closeNav();
   window.scrollTo(0,0);
+  if(sec==='records')renderRecords();
   if(sec==='trend')renderTrend();
   if(sec==='labs')renderLabs();
   if(sec==='meds')renderMeds();
@@ -1440,6 +1452,21 @@ function go(sec){
 function toast(msg){
   const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
   clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);
+}
+function renderRecords(){
+  const el=document.getElementById('recordsHub'); if(!el)return;
+  const n=a=>Array.isArray(a)?a.length:0;
+  const items=[
+    {sec:'labs',icon:'🧪',title:'檢驗數據庫',sub:'血壓、血糖、血脂、肝腎功能、血球…',c:n(state.labs)},
+    {sec:'meds',icon:'💊',title:'用藥紀錄',sub:'用藥清單、統計、交互作用提醒',c:n(state.meds)},
+    {sec:'surgery',icon:'🔧',title:'手術紀錄',sub:'手術／處置史',c:n(state.surgeries)},
+    {sec:'reports',icon:'🩻',title:'影像病理',sub:'超音波／X光／內視鏡／病理（可 AI 翻譯）',c:n(state.reports)}
+  ];
+  el.innerHTML=items.map(it=>`<div class="card" style="cursor:pointer;display:flex;align-items:center;gap:12px;" onclick="go('${it.sec}')">
+    <div style="font-size:1.9rem;line-height:1;">${it.icon}</div>
+    <div style="flex:1;"><div style="font-weight:800;font-size:1.02rem;">${it.title} <span class="hint">${it.c} 筆</span></div><div class="hint" style="margin-top:2px;">${it.sub}</div></div>
+    <div style="color:var(--g400);font-size:1.4rem;">›</div>
+  </div>`).join('');
 }
 
 /* ============ 分段按鈕 ============ */
@@ -4517,7 +4544,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.25-extrehab';
+const APP_VERSION='2026.07.25-records-hub';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
