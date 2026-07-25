@@ -3227,7 +3227,8 @@ function renderLabs(){
   document.getElementById('labsEmpty').style.display=has?'none':'block';
   document.getElementById('labsContent').style.display=has?'block':'none';
   if(!has)return;
-  document.getElementById('labsCount').textContent='共 '+labs.length+' 筆';
+  const valLabs=labs.filter(e=>e.values&&Object.keys(e.values).length);
+  document.getElementById('labsCount').textContent='共 '+valLabs.length+' 筆';
   // 各項最新值
   const latest={};
   labs.forEach(e=>{const t=new Date(e.date).getTime();Object.keys(e.values||{}).forEach(k=>{if(!latest[k]||t>=latest[k].t)latest[k]={v:e.values[k],t,date:e.date};});});
@@ -3298,7 +3299,7 @@ function renderLabs(){
     [...series].reverse().map(s=>{const fl=labFlag(curLab,s.value);return `<tr><td>${new Date(s.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})}</td><td class="num" style="color:${FLAG_COLOR[fl]};">${s.value}</td><td style="color:${FLAG_COLOR[fl]};font-size:.72rem;">${FLAG_ICON[fl]?FLAG_ICON[fl]+' ':''}${FLAG_TXT[fl]}</td></tr>`;}).join('');
   // 全部紀錄
   let head='<tr><th>日期</th><th>來源</th>'+present.map(k=>'<th>'+LAB_META[k].label+'</th>').join('')+'<th>操作</th></tr>';
-  const body=[...labs].reverse().map(e=>'<tr><td>'+new Date(e.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})+'</td><td style="font-size:.72rem;">'+(SRC_LABEL[e.source]||e.source||'—')+'</td>'+
+  const body=[...valLabs].reverse().map(e=>'<tr><td>'+new Date(e.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})+'</td><td style="font-size:.72rem;">'+(SRC_LABEL[e.source]||e.source||'—')+'</td>'+
     present.map(k=>{const v=e.values&&e.values[k];if(v==null)return '<td class="num">—</td>';const fl=labFlag(k,v);return '<td class="num" style="color:'+FLAG_COLOR[fl]+';">'+v+'</td>';}).join('')+
     '<td style="white-space:nowrap;"><a class="link" style="cursor:pointer;" onclick="openLabEditor(\''+e.id+'\')">✏️</a>　<a class="link" style="cursor:pointer;color:var(--err);" onclick="labDelete(\''+e.id+'\')">🗑️</a></td></tr>').join('');
   document.getElementById('labAllTable').innerHTML=head+body;
@@ -3337,7 +3338,8 @@ function renderLabAnalysis(present){
   document.getElementById('labAnalysisTable').innerHTML=html;
 }
 function renderLabSingle(labs){
-  const sorted=[...labs].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const sorted=[...labs].filter(e=>e.values&&Object.keys(e.values).length).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  if(!sorted.length){const sel0=document.getElementById('labRecordSel');if(sel0)sel0.innerHTML='';const t0=document.getElementById('labSingleTable');if(t0)t0.innerHTML='';return;}
   if(!labSingleId||!sorted.some(e=>e.id===labSingleId))labSingleId=sorted[0].id;
   const sel=document.getElementById('labRecordSel');
   sel.innerHTML=sorted.map(e=>`<option value="${e.id}"${e.id===labSingleId?' selected':''}>${new Date(e.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})}　${SRC_LABEL[e.source]||e.source||''}　(${Object.keys(e.values||{}).length} 項)</option>`).join('');
@@ -4640,7 +4642,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.25-labs-clean';
+const APP_VERSION='2026.07.25-labs-nozero';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -5467,7 +5469,7 @@ function ingestLabRecords(records,source){
   records.forEach(r=>{
     const values={};Object.keys(r.values||{}).forEach(k=>{if(LAB_META[k]){const n=toNum(r.values[k]);if(n!==null)values[k]=n;}});
     const extra=Array.isArray(r.extra)?r.extra.filter(x=>x&&x.name&&x.val!=null).map(x=>({name:String(x.name).trim().slice(0,24),val:x.val})):[];
-    if(!Object.keys(values).length && !extra.length)return;
+    if(!Object.keys(values).length)return;   // 沒有標準檢驗值就不建檔；未歸類不單獨成筆，避免出現「0 項」紀錄
     const s=(r.date||'').slice(0,10)+'|'+JSON.stringify(values)+'|'+JSON.stringify(extra.map(x=>x.name+':'+x.val));
     if(seen.has(s))return; seen.add(s);
     const rec={id:'lab_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),date:r.date||new Date().toISOString(),source:source||'nhi',values};
