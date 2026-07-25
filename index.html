@@ -3548,34 +3548,53 @@ function parseBankLabs(bd){
   const isDateStr=s=>/^\d{7,8}$/.test(s)&&!!parseFlexDate(s);
   const numLike=e=>{const n=toNum(e.v);return (n!==null && /^\s*[<>]?\s*-?\d/.test(e.v) && e.v.replace(/[^\d.]/g,'').length<=7)?n:null;};
   const NON_LAB_NAME=/醫院|診所|衛生所|藥局|醫事|醫$|業務組|區$|中心$|聲明|無資料|門診|住院|急診|保健|大樓|科$|部$/;
+  // 一列可能含多個檢驗項目（整組套組），且值可能藏在巢狀子物件／子陣列裡（該次就醫的逐項結果）
+  const entriesOf=obj=>Object.keys(obj).filter(k=>typeof obj[k]==='string'||typeof obj[k]==='number')
+    .map((k,i)=>({key:k,suf:sufOf(k),ord:i,v:String(obj[k]==null?'':obj[k]).trim()})).filter(e=>e.v!=='');
+  // 掃描一個「單元」（一列的純量欄位，或一個巢狀檢驗項目），抓出其中所有 名稱→數值 配對（可多筆）
+  const scanUnit=(ents,secKey)=>{
+    const arr=ents.slice().sort((a,b)=>(a.suf-b.suf)||(a.ord-b.ord));
+    const H=[],X=[],used=new Set();
+    const takeVal=(startIdx,key)=>{
+      for(let j=startIdx;j<arr.length;j++){ const c=arr[j]; if(used.has(c.key))continue; if(isDateStr(c.v))continue;
+        if(bankLabKey(c.v))break;                 // 碰到下一個檢驗名稱就停，避免跨項取值
+        const n=numLike(c); if(n===null)continue;
+        if(key!==null){ if(!bankLabInRange(key,n))continue; }
+        else { if(!(n>0&&n<1e6))continue; }
+        used.add(c.key); return {val:n,pickedKey:c.key};
+      }
+      return null;
+    };
+    // 1) 可對應標準項目的檢驗（整列可有多筆）
+    for(let i=0;i<arr.length;i++){ const e=arr[i]; const key=bankLabKey(e.v); if(!key)continue;
+      const got=takeVal(i+1,key); if(got)H.push({key,val:got.val,nameField:e.key,pickedKey:got.pickedKey,name:e.v}); }
+    // 2) 認不得名稱的檢驗（整列可有多筆），一併保存不遺漏
+    for(let i=0;i<arr.length;i++){ const e=arr[i]; if(bankLabKey(e.v))continue; if(e.key===secKey+'.4')continue;
+      if(!(/[一-鿿]/.test(e.v)&&e.v.length>=2&&e.v.length<=24&&!NON_LAB_NAME.test(e.v)&&!isDateStr(e.v)&&!looksLikeDrugCode(e.v)))continue;
+      const got=takeVal(i+1,null); if(got)X.push({name:e.v,val:got.val}); }
+    return {H,X};
+  };
   Object.keys(bd).filter(k=>/^r\d+$/.test(k)).forEach(sec=>{
     const rows=bd[sec]; if(!Array.isArray(rows)||!rows.length)return;
     const hits=[], extras=[];
     rows.forEach(row=>{
       if(!row||typeof row!=='object')return;
-      const entries=Object.keys(row).filter(k=>typeof row[k]==='string'||typeof row[k]==='number')
-        .map(k=>({key:k,suf:sufOf(k),v:String(row[k]==null?'':row[k]).trim()})).filter(e=>e.v!=='');
-      // 日期：健保原始日期（採檢／就醫 .5，報告日 .6）
+      // 日期：健保原始日期（採檢／就醫 .5，報告日 .6），否則掃描本列合理日期
       let date=parseFlexDate(row[sec+'.5'])||parseFlexDate(row[sec+'.6']);
-      if(!date){ for(const e of entries.slice().sort((a,b)=>a.suf-b.suf)){ if(isDateStr(e.v)){ date=parseFlexDate(e.v); break; } } }
-      // 1) 可對應到標準項目的檢驗
-      let nameE=null,key=null;
-      for(const e of entries){ const kk=bankLabKey(e.v); if(kk){key=kk;nameE=e;break;} }
-      if(key){
-        let val=null,valKey=null;
-        entries.filter(e=>e.suf>nameE.suf).sort((a,b)=>a.suf-b.suf).some(e=>{
-          if(isDateStr(e.v))return false; const n=numLike(e); if(n!==null && bankLabInRange(key,n)){ val=n; valKey=e.key; return true; } return false;
-        });
-        if(val==null)return;
-        if(!BANK_LAB_SAMPLES[key])BANK_LAB_SAMPLES[key]={picked:val,pickedKey:valKey,nameField:nameE.key,name:nameE.v,date,row:Object.assign({},row)};
-        hits.push({key,val,date}); return;
-      }
-      // 2) 認不得名稱的檢驗：找「像檢驗名稱」的中文欄 ＋ 之後的合理數值，一併保存不遺漏
-      const nm=entries.find(e=> e.suf>=5 && e.key!==sec+'.4' && /[一-鿿]/.test(e.v) && e.v.length>=2 && e.v.length<=24 && !NON_LAB_NAME.test(e.v) && !isDateStr(e.v) && !looksLikeDrugCode(e.v));
-      if(nm){ let v2=null,unit=''; entries.filter(e=>e.suf>nm.suf).sort((a,b)=>a.suf-b.suf).some(e=>{ if(isDateStr(e.v))return false; const n=numLike(e); if(n!==null && n>0 && n<1e6){ v2=n; return true; } return false; });
-        if(v2!=null){ // 嘗試抓單位（數值之後的短字串）
-          extras.push({name:nm.v,val:v2,date}); }
-      }
+      if(!date){ for(const e of entriesOf(row).sort((a,b)=>a.suf-b.suf)){ if(isDateStr(e.v)){ date=parseFlexDate(e.v); break; } } }
+      // 待掃描單元：本列純量欄位 ＋ 任何巢狀（該次就醫的逐項檢驗結果）
+      const units=[entriesOf(row)];
+      Object.keys(row).forEach(k=>{ const v=row[k];
+        if(Array.isArray(v)){ v.forEach(it=>{ if(it&&typeof it==='object')units.push(entriesOf(it)); }); }
+        else if(v&&typeof v==='object'){ units.push(entriesOf(v)); }
+      });
+      units.forEach(ents=>{
+        if(!ents.length)return;
+        const {H,X}=scanUnit(ents,sec);
+        H.forEach(o=>{ if(!BANK_LAB_SAMPLES[o.key])BANK_LAB_SAMPLES[o.key]={picked:o.val,pickedKey:o.pickedKey,nameField:o.nameField,name:o.name,date,row:Object.assign({},row)};
+          hits.push({key:o.key,val:o.val,date}); });
+        X.forEach(o=>extras.push({name:o.name,val:o.val,date}));
+      });
     });
     if(hits.length<3 && extras.length<3)return;   // 太少不視為檢驗結果區
     hits.forEach(({key,val,date})=>{ const iso=date||new Date().toISOString(); const dk=iso.slice(0,10); (byDate[dk]=byDate[dk]||{date:iso,values:{},extra:[]}).values[key]=val; });
@@ -4573,7 +4592,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.25-labs-extra';
+const APP_VERSION='2026.07.25-labs-panel';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
