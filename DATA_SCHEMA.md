@@ -98,9 +98,12 @@
   "id":     "lab_<base36ms><rand>",   // PK
   "date":   "2026-07-19T...Z",        // ISO-8601
   "source": "pdf",                     // image|pdf|nhi|wearable|app|manual
-  "values": { "ldl":138, "hdl":45, "hba1c":5.9, ... }  // 見下表
+  "values": { "ldl":138, "hdl":45, "hba1c":5.9, ... },  // 見下表（標準代碼）
+  "extra":  [ { "name":"游離甲狀腺素", "val":1.2 } ]     // 選填：未歸入標準代碼的檢驗項目（原始名稱＋數值），供「其他檢驗（未歸類）」呈現，不遺漏
 }
 ```
+
+> `extra[]` 保存健保／報告中名稱較特殊、尚未對應到上表標準 `key` 的檢驗值；僅有 `extra`（無 `values`）的紀錄也會保留。去重鍵含 `extra` 的（名稱:數值）組合。
 
 **metric 代碼與單位**（`values` 內的鍵）：
 

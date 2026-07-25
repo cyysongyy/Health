@@ -884,7 +884,12 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
         </div>
       </div>
     </div>
-    <div class="card">
+    <div class="card" id="labsExtraCard" style="display:none;">
+      <div class="ct">🧫 其他檢驗（未歸類） <span class="hint" id="labsExtraCount"></span></div>
+      <div class="hint" style="margin-bottom:8px;">健保裡名稱較特殊、系統尚未歸入標準項目的檢驗值，也一併保存於此，不遺漏。</div>
+      <div style="overflow-x:auto;"><table id="labsExtraTable"></table></div>
+    </div>
+    <div class="card" id="labTrendCard">
       <div class="ct">📈 單項時序趨勢 <span class="hint">同一項目跨時間變化</span></div>
       <div class="seg" id="labMetricSeg" style="margin-bottom:10px;"></div>
       <div class="cw" id="labChartWrap"><canvas id="labChart"></canvas></div>
@@ -3268,6 +3273,13 @@ function renderLabs(){
   if(labView==='overall')renderLabAnalysis(present);
   else renderLabSingle(labs);
   // 單項趨勢
+  const trendCard=document.getElementById('labTrendCard');
+  if(!present.length){
+    if(trendCard)trendCard.style.display='none';
+    renderLabsExtra();
+    return;
+  }
+  if(trendCard)trendCard.style.display='';
   if(!curLab||!present.includes(curLab))curLab=present[0];
   const seg=document.getElementById('labMetricSeg');seg.innerHTML='';
   present.forEach(k=>{const b=document.createElement('div');b.className='seg-btn'+(k===curLab?' on':'');b.textContent=LAB_META[k].label;b.onclick=()=>{curLab=k;renderLabs();};seg.appendChild(b);});
@@ -3290,6 +3302,20 @@ function renderLabs(){
     present.map(k=>{const v=e.values&&e.values[k];if(v==null)return '<td class="num">—</td>';const fl=labFlag(k,v);return '<td class="num" style="color:'+FLAG_COLOR[fl]+';">'+v+'</td>';}).join('')+
     '<td style="white-space:nowrap;"><a class="link" style="cursor:pointer;" onclick="openLabEditor(\''+e.id+'\')">✏️</a>　<a class="link" style="cursor:pointer;color:var(--err);" onclick="labDelete(\''+e.id+'\')">🗑️</a></td></tr>').join('');
   document.getElementById('labAllTable').innerHTML=head+body;
+  renderLabsExtra();
+}
+// 其他檢驗（未歸類）：健保中名稱較特殊、未對應標準代碼的檢驗項目，一併保存不遺漏
+function renderLabsExtra(){
+  const card=document.getElementById('labsExtraCard');if(!card)return;
+  const rows=[];
+  (state.labs||[]).forEach(e=>{ if(!Array.isArray(e.extra))return; e.extra.forEach(x=>{ if(x&&x.name&&x.val!=null)rows.push({date:e.date,name:x.name,val:x.val}); }); });
+  if(!rows.length){card.style.display='none';return;}
+  rows.sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const cntEl=document.getElementById('labsExtraCount');if(cntEl)cntEl.textContent='共 '+rows.length+' 項';
+  document.getElementById('labsExtraTable').innerHTML=
+    '<tr><th>日期</th><th>項目</th><th>數值</th></tr>'+
+    rows.map(r=>'<tr><td style="white-space:nowrap;">'+new Date(r.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})+'</td><td>'+esc(r.name)+'</td><td class="num">'+esc(String(r.val))+'</td></tr>').join('');
+  card.style.display='block';
 }
 function renderLabAnalysis(present){
   const dirTxt={better:'改善',worse:'惡化',changed:'變化',flat:'持平'};
@@ -3520,37 +3546,40 @@ function parseBankLabs(bd){
   BANK_LAB_SAMPLES={};
   const sufOf=k=>{const m=String(k).match(/\.(\d+)$/);return m?+m[1]:0;};
   const isDateStr=s=>/^\d{7,8}$/.test(s)&&!!parseFlexDate(s);
+  const numLike=e=>{const n=toNum(e.v);return (n!==null && /^\s*[<>]?\s*-?\d/.test(e.v) && e.v.replace(/[^\d.]/g,'').length<=7)?n:null;};
+  const NON_LAB_NAME=/醫院|診所|衛生所|藥局|醫事|醫$|業務組|區$|中心$|聲明|無資料|門診|住院|急診|保健|大樓|科$|部$/;
   Object.keys(bd).filter(k=>/^r\d+$/.test(k)).forEach(sec=>{
     const rows=bd[sec]; if(!Array.isArray(rows)||!rows.length)return;
-    const hits=[];
+    const hits=[], extras=[];
     rows.forEach(row=>{
       if(!row||typeof row!=='object')return;
       const entries=Object.keys(row).filter(k=>typeof row[k]==='string'||typeof row[k]==='number')
         .map(k=>({key:k,suf:sufOf(k),v:String(row[k]==null?'':row[k]).trim()})).filter(e=>e.v!=='');
-      // 檢驗名稱欄（可對應到 LAB_META 的中／英名稱）
-      let nameE=null,key=null;
-      for(const e of entries){ const kk=bankLabKey(e.v); if(kk){key=kk;nameE=e;break;} }
-      if(!key)return;
-      // 檢驗值：名稱欄「之後」的第一個落在生理範圍的數值 → 避開前段的區碼/院所/代碼（如區碼「4」）
-      let val=null,valKey=null;
-      entries.filter(e=>e.suf>nameE.suf).sort((a,b)=>a.suf-b.suf).some(e=>{
-        if(isDateStr(e.v))return false;                        // 跳過日期
-        const n=toNum(e.v);
-        if(n!==null && /^\s*[<>]?\s*-?\d/.test(e.v) && e.v.replace(/[^\d.]/g,'').length<=7 && bankLabInRange(key,n)){ val=n; valKey=e.key; return true; }
-        return false;
-      });
-      if(val==null)return;
-      // 日期：採用健保原始日期（該次就醫／採檢日 .5，或報告日 .6），支援西元與民國年
+      // 日期：健保原始日期（採檢／就醫 .5，報告日 .6）
       let date=parseFlexDate(row[sec+'.5'])||parseFlexDate(row[sec+'.6']);
       if(!date){ for(const e of entries.slice().sort((a,b)=>a.suf-b.suf)){ if(isDateStr(e.v)){ date=parseFlexDate(e.v); break; } } }
-      if(!BANK_LAB_SAMPLES[key])BANK_LAB_SAMPLES[key]={picked:val,pickedKey:valKey,nameField:nameE.key,name:nameE.v,date,row:Object.assign({},row)};
-      hits.push({key,val,date});
+      // 1) 可對應到標準項目的檢驗
+      let nameE=null,key=null;
+      for(const e of entries){ const kk=bankLabKey(e.v); if(kk){key=kk;nameE=e;break;} }
+      if(key){
+        let val=null,valKey=null;
+        entries.filter(e=>e.suf>nameE.suf).sort((a,b)=>a.suf-b.suf).some(e=>{
+          if(isDateStr(e.v))return false; const n=numLike(e); if(n!==null && bankLabInRange(key,n)){ val=n; valKey=e.key; return true; } return false;
+        });
+        if(val==null)return;
+        if(!BANK_LAB_SAMPLES[key])BANK_LAB_SAMPLES[key]={picked:val,pickedKey:valKey,nameField:nameE.key,name:nameE.v,date,row:Object.assign({},row)};
+        hits.push({key,val,date}); return;
+      }
+      // 2) 認不得名稱的檢驗：找「像檢驗名稱」的中文欄 ＋ 之後的合理數值，一併保存不遺漏
+      const nm=entries.find(e=> e.suf>=5 && e.key!==sec+'.4' && /[一-鿿]/.test(e.v) && e.v.length>=2 && e.v.length<=24 && !NON_LAB_NAME.test(e.v) && !isDateStr(e.v) && !looksLikeDrugCode(e.v));
+      if(nm){ let v2=null,unit=''; entries.filter(e=>e.suf>nm.suf).sort((a,b)=>a.suf-b.suf).some(e=>{ if(isDateStr(e.v))return false; const n=numLike(e); if(n!==null && n>0 && n<1e6){ v2=n; return true; } return false; });
+        if(v2!=null){ // 嘗試抓單位（數值之後的短字串）
+          extras.push({name:nm.v,val:v2,date}); }
+      }
     });
-    if(hits.length<3)return;   // 命中太少不視為檢驗結果區
-    hits.forEach(({key,val,date})=>{
-      const iso=date||new Date().toISOString(); const dk=iso.slice(0,10);
-      (byDate[dk]=byDate[dk]||{date:iso,values:{}}).values[key]=val;
-    });
+    if(hits.length<3 && extras.length<3)return;   // 太少不視為檢驗結果區
+    hits.forEach(({key,val,date})=>{ const iso=date||new Date().toISOString(); const dk=iso.slice(0,10); (byDate[dk]=byDate[dk]||{date:iso,values:{},extra:[]}).values[key]=val; });
+    extras.forEach(({name,val,date})=>{ const iso=date||new Date().toISOString(); const dk=iso.slice(0,10); const rec=(byDate[dk]=byDate[dk]||{date:iso,values:{},extra:[]}); rec.extra=rec.extra||[]; if(!rec.extra.some(x=>x.name===name&&x.val===val))rec.extra.push({name,val}); });
   });
   const records=Object.values(byDate).sort((a,b)=>new Date(a.date)-new Date(b.date));
   const fields={}; records.forEach(r=>Object.assign(fields,r.values));   // 最新一筆（依日期）帶入表單
@@ -4544,7 +4573,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.25-records-hub';
+const APP_VERSION='2026.07.25-labs-extra';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -5364,15 +5393,18 @@ function parseNHI(txt){
 function ingestLabRecords(records,source){
   if(!records||!records.length)return 0;
   state.labs=state.labs||[];
-  const sig=e=>((e.date||'').slice(0,10)+'|'+JSON.stringify(e.values||{}));
+  const sig=e=>((e.date||'').slice(0,10)+'|'+JSON.stringify(e.values||{})+'|'+JSON.stringify((e.extra||[]).map(x=>x.name+':'+x.val)));
   const seen=new Set(state.labs.map(sig));
   let added=0;
   records.forEach(r=>{
     const values={};Object.keys(r.values||{}).forEach(k=>{if(LAB_META[k]){const n=toNum(r.values[k]);if(n!==null)values[k]=n;}});
-    if(!Object.keys(values).length)return;
-    const s=(r.date||'').slice(0,10)+'|'+JSON.stringify(values);
+    const extra=Array.isArray(r.extra)?r.extra.filter(x=>x&&x.name&&x.val!=null).map(x=>({name:String(x.name).trim().slice(0,24),val:x.val})):[];
+    if(!Object.keys(values).length && !extra.length)return;
+    const s=(r.date||'').slice(0,10)+'|'+JSON.stringify(values)+'|'+JSON.stringify(extra.map(x=>x.name+':'+x.val));
     if(seen.has(s))return; seen.add(s);
-    state.labs.push({id:'lab_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),date:r.date||new Date().toISOString(),source:source||'nhi',values});
+    const rec={id:'lab_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),date:r.date||new Date().toISOString(),source:source||'nhi',values};
+    if(extra.length)rec.extra=extra;
+    state.labs.push(rec);
     added++;
   });
   if(added){if(state.labs.length>2000)state.labs=state.labs.slice(-2000);save();autoSyncFromLabs();}
