@@ -1322,8 +1322,8 @@ function load(){
   // 一次性清理：舊版解析器匯入的健保檢驗可能把「區碼(4)」當成值、且日期記成匯入當天，
   // 會遮蓋重匯後的正確資料。清掉一次舊的健保檢驗（保留手動輸入），請使用者重匯一次即乾淨。
   try{
-    if(localStorage.getItem('ls_fix_nhilab_v3')!=='1'){
-      localStorage.setItem('ls_fix_nhilab_v3','1');
+    if(localStorage.getItem('ls_fix_nhilab_v4')!=='1'){
+      localStorage.setItem('ls_fix_nhilab_v4','1');
       if(s&&Array.isArray(s.labs)){
         const before=s.labs.length;
         s.labs=s.labs.filter(e=>e&&e.source!=='nhi');
@@ -3481,6 +3481,8 @@ const LAB_NAME_MAP=[
   [/尿素氮|urea\s*nitrogen|\bbun\b/i,'bun'],
   [/尿酸|uric\s*acid/i,'ua'],
   [/腎絲球|絲球體?過濾|egfr|\bgfr\b/i,'egfr'],
+  // CRP 需排在 glob 之前：健保把 hsCRP 中文寫成「C-反應球蛋白」，含「球蛋白」會被 glob 搶走
+  [/hs[-\s]?crp|c[-\s]?反應|c[-\s]?reactive|\bcrp\b/i,'crp'],
   [/球蛋白|globulin/i,'glob'],
   [/白蛋白|albumin/i,'alb'],
   [/總蛋白|total\s*protein/i,'tp'],
@@ -4646,7 +4648,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.25-labs-cbc';
+const APP_VERSION='2026.07.25-labs-crp';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
