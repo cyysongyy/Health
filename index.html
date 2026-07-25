@@ -1322,8 +1322,8 @@ function load(){
   // 一次性清理：舊版解析器匯入的健保檢驗可能把「區碼(4)」當成值、且日期記成匯入當天，
   // 會遮蓋重匯後的正確資料。清掉一次舊的健保檢驗（保留手動輸入），請使用者重匯一次即乾淨。
   try{
-    if(localStorage.getItem('ls_fix_nhilab_v2')!=='1'){
-      localStorage.setItem('ls_fix_nhilab_v2','1');
+    if(localStorage.getItem('ls_fix_nhilab_v3')!=='1'){
+      localStorage.setItem('ls_fix_nhilab_v3','1');
       if(s&&Array.isArray(s.labs)){
         const before=s.labs.length;
         s.labs=s.labs.filter(e=>e&&e.source!=='nhi');
@@ -3488,14 +3488,25 @@ const LAB_NAME_MAP=[
   [/天門冬胺酸|天(門)?冬|aspartate|\bgot\b|\bast\b/i,'ast'],
   [/麩胺醯|gamma[-\s]?gt|γ-?gt|\bggt\b/i,'ggt'],
   [/鹼性磷酸|alkaline\s*phosphat|\balp\b/i,'alp'],
-  [/直接膽紅素|direct\s*bilirubin/i,'dbil'],
-  [/膽紅素|bilirubin/i,'tbil'],
+  [/直接膽紅素|direct[-\s]?bili/i,'dbil'],
+  [/總膽紅素|total[-\s]?bili|膽紅素|bilirubin/i,'tbil'],
   [/鈉|sodium/i,'na'],
   [/鉀|potassium/i,'k'],
   [/氯|chloride/i,'cl'],
   [/血?鈣|calcium/i,'ca'],
   [/磷酸鹽|無機磷|phosphor/i,'phos'],
   [/鎂|magnesium/i,'mg'],
+  // 紅血球指數（RBC indices）與血球分類（WBC differential）— 名稱含「紅血球／血色素」字樣，
+  // 必須排在 wbc/rbc/hb 等廣義樣式「之前」，否則會被誤判為 hb/rbc
+  [/\bmchc\b|平均紅血球血色素濃度/i,'mchc'],
+  [/\bmch\b|平均紅血球血色素量/i,'mch'],
+  [/\bmcv\b|平均紅血球體積/i,'mcv'],
+  [/\brdw\b|紅血球分[布佈]|紅血球體積分/i,'rdw'],
+  [/neutrophil|嗜中性|節狀球|分葉球/i,'neut'],
+  [/lymphocyte|淋巴球/i,'lymph'],
+  [/monocyte|單核球/i,'mono'],
+  [/eosinophil|嗜酸(性)?球/i,'eos'],
+  [/basophil|嗜鹼(性)?球/i,'baso'],
   [/白血球|leukocyte|\bwbc\b/i,'wbc'],
   [/紅血球|erythrocyte|\brbc\b/i,'rbc'],
   [/血色素|血紅素|hemoglobin|haemoglobin|\bhgb\b/i,'hb'],
@@ -3503,7 +3514,7 @@ const LAB_NAME_MAP=[
   [/血小板|platelet/i,'plt'],
   [/甲狀腺刺激素|thyroid\s*stimulating|\btsh\b/i,'tsh'],
   [/游離.*甲狀腺素|free\s*t4|\bft4\b/i,'ft4'],
-  [/c[-\s]?反應蛋白|c[-\s]?reactive|\bcrp\b/i,'crp'],
+  [/hs[-\s]?crp|c[-\s]?反應蛋白|c[-\s]?reactive|\bcrp\b/i,'crp'],
   [/甲型胎兒|甲種胎兒|alpha[-\s]?feto|\bafp\b/i,'afp'],
   [/癌胚抗原|carcinoembryonic|\bcea\b/i,'cea'],
   [/攝護腺特異|前列腺特異|prostate[-\s]?specific|\bpsa\b/i,'psa'],
@@ -3515,15 +3526,8 @@ const LAB_NAME_MAP=[
   [/\bcrea?\b|creatinin/i,'cr'],
   [/\bua\b|uric/i,'ua'],
   [/r[-\s]?gt\b/i,'ggt'],
-  [/t[-\s]?bil|total\s*bili/i,'tbil'],
-  [/d[-\s]?bil|direct\s*bili/i,'dbil'],
-  [/\balb\b|albumin/i,'alb'],
-  [/\bglob\b|globulin/i,'glob'],
-  [/\bhgb\b|\bhb\b(?!s)/i,'hb'],
-  [/\bhct\b/i,'hct'],
-  [/\bplt\b/i,'plt'],
-  [/\bwbc\b/i,'wbc'],
-  [/\brbc\b/i,'rbc']
+  [/\balb\b/i,'alb'],
+  [/\bglob\b/i,'glob']
 ];
 function bankLabKey(name){ if(!name)return null; for(const[rx,k]of LAB_NAME_MAP){if(rx.test(name))return k;} return null; }
 // 各檢驗項的寬鬆生理範圍（用來剔除把「費用／代碼」誤當數值的情形，如膽固醇=14280）
@@ -3584,7 +3588,7 @@ function parseBankLabs(bd){
   const sufOf=k=>{const m=String(k).match(/\.(\d+)$/);return m?+m[1]:0;};
   const isDateStr=s=>/^\d{7,8}$/.test(s)&&!!parseFlexDate(s);
   const numLike=e=>{const n=toNum(e.v);return (n!==null && /^\s*[<>]?\s*-?\d/.test(e.v) && e.v.replace(/[^\d.]/g,'').length<=7)?n:null;};
-  const NON_LAB_NAME=/醫院|診所|衛生所|藥局|醫事|醫$|業務組|區$|中心$|聲明|無資料|門診|住院|急診|保健|大樓|科$|部$/;
+  const NON_LAB_NAME=/醫院|診所|衛生所|藥局|醫事|醫$|業務組|區$|中心$|聲明|無資料|門診|住院|急診|保健|大樓|科$|部$|溶血|脂血|乳糜|檢體|備註|判讀/;
   // 藥品／診斷／處置名稱（不是檢驗），用來擋掉「未歸類」誤收用藥、診斷、處置名稱
   const DRUG_DX_RX=/錠|膠囊|毫克|微克|公絲|注射|針劑|口服|外用|軟膏|乳膏|乳劑|貼片|貼劑|滴劑|懸液|糖漿|栓劑|吸入|糖衣|膜衣|溶液|藥水|藥膏|症$|症候|炎$|病$|癌|腫瘤|骨折|壓$|高血壓|糖尿|副木|夾板|護具|義肢|支架|導管|敷料|裝置|處置|術$|復健|衛教|諮詢|配方/;
   // 一列可能含多個檢驗項目（整組套組），且值可能藏在巢狀子物件／子陣列裡（該次就醫的逐項結果）
@@ -4642,7 +4646,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.25-labs-nozero';
+const APP_VERSION='2026.07.25-labs-cbc';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
