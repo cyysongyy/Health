@@ -164,9 +164,34 @@
 
 ---
 
+## 6.3 `qa[]`（健康問答紀錄，時序）
+
+「健康問答」中每一次提問與 AI 回覆各存一筆，永久保存於本機並隨雲端備份同步，供日後回顧。建議後端表：`qa_records`。
+
+```jsonc
+{
+  "id": "qa_<base36ms><rand>",   // PK
+  "ts": "2026-07-24T...Z",        // ISO-8601 提問時間
+  "q":  "我的血脂該怎麼改善？",     // 使用者問題
+  "a":  "根據你的資料，LDL 140…"    // AI 回覆（送出前為「⏳…」佔位，載入時會標記為未完成）
+}
+```
+
+> 回覆時把 `profile`／`labs`／`meds`／風險評估／`goals` 整合為背景送給 AI；此處僅保存問答本身，不另存背景快照。
+
+---
+
+## 6.4 `reminders[]`、`goals{}`、`mhx{}`（提醒、個人目標、病史勾選）
+
+- `reminders[]`：提醒（用藥／回診／復健／檢驗／量測／喝水／自訂）。欄位 `{id, type, title, freq(once|daily|weekly|monthly|months), time, startDate, weekday, interval, note, enabled, doneDates[], apptDate?, apptTime?, createdAt}`。建議後端表：`reminders`。
+- `goals{}`：個人健康目標，`{ metric: 目標值 }`（metric ∈ sbp/dbp/ldl/hba1c/glucose/tg/hdl/ua/egfr/weight/waist）。
+- `mhx{}`：病史勾選布林值 `{ af, chf, stroke, vascular, bleed, antiplt, alcohol, labileINR }`，供 CHA₂DS₂-VASc／HAS-BLED 評分。
+
+---
+
 ## 7. `settings`（本機設定，一般不入庫）
 
-`{ gemini, openai, engine, gas, autosync, fb, fbEmail, dailyAlert }` — 含 API 金鑰與 Firebase 設定，**屬機敏／裝置本機資訊，移轉時建議排除**。`dailyAlert`（boolean，預設 true）控制每日健康警戒彈窗。
+`{ gemini, openai, engine, gas, autosync, fb, fbEmail, dailyAlert, lang, fontScale, remindSilent, visitAheadDays, visitAheadTime, gcalClientId, gdriveLast }` — 含 API 金鑰、OAuth Client ID 與 Firebase 設定，**屬機敏／裝置本機資訊，移轉時建議排除**。`dailyAlert`（預設 true）控制每日健康警戒彈窗；`gcalClientId` 供 Google 日曆／Drive 同步（公開值、非密鑰）；`fontScale`（預設 1.5）為文字放大倍率。
 
 ---
 

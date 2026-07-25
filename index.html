@@ -624,7 +624,8 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <button class="btn bg" style="font-size:.76rem;padding:5px 10px;" onclick="qaAsk('依我的狀況，適合我的運動與飲食建議是什麼？')">運動飲食建議</button>
       <button class="btn bg" style="font-size:.76rem;padding:5px 10px;" onclick="qaAsk('我接下來的看診與追蹤檢查該怎麼安排？')">追蹤怎麼安排？</button>
     </div>
-    <div class="row-btn" style="margin-top:10px;"><button class="btn bg" style="font-size:.78rem;" onclick="QA_HISTORY=[];renderQALog();">🗑️ 清除對話</button></div>
+    <div class="row-btn" style="margin-top:10px;gap:8px;"><button class="btn bg" style="font-size:.78rem;" onclick="exportQA()">📤 匯出問答</button><button class="btn bg" style="font-size:.78rem;" onclick="clearQA()">🗑️ 清除對話</button></div>
+    <div class="hint" style="margin-top:6px;">💾 所有問答會自動保存於本機，並隨「☁️ Google Drive 備份」一起同步，日後可隨時回顧。</div>
   </div>
 </div>
 
@@ -1320,10 +1321,12 @@ function load(){
   if(s&&s.settings&&s.settings.fontScale==null)s.settings.fontScale=1.5;
   if(s&&!s.mhx)s.mhx={};
   if(s&&!s.goals)s.goals={sbp:130,ldl:100,hba1c:7};
+  if(s&&!Array.isArray(s.qa))s.qa=[];
+  else if(s&&Array.isArray(s.qa))s.qa.forEach(x=>{ if(x&&typeof x.a==='string'&&x.a.indexOf('⏳')===0)x.a='（上次未完成，可重新提問）'; });
   return s;
 }
 function defaults(){
-  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], reminders:[], mhx:{}, goals:{sbp:130,ldl:100,hba1c:7}, habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true,fontScale:1.5}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], reminders:[], mhx:{}, goals:{sbp:130,ldl:100,hba1c:7}, qa:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true,fontScale:1.5}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));}
 
@@ -2692,17 +2695,20 @@ async function advisorAI(){
   try{ const t=await aiRunPrompt(prompt); out.textContent=t; }
   catch(e){ out.textContent='⚠️ AI 呼叫失敗：'+(e.message||e)+'\n請確認 API Key 是否正確、額度是否足夠（設定 → AI 引擎設定）。'; }
 }
-/* ---- 健康問答 Q&A：AI 依使用者整體健康資料回答 ---- */
-let QA_HISTORY=[];
+/* ---- 健康問答 Q&A：AI 依使用者整體健康資料回答，對話永久存於 state.qa（隨 Drive 備份同步） ---- */
 function renderQA(){
   renderQALog();
   const note=document.getElementById('qaKeyNote');
   if(note)note.style.display=(state.settings.gemini||state.settings.openai)?'none':'block';
 }
+function qaTimeStr(ts){ try{ return new Date(ts).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Taipei'}); }catch(e){ return ''; } }
 function renderQALog(){
   const el=document.getElementById('qaLog'); if(!el)return;
-  if(!QA_HISTORY.length){ el.innerHTML='<div class="hint" style="padding:8px 0;">還沒有問答。輸入問題或點下方建議開始 —— AI 會根據你所有的健康資料回答你。</div>'; return; }
-  el.innerHTML=QA_HISTORY.map(x=>`<div style="margin-bottom:14px;"><div style="text-align:right;"><span style="background:var(--pri);color:#fff;padding:8px 12px;border-radius:12px 12px 3px 12px;display:inline-block;max-width:88%;font-size:.88rem;line-height:1.6;text-align:left;">🙋 ${esc(x.q)}</span></div><div style="margin-top:6px;background:var(--g100);padding:10px 12px;border-radius:12px 12px 12px 3px;white-space:pre-wrap;font-size:.88rem;line-height:1.75;">🤖 ${esc(x.a)}</div></div>`).join('');
+  const list=state.qa||[];
+  if(!list.length){ el.innerHTML='<div class="hint" style="padding:8px 0;">還沒有問答。輸入問題或點下方建議開始 —— AI 會根據你所有的健康資料回答你，對話會自動保存供日後參考。</div>'; return; }
+  el.innerHTML=list.map(x=>`<div style="margin-bottom:14px;">`+
+    `<div style="text-align:right;">${x.ts?`<div class="hint" style="font-size:.68rem;margin-bottom:2px;">${qaTimeStr(x.ts)}</div>`:''}<span style="background:var(--pri);color:#fff;padding:8px 12px;border-radius:12px 12px 3px 12px;display:inline-block;max-width:88%;font-size:.88rem;line-height:1.6;text-align:left;">🙋 ${esc(x.q)}</span></div>`+
+    `<div style="margin-top:6px;background:var(--g100);padding:10px 12px;border-radius:12px 12px 12px 3px;white-space:pre-wrap;font-size:.88rem;line-height:1.75;">🤖 ${esc(x.a)}</div></div>`).join('');
   el.scrollTop=el.scrollHeight;
 }
 async function askHealthQA(){
@@ -2711,14 +2717,25 @@ async function askHealthQA(){
   const inp=document.getElementById('qaInput'); if(!inp)return;
   const q=(inp.value||'').trim(); if(!q){toast('請先輸入問題');return;}
   inp.value='';
-  QA_HISTORY.push({q,a:'⏳ AI 正在根據你的健康資料回答…'}); renderQALog();
-  const hist=QA_HISTORY.slice(-6,-1).map(x=>'Q: '+x.q+'\nA: '+x.a).join('\n\n');
+  state.qa=state.qa||[];
+  const entry={id:'qa_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), ts:new Date().toISOString(), q, a:'⏳ AI 正在根據你的健康資料回答…'};
+  state.qa.push(entry); save(); renderQALog();
+  const hist=state.qa.slice(-6,-1).map(x=>'Q: '+x.q+'\nA: '+x.a).join('\n\n');
   const prompt=`你是使用者專屬、親切又務實的健康顧問 AI。以下是使用者（去識別化）的完整健康狀況：\n\n${buildHealthContext()}\n\n${hist?'先前問答（供延續脈絡）：\n'+hist+'\n\n':''}使用者現在問：「${q}」\n\n請「根據他上面的實際健康資料」用繁體中文回答，要具體、盡量引用他的數值與用藥、個人化，不要空泛。提供可執行的建議。務必明確標註「此為衛教參考、非醫療診斷；診斷、用藥調整或身體不適請諮詢醫師／藥師或就醫」。控制在 500 字內，讓長輩也看得懂。`;
-  try{ const t=await aiRunPrompt(prompt); QA_HISTORY[QA_HISTORY.length-1].a=t; }
-  catch(e){ QA_HISTORY[QA_HISTORY.length-1].a='⚠️ AI 呼叫失敗：'+(e.message||e)+'（請確認 API Key 與額度，設定 → AI 引擎設定）'; }
+  try{ const t=await aiRunPrompt(prompt); entry.a=t; }
+  catch(e){ entry.a='⚠️ AI 呼叫失敗：'+(e.message||e)+'（請確認 API Key 與額度，設定 → AI 引擎設定）'; }
+  save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
   renderQALog();
 }
 function qaAsk(text){ const inp=document.getElementById('qaInput'); if(inp)inp.value=text; return askHealthQA(); }
+function clearQA(){ if(!(state.qa&&state.qa.length))return; if(confirm('確定清除全部問答紀錄？此動作無法復原（建議先用下方「匯出」保存）。')){ state.qa=[]; save(); renderQALog(); toast('已清除問答紀錄'); } }
+function exportQA(){
+  const list=state.qa||[]; if(!list.length){toast('目前沒有問答可匯出');return;}
+  const txt='【健康問答紀錄】（LifeSpan 健康 App）\n\n'+list.map(x=>(x.ts?qaTimeStr(x.ts)+'\n':'')+'🙋 '+x.q+'\n🤖 '+x.a).join('\n\n──────────\n\n');
+  const blob=new Blob([txt],{type:'text/plain;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='lifespan-qa-'+todayKey()+'.txt';document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),3000); toast('📤 已匯出問答紀錄');
+}
 /* ============ Google Drive 備份／同步（重用日曆 OAuth 的 Client ID，drive.file 非機敏權限） ============ */
 let gdriveToken=null, gdriveTC=null;
 const GDRIVE_FILE='lifespan-health-backup.json';
@@ -4456,7 +4473,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.24-qa';
+const APP_VERSION='2026.07.24-qa-db';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
