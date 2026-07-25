@@ -2677,14 +2677,54 @@ async function aiRunPrompt(prompt){
   throw new Error('未設定 API Key');
 }
 function buildHealthContext(){
-  const sheet=buildDoctorSheet().txt;
-  const acts=advisorActions().slice(0,8).map((a,i)=>(i+1)+'. '+a.title+(a.action?'（'+a.action+'）':'')).join('\n');
-  const I=(typeof medInputs==='function')?medInputs():{}; const risks=[];
-  try{ if(I.sex&&I.age&&I.tc&&I.hdl&&I.sbp)risks.push('10年心血管風險(ASCVD) '+calcASCVD(I).pct+'%'); }catch(e){}
-  try{ if(I.age&&I.bmi&&I.waist&&I.sex)risks.push('糖尿病風險(FINDRISC) '+calcFINDRISC(I).score+'分'); }catch(e){}
-  try{ if(I.sex&&I.age&&I.scr)risks.push('腎功能 eGFR '+calcCKDEPI(I).egfr); }catch(e){}
-  const goals=state.goals||{}; const gtxt=Object.keys(goals).filter(k=>goals[k]!=null).map(k=>{const g=GOAL_DEFS.find(x=>x.k===k),c=goalCurrent(k);return g?g.label+' 目前'+(c==null?'無資料':c)+'/目標'+(g.dir==='below'?'≤':'≥')+goals[k]:'';}).filter(Boolean).join('、');
-  return sheet+'\n\n系統排序優先事項：\n'+(acts||'（無）')+'\n\n風險評估：'+(risks.join('、')||'（資料不足）')+'\n個人目標：'+(gtxt||'（未設定）');
+  const P=[], p=state.profile||{}, r=state.result||{}, L=labLatest(), v=k=>L[k]!=null?parseFloat(L[k].v):null;
+  // 個人與生活型態
+  const basic=[];
+  if(p.sex||p.age)basic.push((p.sex==='female'?'女性':p.sex==='male'?'男性':'')+(p.age?'、'+p.age+' 歲':''));
+  const bmi=r.bmi||(p.height&&p.weight?+(p.weight/Math.pow(p.height/100,2)).toFixed(1):null);
+  if(bmi)basic.push('BMI '+bmi); if(p.weight)basic.push('體重 '+p.weight+'kg'); if(p.waist)basic.push('腰圍 '+p.waist+'cm');
+  if(p.smoke)basic.push('吸菸：'+({never:'從不',former:'已戒',current:'目前吸菸'}[p.smoke]||p.smoke));
+  if(p.exercise!=null)basic.push('運動 '+p.exercise+' 分/週'); if(p.sleep!=null)basic.push('睡眠 '+p.sleep+' 小時/日'); if(p.alcohol!=null)basic.push('飲酒 '+p.alcohol+' 份/週');
+  if(p.fhHeart||p.fhDiabetes||p.fhCancer)basic.push('家族史：'+[p.fhHeart?'心臟病':'',p.fhDiabetes?'糖尿病':'',p.fhCancer?'癌症':''].filter(Boolean).join('/'));
+  if(basic.length)P.push('【基本與生活型態】'+basic.join('、'));
+  // 所有最新檢驗值（含正常項）＋標記＋趨勢＋日期
+  const labLines=LAB_ORDER.filter(k=>L[k]!=null).map(k=>{
+    const fl=labFlag(k,L[k].v), tag=fl==='crit'?'（危急）':fl==='high'?'（偏高）':fl==='low'?'（偏低）':'（正常）';
+    const st=(typeof labStats==='function')?labStats(k):null, tr=st&&st.n>=2?(st.dir==='better'?' ↓改善中':st.dir==='worse'?' ↑惡化中':''):'';
+    return LAB_META[k].label+' '+L[k].v+LAB_META[k].unit+tag+tr+(labDateStr(L[k])?'（'+labDateStr(L[k])+'）':'');
+  });
+  if(labLines.length)P.push('【最新檢驗值（含正常項，供完整判讀）】\n'+labLines.join('\n'));
+  // 風險評估（可算的都算）
+  const I=(typeof medInputs==='function')?medInputs():{}, risks=[]; const T=(f)=>{try{f();}catch(e){}};
+  T(()=>{if(I.sex&&I.age&&I.tc&&I.hdl&&I.sbp)risks.push('10年心血管風險 ASCVD '+calcASCVD(I).pct+'%');});
+  T(()=>{if(I.age&&I.bmi&&I.waist&&I.sex)risks.push('糖尿病風險 FINDRISC '+calcFINDRISC(I).score+' 分');});
+  T(()=>{if(I.sex&&I.age&&I.scr)risks.push('腎功能 eGFR '+calcCKDEPI(I).egfr);});
+  T(()=>{if(I.age&&I.ast&&I.alt&&I.plt)risks.push('肝纖維化 FIB-4 '+(+((I.age*I.ast)/(I.plt*Math.sqrt(I.alt))).toFixed(2)));});
+  T(()=>{if(I.tg&&I.glucose)risks.push('胰島素阻抗 TyG '+calcTyG(I));});
+  T(()=>{const le=calcLE8(I);if(le)risks.push('心血管健康 LE8 '+le.score+'/100');});
+  T(()=>{if(I.height&&I.waist&&I.sex)risks.push('相對體脂 RFM '+(+(64-20*(I.height/I.waist)+(I.sex==='female'?12:0)).toFixed(1))+'%');});
+  T(()=>{if(I.hba1c!=null)risks.push('估計平均血糖 eAG '+Math.round(28.7*I.hba1c-46.7)+' mg/dL');});
+  T(()=>{if(I.age!=null&&I.sex)risks.push('中風風險 CHA2DS2-VASc '+calcCHADSVASc(I,state.mhx||{}).score+' 分');});
+  if(risks.length)P.push('【風險與健康評估】'+risks.join('、'));
+  // 目前用藥
+  const meds=[...new Set(recentMeds(120).map(m=>m.name).filter(isRealDrug))];
+  if(meds.length)P.push('【目前用藥（近 4 個月，'+meds.length+' 種）】'+meds.slice(0,40).join('、'));
+  // 交互作用與長期用藥
+  const ix=(typeof medInteractions==='function'?medInteractions():[]).filter(x=>x.sev!=='low').map(x=>{const pr=x.pairs[0];return pr[0].split(/[ （(]/)[0]+'×'+pr[1].split(/[ （(]/)[0]+'（'+x.why+'）';});
+  if(ix.length)P.push('【用藥交互作用提醒】'+ix.join('；'));
+  // 影像／病理（含中文）
+  const reps=(state.reports||[]).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)).slice(0,6).map(x=>x.name+(x.date?'（'+new Date(x.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})+'）':'')+'：'+((x.findingsZh||x.findings||'').slice(0,120)));
+  if(reps.length)P.push('【近期影像／病理報告】\n'+reps.join('\n'));
+  // 手術
+  const surs=(state.surgeries||[]).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)).slice(0,10).map(s=>s.name+(s.date?'（'+new Date(s.date).getFullYear()+'）':''));
+  if(surs.length)P.push('【手術／處置史】'+surs.join('、'));
+  // 個人目標
+  const goals=state.goals||{}, gtxt=Object.keys(goals).filter(k=>goals[k]!=null).map(k=>{const g=GOAL_DEFS.find(x=>x.k===k),c=goalCurrent(k);return g?g.label+' 目前'+(c==null?'無資料':c)+' / 目標'+(g.dir==='below'?'≤':'≥')+goals[k]:'';}).filter(Boolean).join('、');
+  if(gtxt)P.push('【個人目標】'+gtxt);
+  // 系統重點
+  const alerts=[...new Set(buildHealthAlerts().filter(a=>a.lvl!=='info').map(a=>a.title))].slice(0,10);
+  if(alerts.length)P.push('【系統交叉比對的重點】'+alerts.join('；'));
+  return P.length?P.join('\n\n'):'（使用者尚未有足夠健康資料，請提醒他先做健康評估或匯入檢驗／用藥。）';
 }
 async function advisorAI(){
   const s=state.settings;
@@ -2721,7 +2761,7 @@ async function askHealthQA(){
   const entry={id:'qa_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), ts:new Date().toISOString(), q, a:'⏳ AI 正在根據你的健康資料回答…'};
   state.qa.push(entry); save(); renderQALog();
   const hist=state.qa.slice(-6,-1).map(x=>'Q: '+x.q+'\nA: '+x.a).join('\n\n');
-  const prompt=`你是使用者專屬、親切又務實的健康顧問 AI。以下是使用者（去識別化）的完整健康狀況：\n\n${buildHealthContext()}\n\n${hist?'先前問答（供延續脈絡）：\n'+hist+'\n\n':''}使用者現在問：「${q}」\n\n請「根據他上面的實際健康資料」用繁體中文回答，要具體、盡量引用他的數值與用藥、個人化，不要空泛。提供可執行的建議。務必明確標註「此為衛教參考、非醫療診斷；診斷、用藥調整或身體不適請諮詢醫師／藥師或就醫」。控制在 500 字內，讓長輩也看得懂。`;
+  const prompt=`你是這位使用者專屬的健康顧問 AI。下面是他「真實的健康資料」：\n\n${buildHealthContext()}\n\n${hist?'先前問答（延續脈絡）：\n'+hist+'\n\n':''}他現在的問題：「${q}」\n\n【回答規則，務必遵守】\n1. 開門見山，直接回答他這個問題，不要用「一般來說／建議您」這種公版開場。\n2. 一定要「引用他上面的實際數值、用藥、報告」來支持你的說明（例如：你的 LDL 是 138 mg/dL、你在吃 Atorvastatin…）。沒有引用到他數據的空泛內容不要寫。\n3. 若他問的項目在資料裡找不到，就直接說「目前沒有你的 ○○ 資料，建議補做 ○○」，不要瞎猜。\n4. 給 2–4 個「針對他情況」的具體可執行建議（含數字目標）。\n5. 用繁體中文、口語、長輩也看得懂；控制在 300–450 字。\n6. 只在「最後」用一句話提醒：此為衛教參考、非診斷，異常或用藥調整請就醫。不要重複免責、不要長篇官腔。`;
   try{ const t=await aiRunPrompt(prompt); entry.a=t; }
   catch(e){ entry.a='⚠️ AI 呼叫失敗：'+(e.message||e)+'（請確認 API Key 與額度，設定 → AI 引擎設定）'; }
   save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
@@ -2987,7 +3027,7 @@ async function askAI(){
 async function callGemini(key,prompt){
   const url=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
   const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
+    body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.4,maxOutputTokens:1600}})});
   if(!res.ok)throw new Error('HTTP '+res.status);
   const d=await res.json();
   return d.candidates?.[0]?.content?.parts?.[0]?.text||'（無回應內容）';
@@ -2995,7 +3035,7 @@ async function callGemini(key,prompt){
 async function callOpenAI(key,prompt){
   const res=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
-    body:JSON.stringify({model:'gpt-4o-mini',messages:[{role:'user',content:prompt}],temperature:0.7})});
+    body:JSON.stringify({model:'gpt-4o-mini',messages:[{role:'user',content:prompt}],temperature:0.4})});
   if(!res.ok)throw new Error('HTTP '+res.status);
   const d=await res.json();
   return d.choices?.[0]?.message?.content||'（無回應內容）';
@@ -4477,7 +4517,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.24-nhi-dates';
+const APP_VERSION='2026.07.24-qa-precise';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
