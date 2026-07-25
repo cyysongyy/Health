@@ -895,8 +895,13 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <div class="cw" id="labChartWrap"><canvas id="labChart"></canvas></div>
       <div style="overflow-x:auto;margin-top:8px;"><table id="labHistTable"></table></div>
     </div>
+    <div class="card" id="labFlatCard" style="display:none;">
+      <div class="ct">📋 逐項檢驗清單 <span class="hint" id="labFlatCount"></span></div>
+      <div class="hint" style="margin-bottom:8px;">同健保呈現方式：一列一個檢驗項目，依日期排序（最新在上）。</div>
+      <div style="overflow-x:auto;"><table id="labFlatTable"></table></div>
+    </div>
     <div class="card">
-      <div class="ct">🗂️ 全部檢驗紀錄</div>
+      <div class="ct">🗂️ 全部檢驗紀錄（依日期彙整）</div>
       <div style="overflow-x:auto;"><table id="labAllTable"></table></div>
       <div class="row-btn" style="margin-top:10px;">
         <button class="btn bp" onclick="openLabEditor()">➕ 新增紀錄</button>
@@ -3278,6 +3283,7 @@ function renderLabs(){
   if(!present.length){
     if(trendCard)trendCard.style.display='none';
     renderLabsExtra();
+    renderLabFlat();
     return;
   }
   if(trendCard)trendCard.style.display='';
@@ -3304,6 +3310,28 @@ function renderLabs(){
     '<td style="white-space:nowrap;"><a class="link" style="cursor:pointer;" onclick="openLabEditor(\''+e.id+'\')">✏️</a>　<a class="link" style="cursor:pointer;color:var(--err);" onclick="labDelete(\''+e.id+'\')">🗑️</a></td></tr>').join('');
   document.getElementById('labAllTable').innerHTML=head+body;
   renderLabsExtra();
+  renderLabFlat();
+}
+// 逐項清單（同健保）：一列一個檢驗項目，依日期排序，不依日期彙整
+function renderLabFlat(){
+  const card=document.getElementById('labFlatCard');if(!card)return;
+  const rows=[];
+  (state.labs||[]).forEach(e=>{
+    if(e.values)Object.keys(e.values).forEach(k=>{ if(e.values[k]==null)return; const m=LAB_META[k]; rows.push({date:e.date,name:m?m.label:k,unit:m?m.unit:'',val:e.values[k],key:k,std:true}); });
+    if(Array.isArray(e.extra))e.extra.forEach(x=>{ if(x&&x.name&&x.val!=null)rows.push({date:e.date,name:x.name,unit:'',val:x.val,key:null,std:false}); });
+  });
+  if(!rows.length){card.style.display='none';return;}
+  rows.sort((a,b)=>(new Date(b.date)-new Date(a.date))||String(a.name).localeCompare(String(b.name)));
+  const cntEl=document.getElementById('labFlatCount');if(cntEl)cntEl.textContent='共 '+rows.length+' 項';
+  document.getElementById('labFlatTable').innerHTML=
+    '<tr><th>日期</th><th>檢驗項目</th><th>數值</th><th>狀態</th></tr>'+
+    rows.map(r=>{ const fl=r.std?labFlag(r.key,r.val):'ok'; const col=FLAG_COLOR[fl], ic=FLAG_ICON[fl];
+      return '<tr><td style="white-space:nowrap;">'+new Date(r.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})+'</td>'+
+        '<td>'+esc(r.name)+'</td>'+
+        '<td class="num" style="color:'+col+';font-weight:700;">'+esc(String(r.val))+(r.unit?' <span class="hint">'+esc(r.unit)+'</span>':'')+'</td>'+
+        '<td style="color:'+col+';font-size:.72rem;white-space:nowrap;">'+(r.std?((ic?ic+' ':'')+FLAG_TXT[fl]):'—')+'</td></tr>';
+    }).join('');
+  card.style.display='block';
 }
 // 其他檢驗（未歸類）：健保中名稱較特殊、未對應標準代碼的檢驗項目，一併保存不遺漏
 function renderLabsExtra(){
@@ -4648,7 +4676,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.25-labs-crp';
+const APP_VERSION='2026.07.25-labs-flatlist';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
