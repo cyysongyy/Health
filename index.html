@@ -3383,10 +3383,28 @@ function showLabParseCheck(){
         `<pre style="white-space:pre-wrap;word-break:break-word;font-size:.66rem;background:var(--g100);border-radius:6px;padding:8px;margin-top:4px;">${rowStr}</pre></div>`;
     }).join('');
   }
+  // 區段結構診斷（用來判斷是否還有檢驗被漏抓）
+  let diag='';
+  if(BANK_LAB_DIAG&&BANK_LAB_DIAG.sections.length){
+    const secs=BANK_LAB_DIAG.sections;
+    const tot=secs.reduce((a,s)=>a+s.rows,0), keptN=secs.filter(s=>s.kept).length;
+    const dropped=secs.filter(s=>!s.kept&&s.rows>0);
+    diag='<div style="margin-bottom:12px;border:1px solid var(--g200);border-radius:8px;padding:8px;">'+
+      '<div style="font-weight:700;margin-bottom:4px;">📊 檔案結構診斷</div>'+
+      `<div class="hint" style="margin-bottom:6px;">共 ${secs.length} 個資料區段、合計 ${tot} 列；被當成檢驗區的有 ${keptN} 段。若你確定檢驗更多，很可能在「未採用」的區段裡——把這張截圖給開發者即可校正。</div>`+
+      '<div style="overflow-x:auto;"><table style="font-size:.66rem;"><tr><th>區段</th><th>列數</th><th>取到標準項</th><th>未歸類</th><th>採用?</th></tr>'+
+      secs.map(s=>`<tr><td>${esc(s.sec)}</td><td class="num">${s.rows}</td><td class="num">${s.hits}</td><td class="num">${s.extras}</td><td>${s.kept?'✅':'—'}</td></tr>`).join('')+'</table></div>';
+    // 顯示「未採用但有資料」區段的原始樣本（最可能藏著漏抓的檢驗）
+    const showRaw=(dropped.length?dropped:secs).slice(0,3);
+    diag+='<div style="font-weight:700;margin:8px 0 4px;">🧩 區段原始樣本（供比對結構）</div>'+
+      showRaw.map(s=>`<div style="margin-bottom:6px;"><div class="hint">${esc(s.sec)}（列數 ${s.rows}，採用 ${s.kept?'是':'否'}）</div>`+
+        (s.rawSamples||[]).map(rs=>`<pre style="white-space:pre-wrap;word-break:break-all;font-size:.6rem;background:var(--g100);border-radius:6px;padding:6px;margin-top:3px;">${esc(rs)}</pre>`).join('')+'</div>').join('');
+    diag+='</div>';
+  }
   m.innerHTML=`<div class="modal-box">
     <div class="ct">🔬 健保檢驗解析檢查</div>
     <div class="hint" style="margin:2px 0 8px;">每項顯示系統「取到的值」與整列原始欄位（⬅️ 為取值處、名稱欄已標示）。若取錯，截圖該項給開發者即可校正。</div>
-    ${body}
+    ${diag}${body}
     <div class="row-btn" style="margin-top:8px;"><button class="btn bg" onclick="document.getElementById('labChkModal').style.display='none'">關閉</button></div>
   </div>`;
   m.style.display='flex';
@@ -3541,9 +3559,11 @@ function parseBankMeds(bd){
   return meds;
 }
 let BANK_LAB_SAMPLES={};   // 解析檢查用：每個檢驗項的第一筆原始列樣本（不存 localStorage）
+let BANK_LAB_DIAG=null;    // 解析診斷：各區段筆數／取到幾項／是否保留＋原始樣本（不存 localStorage）
 function parseBankLabs(bd){
   const byDate={};
   BANK_LAB_SAMPLES={};
+  BANK_LAB_DIAG={sections:[]};
   const sufOf=k=>{const m=String(k).match(/\.(\d+)$/);return m?+m[1]:0;};
   const isDateStr=s=>/^\d{7,8}$/.test(s)&&!!parseFlexDate(s);
   const numLike=e=>{const n=toNum(e.v);return (n!==null && /^\s*[<>]?\s*-?\d/.test(e.v) && e.v.replace(/[^\d.]/g,'').length<=7)?n:null;};
@@ -3596,7 +3616,16 @@ function parseBankLabs(bd){
         X.forEach(o=>extras.push({name:o.name,val:o.val,date}));
       });
     });
-    if(hits.length<3 && extras.length<3)return;   // 太少不視為檢驗結果區
+    // 保留條件：只要有 1 個「標準檢驗項目」（已通過名稱對應＋值域防呆，可信度高）就採用；
+    // 純未歸類項目較易誤判，仍需 3 個以上才視為檢驗區
+    const kept=(hits.length>=1 || extras.length>=3);
+    // 診斷：紀錄本區段的原始樣本與統計（僅前 40 個區段、每段前 2 列樣本，避免過大）
+    if(BANK_LAB_DIAG.sections.length<40){
+      const rawSamples=rows.slice(0,2).map(r=>{ let s=''; try{s=JSON.stringify(r);}catch(_){s=String(r);} return s.length>900?s.slice(0,900)+'…':s; });
+      const noDate=hits.filter(h=>!h.date).length;
+      BANK_LAB_DIAG.sections.push({sec,rows:rows.length,hits:hits.length,extras:extras.length,noDate,kept,rawSamples});
+    }
+    if(!kept)return;   // 太少不視為檢驗結果區
     hits.forEach(({key,val,date})=>{ const iso=date||new Date().toISOString(); const dk=iso.slice(0,10); (byDate[dk]=byDate[dk]||{date:iso,values:{},extra:[]}).values[key]=val; });
     extras.forEach(({name,val,date})=>{ const iso=date||new Date().toISOString(); const dk=iso.slice(0,10); const rec=(byDate[dk]=byDate[dk]||{date:iso,values:{},extra:[]}); rec.extra=rec.extra||[]; if(!rec.extra.some(x=>x.name===name&&x.val===val))rec.extra.push({name,val}); });
   });
@@ -4592,7 +4621,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.25-labs-panel';
+const APP_VERSION='2026.07.25-labs-diag';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -5395,7 +5424,8 @@ function parseNHI(txt){
   if(bd){
     const bl=parseBankLabs(bd);
     Object.assign(fields,bl.fields);
-    bl.records.forEach(r=>{const dk=r.date.slice(0,10);const t=byDate[dk]=byDate[dk]||{date:r.date,values:{}};Object.assign(t.values,r.values);});
+    bl.records.forEach(r=>{const dk=r.date.slice(0,10);const t=byDate[dk]=byDate[dk]||{date:r.date,values:{},extra:[]};Object.assign(t.values,r.values);
+      if(Array.isArray(r.extra)&&r.extra.length){t.extra=t.extra||[];r.extra.forEach(x=>{if(!t.extra.some(y=>y.name===x.name&&y.val===x.val))t.extra.push(x);});}});
     notes.push('來源：健保健康存摺（醫療類 bdata）');
   }else if(data.resourceType==='Bundle'&&Array.isArray(data.entry)){
     data.entry.forEach(en=>takeObs(en.resource));
