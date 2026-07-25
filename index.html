@@ -1322,8 +1322,8 @@ function load(){
   // 一次性清理：舊版解析器匯入的健保檢驗可能把「區碼(4)」當成值、且日期記成匯入當天，
   // 會遮蓋重匯後的正確資料。清掉一次舊的健保檢驗（保留手動輸入），請使用者重匯一次即乾淨。
   try{
-    if(localStorage.getItem('ls_fix_nhilab')!=='1'){
-      localStorage.setItem('ls_fix_nhilab','1');
+    if(localStorage.getItem('ls_fix_nhilab_v2')!=='1'){
+      localStorage.setItem('ls_fix_nhilab_v2','1');
       if(s&&Array.isArray(s.labs)){
         const before=s.labs.length;
         s.labs=s.labs.filter(e=>e&&e.source!=='nhi');
@@ -3506,7 +3506,22 @@ const LAB_NAME_MAP=[
   [/癌胚抗原|carcinoembryonic|\bcea\b/i,'cea'],
   [/攝護腺特異|前列腺特異|prostate[-\s]?specific|\bpsa\b/i,'psa'],
   [/收縮壓|systolic/i,'sbp'],
-  [/舒張壓|diastolic/i,'dbp']
+  [/舒張壓|diastolic/i,'dbp'],
+  // 健保「其他檢驗資料」常見英文縮寫（specific 前置已處理，這裡補縮寫）
+  [/glu[-\s]?ac|glu[-\s]?pc|glu[-\s]?r\b|飯前血糖|飯後血糖|ac\s*sugar|pc\s*sugar|\bsugar\b/i,'glucose'],
+  [/t[-\s]?cho\b|t[-\s]?chol|\btchol\b/i,'chol'],
+  [/\bcrea?\b|creatinin/i,'cr'],
+  [/\bua\b|uric/i,'ua'],
+  [/r[-\s]?gt\b/i,'ggt'],
+  [/t[-\s]?bil|total\s*bili/i,'tbil'],
+  [/d[-\s]?bil|direct\s*bili/i,'dbil'],
+  [/\balb\b|albumin/i,'alb'],
+  [/\bglob\b|globulin/i,'glob'],
+  [/\bhgb\b|\bhb\b(?!s)/i,'hb'],
+  [/\bhct\b/i,'hct'],
+  [/\bplt\b/i,'plt'],
+  [/\bwbc\b/i,'wbc'],
+  [/\brbc\b/i,'rbc']
 ];
 function bankLabKey(name){ if(!name)return null; for(const[rx,k]of LAB_NAME_MAP){if(rx.test(name))return k;} return null; }
 // 各檢驗項的寬鬆生理範圍（用來剔除把「費用／代碼」誤當數值的情形，如膽固醇=14280）
@@ -3568,6 +3583,8 @@ function parseBankLabs(bd){
   const isDateStr=s=>/^\d{7,8}$/.test(s)&&!!parseFlexDate(s);
   const numLike=e=>{const n=toNum(e.v);return (n!==null && /^\s*[<>]?\s*-?\d/.test(e.v) && e.v.replace(/[^\d.]/g,'').length<=7)?n:null;};
   const NON_LAB_NAME=/醫院|診所|衛生所|藥局|醫事|醫$|業務組|區$|中心$|聲明|無資料|門診|住院|急診|保健|大樓|科$|部$/;
+  // 藥品／診斷／處置名稱（不是檢驗），用來擋掉「未歸類」誤收用藥、診斷、處置名稱
+  const DRUG_DX_RX=/錠|膠囊|毫克|微克|公絲|注射|針劑|口服|外用|軟膏|乳膏|乳劑|貼片|貼劑|滴劑|懸液|糖漿|栓劑|吸入|糖衣|膜衣|溶液|藥水|藥膏|症$|症候|炎$|病$|癌|腫瘤|骨折|壓$|高血壓|糖尿|副木|夾板|護具|義肢|支架|導管|敷料|裝置|處置|術$|復健|衛教|諮詢|配方/;
   // 一列可能含多個檢驗項目（整組套組），且值可能藏在巢狀子物件／子陣列裡（該次就醫的逐項結果）
   const entriesOf=obj=>Object.keys(obj).filter(k=>typeof obj[k]==='string'||typeof obj[k]==='number')
     .map((k,i)=>({key:k,suf:sufOf(k),ord:i,v:String(obj[k]==null?'':obj[k]).trim()})).filter(e=>e.v!=='');
@@ -3590,7 +3607,7 @@ function parseBankLabs(bd){
       const got=takeVal(i+1,key); if(got)H.push({key,val:got.val,nameField:e.key,pickedKey:got.pickedKey,name:e.v}); }
     // 2) 認不得名稱的檢驗（整列可有多筆），一併保存不遺漏
     for(let i=0;i<arr.length;i++){ const e=arr[i]; if(bankLabKey(e.v))continue; if(e.key===secKey+'.4')continue;
-      if(!(/[一-鿿]/.test(e.v)&&e.v.length>=2&&e.v.length<=24&&!NON_LAB_NAME.test(e.v)&&!isDateStr(e.v)&&!looksLikeDrugCode(e.v)))continue;
+      if(!(/[一-鿿]/.test(e.v)&&e.v.length>=2&&e.v.length<=24&&!NON_LAB_NAME.test(e.v)&&!DRUG_DX_RX.test(e.v)&&!isDateStr(e.v)&&!looksLikeDrugCode(e.v)))continue;
       const got=takeVal(i+1,null); if(got)X.push({name:e.v,val:got.val}); }
     return {H,X};
   };
@@ -3616,18 +3633,20 @@ function parseBankLabs(bd){
         X.forEach(o=>extras.push({name:o.name,val:o.val,date}));
       });
     });
-    // 保留條件：只要有 1 個「標準檢驗項目」（已通過名稱對應＋值域防呆，可信度高）就採用；
-    // 純未歸類項目較易誤判，仍需 3 個以上才視為檢驗區
-    const kept=(hits.length>=1 || extras.length>=3);
+    // 保留條件：出現「標準檢驗項目」（已過名稱對應＋值域防呆，可信度高）才視為檢驗區。
+    // 純未歸類項目過去會誤收藥品／診斷／處置，故不再單獨憑未歸類數量採用整段。
+    const kept=(hits.length>=1);
+    // 未歸類（其他檢驗）僅在「確定是檢驗區」（同段有 2 個以上標準檢驗）時保留，避免收進用藥／診斷
+    const keepExtras=(hits.length>=2);
     // 診斷：紀錄本區段的原始樣本與統計（僅前 40 個區段、每段前 2 列樣本，避免過大）
     if(BANK_LAB_DIAG.sections.length<40){
       const rawSamples=rows.slice(0,2).map(r=>{ let s=''; try{s=JSON.stringify(r);}catch(_){s=String(r);} return s.length>900?s.slice(0,900)+'…':s; });
       const noDate=hits.filter(h=>!h.date).length;
       BANK_LAB_DIAG.sections.push({sec,rows:rows.length,hits:hits.length,extras:extras.length,noDate,kept,rawSamples});
     }
-    if(!kept)return;   // 太少不視為檢驗結果區
+    if(!kept)return;   // 沒有標準檢驗項目，不視為檢驗結果區
     hits.forEach(({key,val,date})=>{ const iso=date||new Date().toISOString(); const dk=iso.slice(0,10); (byDate[dk]=byDate[dk]||{date:iso,values:{},extra:[]}).values[key]=val; });
-    extras.forEach(({name,val,date})=>{ const iso=date||new Date().toISOString(); const dk=iso.slice(0,10); const rec=(byDate[dk]=byDate[dk]||{date:iso,values:{},extra:[]}); rec.extra=rec.extra||[]; if(!rec.extra.some(x=>x.name===name&&x.val===val))rec.extra.push({name,val}); });
+    if(keepExtras)extras.forEach(({name,val,date})=>{ const iso=date||new Date().toISOString(); const dk=iso.slice(0,10); const rec=(byDate[dk]=byDate[dk]||{date:iso,values:{},extra:[]}); rec.extra=rec.extra||[]; if(!rec.extra.some(x=>x.name===name&&x.val===val))rec.extra.push({name,val}); });
   });
   const records=Object.values(byDate).sort((a,b)=>new Date(a.date)-new Date(b.date));
   const fields={}; records.forEach(r=>Object.assign(fields,r.values));   // 最新一筆（依日期）帶入表單
@@ -4621,7 +4640,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.25-labs-diag';
+const APP_VERSION='2026.07.25-labs-clean';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
