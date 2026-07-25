@@ -1327,8 +1327,8 @@ function load(){
   // 一次性清理：舊版解析器匯入的健保檢驗可能把「區碼(4)」當成值、且日期記成匯入當天，
   // 會遮蓋重匯後的正確資料。清掉一次舊的健保檢驗（保留手動輸入），請使用者重匯一次即乾淨。
   try{
-    if(localStorage.getItem('ls_fix_nhilab_v4')!=='1'){
-      localStorage.setItem('ls_fix_nhilab_v4','1');
+    if(localStorage.getItem('ls_fix_nhilab_v5')!=='1'){
+      localStorage.setItem('ls_fix_nhilab_v5','1');
       if(s&&Array.isArray(s.labs)){
         const before=s.labs.length;
         s.labs=s.labs.filter(e=>e&&e.source!=='nhi');
@@ -3621,6 +3621,10 @@ function parseBankLabs(bd){
   const NON_LAB_NAME=/醫院|診所|衛生所|藥局|醫事|醫$|業務組|區$|中心$|聲明|無資料|門診|住院|急診|保健|大樓|科$|部$|溶血|脂血|乳糜|檢體|備註|判讀/;
   // 藥品／診斷／處置名稱（不是檢驗），用來擋掉「未歸類」誤收用藥、診斷、處置名稱
   const DRUG_DX_RX=/錠|膠囊|毫克|微克|公絲|注射|針劑|口服|外用|軟膏|乳膏|乳劑|貼片|貼劑|滴劑|懸液|糖漿|栓劑|吸入|糖衣|膜衣|溶液|藥水|藥膏|症$|症候|炎$|病$|癌|腫瘤|骨折|壓$|高血壓|糖尿|副木|夾板|護具|義肢|支架|導管|敷料|裝置|處置|術$|復健|衛教|諮詢|配方/;
+  // 藥品劑型字樣（連「標準項目」也要擋，真檢驗名稱不會有這些）
+  const DRUG_FORM_RX=/錠|膠囊|毫克|微克|公絲|注射|針劑|軟膏|乳膏|乳劑|貼片|貼劑|滴劑|糖漿|栓劑|糖衣|膜衣|藥水|藥膏|口服液|懸液|發泡|口含|舌下/;
+  // 礦物鹽類藥品成分（含鈣／鎂／鉀／鈉等，會誤中電解質檢驗）：碳酸鈣、氧化鎂、檸檬酸鈣…
+  const MINERAL_SALT_RX=/(碳酸|氧化|氫氧化|檸檬酸|葡萄糖酸|乳酸|醋酸|硫酸|甘油磷酸|磷酸氫|磷酸二氫|阿斯匹林|aspirin|carbonate|oxide|hydroxide|citrate|gluconate|lactate|acetate|sulfate|sulphate)\s*[鈣鎂鉀鈉鋅鐵鋁]|[鈣鎂鉀鈉][錠片粉]/i;
   // 一列可能含多個檢驗項目（整組套組），且值可能藏在巢狀子物件／子陣列裡（該次就醫的逐項結果）
   const entriesOf=obj=>Object.keys(obj).filter(k=>typeof obj[k]==='string'||typeof obj[k]==='number')
     .map((k,i)=>({key:k,suf:sufOf(k),ord:i,v:String(obj[k]==null?'':obj[k]).trim()})).filter(e=>e.v!=='');
@@ -3640,6 +3644,7 @@ function parseBankLabs(bd){
     };
     // 1) 可對應標準項目的檢驗（整列可有多筆）
     for(let i=0;i<arr.length;i++){ const e=arr[i]; const key=bankLabKey(e.v); if(!key)continue;
+      if(DRUG_FORM_RX.test(e.v)||MINERAL_SALT_RX.test(e.v))continue;  // 藥品名（如碳酸鈣、氧化鎂錠）不當檢驗
       const got=takeVal(i+1,key); if(got)H.push({key,val:got.val,nameField:e.key,pickedKey:got.pickedKey,name:e.v}); }
     // 2) 認不得名稱的檢驗（整列可有多筆），一併保存不遺漏
     for(let i=0;i<arr.length;i++){ const e=arr[i]; if(bankLabKey(e.v))continue; if(e.key===secKey+'.4')continue;
@@ -4676,7 +4681,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.25-labs-flatlist';
+const APP_VERSION='2026.07.25-labs-nomineral';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
