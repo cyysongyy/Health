@@ -3409,10 +3409,14 @@ function bankLabInRange(key,v){ const r=LAB_RANGE[key]; return !r||(v>=r[0]&&v<=
 // 藥品代碼樣態（健保 10 碼藥品代碼：字母開頭＋英數）
 function looksLikeDrugCode(v){ return /^[A-Za-z][A-Za-z0-9]{6,11}$/.test(v)&&/\d/.test(v); }
 function bankVisitDate(visit,vk){
-  // 就醫日期通常在 .5；否則取第一個像日期的 YYYYMMDD 欄位
-  const prefer=visit[vk+'.5']||visit[vk+'.6'];
-  let d=parseFlexDate(prefer); if(d)return d;
-  for(const k of Object.keys(visit)){const v=visit[k];if(typeof v==='string'&&/^\d{8}$/.test(v)){d=parseFlexDate(v);if(d)return d;}}
+  // 健保原始日期：優先就醫／報告日期欄位 .5、.6、.7
+  let d=parseFlexDate(visit[vk+'.5'])||parseFlexDate(visit[vk+'.6'])||parseFlexDate(visit[vk+'.7']); if(d)return d;
+  // 否則掃描所有欄位，收集「合理的」日期（西元 8 碼／民國 7 碼／含分隔符），取最早一個（避免抓到代碼）
+  const cands=[];
+  Object.keys(visit).forEach(k=>{ const v=visit[k]; if(typeof v!=='string')return; const s=v.trim();
+    if(/^\d{7}$/.test(s)||/^\d{8}$/.test(s)||/^\d{2,4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}$/.test(s)||/^\d{2,4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}/.test(s)){ const p=parseFlexDate(s); if(p)cands.push(p); }
+  });
+  if(cands.length){ cands.sort(); return cands[0]; }
   return null;
 }
 function parseBankMeds(bd){
@@ -4473,7 +4477,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.24-qa-db';
+const APP_VERSION='2026.07.24-nhi-dates';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -4856,8 +4860,10 @@ async function handleImport(e,kind){
         (parsed&&parsed.notes||[]).forEach(n=>notes.push(n));
       }catch(err){ failed++; /* 該檔無法解析 */ }
     });
-    // 健保帶日期的檢驗紀錄 → 直接併入檢驗數據庫（依原始日期）
-    if(records.length)state.labs=(state.labs||[]).filter(e=>e.source!=='nhi');   // 健保為完整快照：重匯時汰換舊的健保檢驗，避免舊誤值遮蓋
+    // 健保為完整快照：重匯時汰換舊的健保紀錄，避免舊誤值／舊日期殘留或重複（依原始日期重建）
+    if(records.length)state.labs=(state.labs||[]).filter(e=>e.source!=='nhi');
+    if(surs.length)state.surgeries=(state.surgeries||[]).filter(e=>e.source!=='nhi');
+    if(reps.length)state.reports=(state.reports||[]).filter(e=>e.source!=='nhi');
     const addedRec=records.length?ingestLabRecords(records,'nhi'):0;
     const addedMed=meds.length?ingestMeds(meds,'nhi'):0;
     const addedSur=surs.length?ingestSurgeries(surs,'nhi'):0;
@@ -5106,7 +5112,7 @@ async function handleTextImport(kind){
       if(kind==='nhi'){
         if(parsed&&parsed.records&&parsed.records.length)state.labs=(state.labs||[]).filter(e=>e.source!=='nhi');
         const addedRec=(parsed&&parsed.records&&parsed.records.length)?ingestLabRecords(parsed.records,'nhi'):0;
-        let addedMed=0,addedSur=0,addedRpt=0; try{ const j=jsonParseLenient(text); addedMed=ingestMeds(parseMeds(j),'nhi'); const bd=nhiBankData(j); if(bd){addedSur=ingestSurgeries(parseBankSurgeries(bd),'nhi');addedRpt=ingestReports(parseBankReports(bd),'nhi');} }catch(e){}
+        let addedMed=0,addedSur=0,addedRpt=0; try{ const j=jsonParseLenient(text); addedMed=ingestMeds(parseMeds(j),'nhi'); const bd=nhiBankData(j); if(bd){const bs=parseBankSurgeries(bd),br=parseBankReports(bd); if(bs.length)state.surgeries=(state.surgeries||[]).filter(e=>e.source!=='nhi'); if(br.length)state.reports=(state.reports||[]).filter(e=>e.source!=='nhi'); addedSur=ingestSurgeries(bs,'nhi');addedRpt=ingestReports(br,'nhi');} }catch(e){}
         if(addedRec){notes=notes||[];notes.unshift('✅ 已將 '+addedRec+' 筆檢驗紀錄加入檢驗數據庫');}
         if(addedMed){notes=notes||[];notes.unshift('💊 已將 '+addedMed+' 筆用藥紀錄加入「用藥紀錄」');}
         if(addedSur){notes=notes||[];notes.unshift('🔧 已將 '+addedSur+' 筆手術／處置加入「手術紀錄」');}
@@ -5170,12 +5176,16 @@ function jsonOutline(node,depth,keyName,acc){
 function jsonOutlineText(data){try{return jsonOutline(data,0,null).lines.slice(0,200).join('\n');}catch(e){return '(無法產生結構大綱)';}}
 function copyDebug(){const el=document.getElementById('importDebugPre');if(!el)return;const t=el.textContent;(navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast('✅ 已複製結構')).catch(()=>{const r=document.createRange();r.selectNode(el);const s=getSelection();s.removeAllRanges();s.addRange(r);try{document.execCommand('copy');toast('✅ 已複製結構');}catch(e){toast('請長按選取複製');}});}
 /* 日期彈性解析：支援 ISO、YYYYMMDD、民國 YYYMMDD（如 1140310→2025-03-10）、含斜線 */
+function validYMD(y,m,d){ return m>=1&&m<=12&&d>=1&&d<=31&&y>=1900&&y<=2100; }
 function parseFlexDate(v){
   if(v==null)return null;
   let s=String(v).trim(); if(!s)return null;
+  // 含分隔符或年月日：YYYY/M/D、YYYY-MM-DD、民國年/月/日、YYYY年M月D日
+  let sm=/^(\d{2,4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/.exec(s)||/^(\d{2,4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?$/.exec(s);
+  if(sm){let y=+sm[1]; if(y<1911)y+=1911; const mo=+sm[2],da=+sm[3]; if(!validYMD(y,mo,da))return null; const dt=new Date(Date.UTC(y,mo-1,da));return isNaN(dt)?null:dt.toISOString();}
   const digits=s.replace(/[^\d]/g,'');
-  if(/^\d{7}$/.test(digits)){const y=+digits.slice(0,3)+1911,m=+digits.slice(3,5),d=+digits.slice(5,7);const dt=new Date(Date.UTC(y,m-1,d));return isNaN(dt)?null:dt.toISOString();}
-  if(/^\d{8}$/.test(digits)){const y=+digits.slice(0,4),m=+digits.slice(4,6),d=+digits.slice(6,8);const dt=new Date(Date.UTC(y,m-1,d));return isNaN(dt)?null:dt.toISOString();}
+  if(/^\d{7}$/.test(digits)){const y=+digits.slice(0,3)+1911,m=+digits.slice(3,5),d=+digits.slice(5,7); if(!validYMD(y,m,d))return null; const dt=new Date(Date.UTC(y,m-1,d));return isNaN(dt)?null:dt.toISOString();}
+  if(/^\d{8}$/.test(digits)){const y=+digits.slice(0,4),m=+digits.slice(4,6),d=+digits.slice(6,8); if(!validYMD(y,m,d))return null; const dt=new Date(Date.UTC(y,m-1,d));return isNaN(dt)?null:dt.toISOString();}
   const dt=new Date(s); return isNaN(dt)?null:dt.toISOString();
 }
 /* 非 FHIR 的用藥格式（健康存摺常見的代碼／中文欄位結構）：遞迴掃描整棵 JSON，用欄位別名找出「像用藥」的物件 */
