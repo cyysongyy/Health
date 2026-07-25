@@ -4517,7 +4517,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.25-applehealth';
+const APP_VERSION='2026.07.25-applehealth-stream';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -4884,6 +4884,14 @@ async function handleImport(e,kind){
     return handleImageImport(e);
   }
   e.target.value='';
+  // Apple 健康 export.zip 可能解壓後高達數百 MB → 用串流掃描，避免手機記憶體爆掉
+  if(kind==='wearable' && /\.zip$/i.test(f.name)){
+    try{
+      toast('讀取 Apple 健康檔中…（大檔約需 10–30 秒）');
+      const res=await streamAppleHealthZip(f);
+      if(res && Object.keys(res.fields).length){ pendingImport={kind,fields:res.fields,notes:res.notes}; renderImportResult(); go('connect'); toast('✅ 已從 Apple 健康讀取，請確認並帶入'); return; }
+    }catch(err){ /* 非 Apple 健康 zip 或串流失敗 → 走一般流程 */ }
+  }
   try{
     const entries=await extractTextEntries(f);   // 自動解壓縮（.zip/.gz），回傳多個文字檔
     const fields={};const notes=[];const records=[];const meds=[];const surs=[];const reps=[];
@@ -4971,6 +4979,23 @@ async function unzipEntries(file){
   }
   await reader.close().catch(()=>{});
   return out;
+}
+// 串流解壓 Apple 健康的大型 export.xml（不把整個字串塞進記憶體，避免手機當掉）
+async function streamAppleHealthZip(file){
+  if(typeof zip==='undefined')return null;
+  try{zip.configure({useWebWorkers:false});}catch(e){}
+  const reader=new zip.ZipReader(new zip.BlobReader(file));
+  let entries; try{entries=await reader.getEntries();}catch(e){await reader.close().catch(()=>{});return null;}
+  const xml=entries.find(en=>!en.directory&&/(^|\/)(export|匯出|輸出)\.xml$/i.test(en.filename)&&!/__MACOSX/.test(en.filename))
+        ||entries.find(en=>!en.directory&&/\.xml$/i.test(en.filename)&&(en.uncompressedSize||0)>1e6&&!/__MACOSX/.test(en.filename));
+  if(!xml){await reader.close().catch(()=>{});return null;}
+  let pw; if(xml.encrypted){ pw=window.prompt('此壓縮檔有密碼，請輸入：'); if(pw==null){await reader.close().catch(()=>{});throw new Error('已取消（需要密碼）');} }
+  const sc=new AHScanner(); const decoder=new TextDecoder('utf-8'); let done=0; const total=xml.uncompressedSize||0;
+  const ws=new WritableStream({ write(chunk){ done+=chunk.length; sc.feed(decoder.decode(chunk,{stream:true})); if(total)toast('解析 Apple 健康中… '+Math.min(99,Math.round(done/total*100))+'%'); } });
+  try{ await xml.getData(ws, xml.encrypted?{password:pw}:{}); }
+  catch(e){ await reader.close().catch(()=>{}); throw e; }
+  sc.feed(decoder.decode()); await reader.close().catch(()=>{});
+  return sc.result();
 }
 
 /* ---- 檢驗報告圖片辨識（AI 視覺） ---- */
@@ -5334,45 +5359,54 @@ function mapFlat(o,fields){
     hr:['hr','heart_rate','心率','restingHeartRate'],hba1c:['hba1c','a1c','糖化血色素']};
   Object.keys(alias).forEach(k=>{alias[k].forEach(a=>{if(o[a]!==undefined)pushField(fields,k,o[a]);});});
 }
+// Apple 健康 <Record> 增量掃描器：可分段 feed（串流用），只保留彙總，省記憶體
+function AHScanner(){ this.latest={}; this.exMin=0; this.exDays={}; this.stepTot=0; this.stepDays={}; this.hrRest=[]; this.hrAll=[]; this.asleep={s:0,d:{}}; this.inbed={s:0,d:{}}; this.carry=''; this.n=0; }
+AHScanner.prototype._set=function(k,v,d){ if(v==null||isNaN(v))return; if(!this.latest[k]||String(d)>String(this.latest[k].d))this.latest[k]={v,d}; };
+AHScanner.prototype._rec=function(A){
+  const t=A.type; if(!t)return; this.n++; const val=parseFloat(A.value), sd=A.startDate||'', day=sd.slice(0,10), u=A.unit||'';
+  if(t.includes('StepCount')){ if(!isNaN(val)){this.stepTot+=val;this.stepDays[day]=1;} }
+  else if(t.includes('AppleExerciseTime')||t.includes('AppleMoveTime')){ if(!isNaN(val)){this.exMin+=val;this.exDays[day]=1;} }
+  else if(t.includes('RestingHeartRate')){ if(!isNaN(val))this.hrRest.push(val); }
+  else if(t.includes('HeartRate')&&!/Variab|Recovery|Walking/.test(t)){ if(!isNaN(val)&&this.hrAll.length<8000)this.hrAll.push(val); }
+  else if(t.includes('SleepAnalysis')){ const s=new Date(sd),e=new Date(A.endDate); if(!isNaN(s)&&!isNaN(e)){const dur=(e-s)/1000; if(dur>0&&dur<16*3600){ const v=A.value||''; if(/Asleep/.test(v)){this.asleep.s+=dur;this.asleep.d[day]=1;} else if(/InBed/.test(v)){this.inbed.s+=dur;this.inbed.d[day]=1;} }} }
+  else if(t.includes('BodyMassIndex')){}
+  else if(t.includes('BodyMass')){ this._set('weight',val,sd); }
+  else if(t.includes('Height')){ let h=val; if(u==='m'||(h>0&&h<3))h*=100; this._set('height',h,sd); }
+  else if(t.includes('BloodPressureSystolic')){ this._set('sbp',val,sd); }
+  else if(t.includes('BloodPressureDiastolic')){ this._set('dbp',val,sd); }
+  else if(t.includes('BloodGlucose')){ let g=val; if(/mmol/i.test(u)||(g>0&&g<30))g*=18; this._set('glucose',Math.round(g),sd); }
+  else if(t.includes('WaistCircumference')){ let w=val; if(u==='m'||(w>0&&w<3))w*=100; this._set('waist',Math.round(w),sd); }
+};
+AHScanner.prototype.feed=function(str){
+  let s=this.carry+str; const cut=s.lastIndexOf('>');
+  const part = cut>=0 ? s.slice(0,cut+1) : ''; this.carry = cut>=0 ? s.slice(cut+1) : s;
+  if(this.carry.length>2000000)this.carry=this.carry.slice(-1000000);   // 防呆：避免無 '>' 時無限膨脹
+  const rx=/<Record\b([^>]*?)\/?>/g, arx=/(\w+)="([^"]*)"/g; let m;
+  while(m=rx.exec(part)){ const A={}; let am; arx.lastIndex=0; while(am=arx.exec(m[1]))A[am[1]]=am[2]; this._rec(A); }
+};
+AHScanner.prototype.result=function(){
+  const fields={},notes=[];
+  ['weight','height','sbp','dbp','glucose','waist'].forEach(k=>{ if(this.latest[k]){ fields[k]=Math.round(this.latest[k].v*10)/10; notes.push(FIELD_LABEL[k]+' '+fields[k]+'（'+String(this.latest[k].d).slice(0,10)+'）'); } });
+  if(fields.glucose!=null)notes.push('※ Apple 健康的血糖不一定是空腹值，判讀請留意');
+  if(this.hrRest.length){ fields.hr=Math.round(this.hrRest.reduce((a,b)=>a+b,0)/this.hrRest.length); notes.push('靜止心率 '+fields.hr+' bpm（'+this.hrRest.length+' 筆）'); }
+  else if(this.hrAll.length){ fields.hr=Math.round(this.hrAll.reduce((a,b)=>a+b,0)/this.hrAll.length); notes.push('平均心率 '+fields.hr+' bpm'); }
+  const exDN=Object.keys(this.exDays).length;
+  if(this.exMin>0&&exDN){ fields.exercise=Math.min(Math.round(this.exMin/exDN*7),1400); notes.push('運動時間平均 '+Math.round(this.exMin/exDN)+' 分/日 → 約每週 '+fields.exercise+' 分'); }
+  else if(this.stepTot>0){ const sdN=Math.max(1,Object.keys(this.stepDays).length), avg=this.stepTot/sdN; fields.exercise=Math.min(Math.round(avg/1000*10*7),1400); notes.push('平均每日 '+Math.round(avg)+' 步 → 估每週運動 '+fields.exercise+' 分'); }
+  const useSleep = this.asleep.s>0?this.asleep:(this.inbed.s>0?this.inbed:null);
+  if(useSleep){ const n=Math.max(1,Object.keys(useSleep.d).length); fields.sleep=Math.round(useSleep.s/3600/n*10)/10; notes.push('平均睡眠 '+fields.sleep+' 小時/日'+(this.asleep.s>0?'':'（依躺床時間估計）')); }
+  if(!Object.keys(fields).length)notes.push('讀到 Apple 健康檔，但未擷取到可對應的項目（步數／心率／體重／血壓／睡眠…）。');
+  notes.unshift('來源：Apple 健康匯出（掃描 '+this.n+' 筆紀錄）');
+  return {fields,notes};
+};
 // 穿戴裝置：Apple 健康 export.xml / 匯出.xml，或 Google Fit JSON
 function parseWearable(txt,name){
   const fields={};const notes=[];
   const head=txt.slice(0,400);
   const isAppleXML = /<HealthData|HKQuantityTypeIdentifier|<Record\b/.test(txt.slice(0,4000)) || (txt.trim().startsWith('<')&&/Record/.test(head+txt.slice(-2000)));
-  if(isAppleXML){ // Apple 健康 XML —— 以正則掃描（省記憶體），大檔只解析最近段
-    let body=txt, tailNote=''; const MAXB=8*1024*1024;
-    if(txt.length>MAXB){ body=txt.slice(-MAXB); tailNote='檔案較大，已只解析「最近」的資料（點數值取最新一筆、活動/睡眠以近期平均）'; }
-    const latest={}, setLatest=(k,v,d)=>{ if(v==null||isNaN(v))return; if(!latest[k]||String(d)>String(latest[k].d))latest[k]={v,d}; };
-    let exMin=0,exDays={},stepTot=0,stepDays={},hrRest=[],hrAll=[]; const asleep={s:0,d:{}},inbed={s:0,d:{}};
-    const rx=/<Record\b([^>]*?)\/?>/g, arx=/(\w+)="([^"]*)"/g; let m;
-    while(m=rx.exec(body)){
-      const A={}; let am; arx.lastIndex=0; while(am=arx.exec(m[1]))A[am[1]]=am[2];
-      const t=A.type; if(!t)continue; const val=parseFloat(A.value), sd=A.startDate||'', day=sd.slice(0,10), u=A.unit||'';
-      if(t.includes('StepCount')){ if(!isNaN(val)){stepTot+=val;stepDays[day]=1;} }
-      else if(t.includes('AppleExerciseTime')||t.includes('AppleMoveTime')){ if(!isNaN(val)){exMin+=val;exDays[day]=1;} }
-      else if(t.includes('RestingHeartRate')){ if(!isNaN(val))hrRest.push(val); }
-      else if(t.includes('HeartRate')&&!/Variab|Recovery|Walking/.test(t)){ if(!isNaN(val)&&hrAll.length<8000)hrAll.push(val); }
-      else if(t.includes('SleepAnalysis')){ const s=new Date(sd),e=new Date(A.endDate); if(!isNaN(s)&&!isNaN(e)){const dur=(e-s)/1000; if(dur>0&&dur<16*3600){ const v=A.value||''; if(/Asleep/.test(v)){asleep.s+=dur;asleep.d[day]=1;} else if(/InBed/.test(v)){inbed.s+=dur;inbed.d[day]=1;} }} }
-      else if(t.includes('BodyMassIndex')){ /* 由 BMI 反推不做，體重/身高足夠 */ }
-      else if(t.includes('BodyMass')){ setLatest('weight',val,sd); }
-      else if(t.includes('Height')){ let h=val; if(u==='m'||(h>0&&h<3))h*=100; setLatest('height',h,sd); }
-      else if(t.includes('BloodPressureSystolic')){ setLatest('sbp',val,sd); }
-      else if(t.includes('BloodPressureDiastolic')){ setLatest('dbp',val,sd); }
-      else if(t.includes('BloodGlucose')){ let g=val; if(/mmol/i.test(u)||(g>0&&g<30))g*=18; setLatest('glucose',Math.round(g),sd); }
-      else if(t.includes('WaistCircumference')){ let w=val; if(u==='m'||(w>0&&w<3))w*=100; setLatest('waist',Math.round(w),sd); }
-    }
-    ['weight','height','sbp','dbp','glucose','waist'].forEach(k=>{ if(latest[k]){ fields[k]=Math.round(latest[k].v*10)/10; notes.push(FIELD_LABEL[k]+' '+fields[k]+'（'+String(latest[k].d).slice(0,10)+'）'); } });
-    if(fields.glucose!=null)notes.push('※ Apple 健康的血糖不一定是空腹值，判讀請留意');
-    if(hrRest.length){ fields.hr=Math.round(hrRest.reduce((a,b)=>a+b,0)/hrRest.length); notes.push('靜止心率 '+fields.hr+' bpm（'+hrRest.length+' 筆）'); }
-    else if(hrAll.length){ fields.hr=Math.round(hrAll.reduce((a,b)=>a+b,0)/hrAll.length); notes.push('平均心率 '+fields.hr+' bpm'); }
-    const exDN=Object.keys(exDays).length;
-    if(exMin>0&&exDN){ fields.exercise=Math.min(Math.round(exMin/exDN*7),1400); notes.push('運動時間平均 '+Math.round(exMin/exDN)+' 分/日 → 約每週 '+fields.exercise+' 分'); }
-    else if(stepTot>0){ const sdN=Math.max(1,Object.keys(stepDays).length), avg=stepTot/sdN; fields.exercise=Math.min(Math.round(avg/1000*10*7),1400); notes.push('平均每日 '+Math.round(avg)+' 步 → 估每週運動 '+fields.exercise+' 分'); }
-    const useSleep = asleep.s>0?asleep:(inbed.s>0?inbed:null);
-    if(useSleep){ const n=Math.max(1,Object.keys(useSleep.d).length); fields.sleep=Math.round(useSleep.s/3600/n*10)/10; notes.push('平均睡眠 '+fields.sleep+' 小時/日'+(asleep.s>0?'':'（依躺床時間估計）')); }
-    if(!Object.keys(fields).length)notes.push('讀到 Apple 健康檔，但未擷取到可對應的項目（步數／心率／體重／血壓／睡眠…）。');
-    if(tailNote)notes.push(tailNote);
-    notes.unshift('來源：Apple 健康匯出');
+  if(isAppleXML){ // Apple 健康 XML —— 用增量掃描器（省記憶體）
+    const sc=new AHScanner(); sc.feed(txt);
+    return sc.result();
   }else{ // Google Fit / 一般 JSON
     const data=JSON.parse(txt);
     const arr=Array.isArray(data)?data:(data.bucket||data.dataset||data.point||[data]);
