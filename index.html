@@ -3439,12 +3439,20 @@ function showLabParseCheck(){
   const keys=Object.keys(BANK_LAB_SAMPLES||{});
   let m=document.getElementById('labChkModal');
   if(!m){m=document.createElement('div');m.id='labChkModal';m.className='modal-overlay';document.body.appendChild(m);}
+  // 實際已存入資料庫的總量（讓使用者看到真實數字，而非只有樣本）
+  const allLabs=(state.labs||[]).filter(e=>e.values&&Object.keys(e.values).length);
+  const totalVals=allLabs.reduce((a,e)=>a+Object.keys(e.values).length,0);
+  const dates=[...new Set(allLabs.map(e=>e.date.slice(0,10)))].sort();
+  const summary=`<div style="background:#e8f5e9;border:1px solid #81c784;border-radius:8px;padding:8px;margin-bottom:10px;font-size:.8rem;line-height:1.7;">`+
+    `✅ 檢驗資料庫目前共 <b>${allLabs.length}</b> 筆（依採檢日期）、合計 <b>${totalVals}</b> 個檢驗值。`+
+    (dates.length?`<br>採檢日期：${dates.slice(-8).map(d=>d.replace(/-/g,'/')).join('、')}${dates.length>8?' …等 '+dates.length+' 天':''}`:'')+
+    `<br><span class="hint">（下方為「每種檢驗取一個樣本」的解析檢查，不是全部資料；完整資料在檢驗頁）</span></div>`;
   let body;
   if(!keys.length){
     body='<div class="hint">目前沒有健保解析樣本。請先到「🔗 匯入串接」重新匯入一次健保健康存摺，再回來按此鈕（樣本只在本次匯入後暫存、不外傳）。</div>';
   }else{
     const dateShaped=v=>/^\d{7}$/.test(v)||/^\d{8}$/.test(v)||/^\d{2,4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}/.test(v)||/^\d{2,4}\s*年\s*\d{1,2}\s*月/.test(v)||/^\d{4}-\d{2}-\d{2}/.test(v);
-    body=keys.slice(0,6).map(k=>{
+    body=keys.slice(0,10).map(k=>{
       const s=BANK_LAB_SAMPLES[k];
       const rowStr=Object.keys(s.row).sort((a,b)=>{const na=+((a.match(/\.(\d+)$/)||[])[1]||0),nb=+((b.match(/\.(\d+)$/)||[])[1]||0);return na-nb;})
         .map(kk=>{const hit=(kk===s.pickedKey)?' ⬅️ 取此值':(kk===s.nameField?' （名稱欄）':'');return esc(kk)+' = '+esc(String(s.row[kk]))+hit;}).join('\n');
@@ -3480,6 +3488,7 @@ function showLabParseCheck(){
   }
   m.innerHTML=`<div class="modal-box">
     <div class="ct">🔬 健保檢驗解析檢查</div>
+    ${summary}
     <div class="hint" style="margin:2px 0 8px;">每項顯示系統「取到的值」與整列原始欄位（⬅️ 為取值處、名稱欄已標示）。若取錯，截圖該項給開發者即可校正。</div>
     ${diag}${body}
     <div class="row-btn" style="margin-top:8px;"><button class="btn bg" onclick="document.getElementById('labChkModal').style.display='none'">關閉</button></div>
@@ -4775,7 +4784,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-datediag2';
+const APP_VERSION='2026.07.29-labsummary';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
