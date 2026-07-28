@@ -1353,6 +1353,21 @@ function load(){
       }
     }
   }catch(e){}
+  // 一次性清理：把「健康評估快照」誤存進檢驗庫、且日期記成當天的紀錄移除
+  // （辨識依據：手動/App 來源且含身高或腰圍——真正的血液檢驗不會有這兩項）。
+  try{
+    if(localStorage.getItem('ls_fix_vitals_v1')!=='1'){
+      localStorage.setItem('ls_fix_vitals_v1','1');
+      if(s&&Array.isArray(s.labs)){
+        const before=s.labs.length;
+        s.labs=s.labs.filter(e=>{ if(!e)return false; const src=e.source; const v=e.values||{};
+          const isAssess=(src==='manual'||src==='app')&&(v.height!=null||v.waist!=null);
+          return !isAssess; });
+        const removed=before-s.labs.length;
+        if(removed>0){ s._vitalsPurged=removed; try{localStorage.setItem(LS_KEY,JSON.stringify(s));}catch(e){} }
+      }
+    }
+  }catch(e){}
   if(s&&!Array.isArray(s.reminders))s.reminders=[];
   if(s&&s.settings&&s.settings.fontScale==null)s.settings.fontScale=1.5;
   if(s&&!s.mhx)s.mhx={};
@@ -1705,7 +1720,8 @@ function saveSnapshot(fromImport){
   const snap=buildSnapshot(p,r);
   state.history.push(snap);
   if(state.history.length>200)state.history.shift();
-  if(!fromImport) recordLabEntry(p,'manual');   // 手動評估也收進檢驗數據庫（匯入路徑已另外收）
+  // 註：手動評估的數值只存為「趨勢紀錄點」（history），不再寫入檢驗數據庫，
+  // 以免用「當天日期」的評估數值汙染真正的檢驗採檢日期（依使用者選擇）。
   save();
   if(state.settings.autosync && fbUser){
     fbSyncNow().then(()=>toast('💾 已存並同步雲端')).catch(()=>toast('💾 已存（雲端同步失敗）'));
@@ -4796,7 +4812,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-recentrows';
+const APP_VERSION='2026.07.29-labs-only';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -4839,6 +4855,7 @@ function init(){
   applyFontScale();
   applyI18n();
   if(state._nhiPurged){const n=state._nhiPurged;delete state._nhiPurged;save();setTimeout(()=>{toast('已清除 '+n+' 筆舊的健保檢驗，請到「匯入串接」重新匯入一次');},400);}
+  if(state._vitalsPurged){const n=state._vitalsPurged;delete state._vitalsPurged;save();setTimeout(()=>{toast('已將 '+n+' 筆「健康評估數值」移出檢驗庫（仍保留於趨勢紀錄）');},800);}
   setTimeout(maybeDailyAlert,600);
   setTimeout(checkDueNotifications,1200);
   setInterval(checkDueNotifications,60000);
