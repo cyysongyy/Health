@@ -3413,9 +3413,10 @@ function renderLabSingle(labs){
   const t=document.getElementById('labSingleTable');
   if(!rec){t.innerHTML='';return;}
   const keys=LAB_ORDER.filter(k=>rec.values&&rec.values[k]!=null);
-  t.innerHTML='<tr><th>項目</th><th>數值</th><th>狀態</th></tr>'+
-    keys.map(k=>{const v=rec.values[k],fl=labFlag(k,v);return `<tr><td>${LAB_META[k].label}</td><td class="num" style="color:${FLAG_COLOR[fl]};font-weight:700;">${v} <span class="hint">${LAB_META[k].unit}</span></td><td style="color:${FLAG_COLOR[fl]};font-size:.72rem;">${FLAG_ICON[fl]?FLAG_ICON[fl]+' ':''}${FLAG_TXT[fl]}</td></tr>`;}).join('')+
-    `<tr><td colspan="3" class="hint" style="padding-top:8px;">來源：${SRC_LABEL[rec.source]||rec.source||'—'}　·　時間：${new Date(rec.date).toLocaleString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})}</td></tr>`;
+  const recDate=new Date(rec.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'});
+  t.innerHTML='<tr><th>檢驗日期</th><th>項目</th><th>數值</th><th>狀態</th></tr>'+
+    keys.map(k=>{const v=rec.values[k],fl=labFlag(k,v);return `<tr><td style="white-space:nowrap;color:var(--g600);font-size:.8rem;">${recDate}</td><td>${LAB_META[k].label}</td><td class="num" style="color:${FLAG_COLOR[fl]};font-weight:700;">${v} <span class="hint">${LAB_META[k].unit}</span></td><td style="color:${FLAG_COLOR[fl]};font-size:.72rem;">${FLAG_ICON[fl]?FLAG_ICON[fl]+' ':''}${FLAG_TXT[fl]}</td></tr>`;}).join('')+
+    `<tr><td colspan="4" class="hint" style="padding-top:8px;">來源：${SRC_LABEL[rec.source]||rec.source||'—'}　·　檢驗日期：${recDate}</td></tr>`;
 }
 function labPickRecord(id){ labSingleId=id; renderLabSingle(state.labs||[]); }
 function exportLabs(){
@@ -4766,7 +4767,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-lab-earliest';
+const APP_VERSION='2026.07.29-single-date';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
