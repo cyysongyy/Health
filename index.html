@@ -3443,13 +3443,20 @@ function showLabParseCheck(){
   if(!keys.length){
     body='<div class="hint">目前沒有健保解析樣本。請先到「🔗 匯入串接」重新匯入一次健保健康存摺，再回來按此鈕（樣本只在本次匯入後暫存、不外傳）。</div>';
   }else{
-    body=keys.map(k=>{
+    const dateShaped=v=>/^\d{7}$/.test(v)||/^\d{8}$/.test(v)||/^\d{2,4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}/.test(v)||/^\d{2,4}\s*年\s*\d{1,2}\s*月/.test(v)||/^\d{4}-\d{2}-\d{2}/.test(v);
+    body=keys.slice(0,6).map(k=>{
       const s=BANK_LAB_SAMPLES[k];
       const rowStr=Object.keys(s.row).sort((a,b)=>{const na=+((a.match(/\.(\d+)$/)||[])[1]||0),nb=+((b.match(/\.(\d+)$/)||[])[1]||0);return na-nb;})
         .map(kk=>{const hit=(kk===s.pickedKey)?' ⬅️ 取此值':(kk===s.nameField?' （名稱欄）':'');return esc(kk)+' = '+esc(String(s.row[kk]))+hit;}).join('\n');
+      // 這一列所有「像日期」的欄位，逐一解析，標示系統採用了哪一個
+      const chosen=s.date?s.date.slice(0,10):'';
+      const dfs=Object.keys(s.row).filter(kk=>dateShaped(String(s.row[kk]==null?'':s.row[kk]).trim()))
+        .map(kk=>{const v=String(s.row[kk]).trim();const pp=parseFlexDate(v);const iso=pp?pp.slice(0,10):'無法解析';const use=(iso===chosen)?' ⬅️ 目前採用':'';return '　'+esc(kk)+' = '+esc(v)+' → '+iso+use;});
+      const dtBlock=dfs.length?('📅 此列日期欄位：\n'+dfs.join('\n')):'📅 此列未偵測到日期欄位';
       const dt=s.date?new Date(s.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'}):'—';
-      return `<div style="margin-bottom:12px;"><div style="font-weight:700;">${LAB_META[k]?LAB_META[k].label:k} → 取值 <span style="color:var(--pri);">${esc(String(s.picked))}</span> <span class="hint">（日期 ${dt}）</span></div>`+
-        `<pre style="white-space:pre-wrap;word-break:break-word;font-size:.66rem;background:var(--g100);border-radius:6px;padding:8px;margin-top:4px;">${rowStr}</pre></div>`;
+      return `<div style="margin-bottom:12px;"><div style="font-weight:700;">${LAB_META[k]?LAB_META[k].label:k} → 取值 <span style="color:var(--pri);">${esc(String(s.picked))}</span> <span class="hint">（採用日期 ${dt}）</span></div>`+
+        `<pre style="white-space:pre-wrap;word-break:break-word;font-size:.66rem;background:#fff6e5;border:1px solid #f0c674;border-radius:6px;padding:8px;margin:4px 0;">${dtBlock}</pre>`+
+        `<pre style="white-space:pre-wrap;word-break:break-word;font-size:.62rem;background:var(--g100);border-radius:6px;padding:8px;">${rowStr}</pre></div>`;
     }).join('');
   }
   // 區段結構診斷（用來判斷是否還有檢驗被漏抓）
@@ -4767,7 +4774,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-single-date';
+const APP_VERSION='2026.07.29-datediag';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
