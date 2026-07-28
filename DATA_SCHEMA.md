@@ -189,6 +189,7 @@
 - `reminders[]`：提醒（用藥／回診／復健／檢驗／量測／喝水／自訂）。欄位 `{id, type, title, freq(once|daily|weekly|monthly|months), time, startDate, weekday, interval, note, enabled, doneDates[], apptDate?, apptTime?, createdAt}`。建議後端表：`reminders`。
 - `goals{}`：個人健康目標，`{ metric: 目標值 }`（metric ∈ sbp/dbp/ldl/hba1c/glucose/tg/hdl/ua/egfr/weight/waist）。
 - `mhx{}`：病史勾選布林值 `{ af, chf, stroke, vascular, bleed, antiplt, alcohol, labileINR }`，供 CHA₂DS₂-VASc／HAS-BLED 評分。
+- `footAssess[]`：垂足外觀 AI 評估歷程，`{ ts, side, severity, observations[], advice[], gait[], dorsiflexion, thumb(base64 小縮圖) }`，上限 8 筆，供追蹤外觀變化。建議後端表：`foot_assessments`。
 
 ---
 

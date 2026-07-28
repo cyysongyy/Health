@@ -1115,6 +1115,22 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <div class="hint">📚 內容為常見醫學共識之衛教綜整（神經再生速率、AFO／FES／神經修補與肌腱轉位等為教科書與臨床標準做法）；未引用特定研究數據，個別療效請以醫師評估為準。</div>
     </div>
   </details>
+  <div class="card" id="footPhotoCard">
+    <div class="ct">📷 垂足外觀 AI 評估 <span class="hint">（輔助參考，非診斷）</span></div>
+    <div class="hint" style="line-height:1.75;margin-bottom:10px;">拍 1～4 張照片讓 AI 從<b>外觀</b>綜合你的病史與資料判斷、給建議：<br>
+      ① 放鬆坐/躺，鏡頭正對<b>雙腳腳尖</b>（比較兩側下垂角度）<br>
+      ② 盡力把患側腳尖<b>往上勾（背屈）</b>的樣子<br>
+      ③ 站立的正面或側面<br>
+      ④ 走路踏出一步的<b>側面</b>（可請人代拍）<br>
+      💡 光線充足、腿腳入鏡、去除鞋襪效果最好。分析僅供參考，<b>不能取代醫師與物理治療師</b>。</div>
+    <input type="file" id="footPhotoInput" accept="image/*" capture="environment" multiple style="display:none;" onchange="analyzeFootPhoto(event)">
+    <div class="row-btn">
+      <button class="btn bp" onclick="document.getElementById('footPhotoInput').click()">📷 拍照 / 選照片評估</button>
+    </div>
+    <div class="hint" id="footPhotoStatus" style="margin-top:8px;"></div>
+    <div id="footPhotoResult" style="margin-top:10px;"></div>
+    <div id="footAssessHist" style="margin-top:12px;"></div>
+  </div>
   <div id="foot-app"><div class="app" id="foot-root"></div></div>
 </div>
 
@@ -1453,6 +1469,7 @@ function go(sec){
   if(sec==='risk')renderRisk();
   if(sec==='medscore')renderMedScore();
   if(sec==='advice')renderAdvice();
+  if(sec==='foot')renderFootAssess();
   if(sec==='connect')renderImportResult();
   if(sec==='smart')renderSmart();
   if(sec==='advisor')renderAdvisor();
@@ -4745,7 +4762,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.26-labs-dict';
+const APP_VERSION='2026.07.26-foot-vision';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -5344,6 +5361,122 @@ async function visionExtract(images){
   if(s.openai)return callOpenAIVision(s.openai,arr,prompt);
   return callGeminiVision(s.gemini,arr,prompt);
 }
+/* ============ 垂足外觀 AI 評估 ============ */
+// 從使用者資料整理與垂足相關的背景，讓評估更貼近個人
+function buildFootContext(){
+  const p=state.profile||{}; const L=[];
+  if(p.age)L.push('年齡 '+p.age+' 歲'); if(p.sex)L.push(p.sex==='male'?'男性':'女性');
+  // 相關手術／診斷（神經、腓、垂足、足）
+  const surs=(state.surgeries||[]).filter(s=>/神經|腓|垂足|足下垂|foot\s*drop|肌腱|轉位|減壓|修補|移植/i.test((s.name||'')+(s.dx||'')));
+  if(surs.length)L.push('相關手術／處置：'+surs.slice(0,6).map(s=>((s.date||'').slice(0,10)+' '+(s.name||'')+(s.dx?'（'+s.dx+'）':'')).trim()).join('；'));
+  // 相關檢驗（血糖控制、B12、維生素D、發炎）
+  const latest={}; (state.labs||[]).forEach(e=>{const t=+new Date(e.date);Object.keys(e.values||{}).forEach(k=>{if(!latest[k]||t>=latest[k].t)latest[k]={v:e.values[k],t,date:e.date};});});
+  const pick=['hba1c','glucose','b12','vitd','folate','crp','esr'].filter(k=>latest[k]);
+  if(pick.length)L.push('相關檢驗：'+pick.map(k=>LAB_META[k].label+' '+latest[k].v+(LAB_META[k].unit?LAB_META[k].unit:'')).join('、'));
+  // 病史勾選
+  const mhx=state.mhx||{}; if(mhx.diabetes||latest.hba1c&&latest.hba1c.v>=6.5)L.push('可能有血糖偏高／糖尿病（周邊神經病變風險因子）');
+  if(!L.length)return '（尚無個人資料，請僅就照片外觀評估）';
+  return L.join('\n');
+}
+function buildFootPrompt(){
+  return `你是協助「垂足（foot drop／足下垂）」自我追蹤的復健衛教助理。請「僅根據照片可見的外觀」與下列個人背景，做綜合觀察與生活化建議。這不是醫療診斷，嚴禁下診斷或宣稱療效。
+
+【個人背景】
+${buildFootContext()}
+
+【請你觀察的重點】（有拍到才描述，看不清就說看不清）
+- 兩側腳尖在放鬆時的下垂角度是否不對稱、患側腳尖是否明顯下垂
+- 主動背屈（往上勾腳）時腳尖能抬多少、是否幾乎抬不起
+- 小腿前外側（脛前肌／腓骨肌）是否有肌肉萎縮、凹陷
+- 站立／步態照：是否有高抬腿（high steppage）、腳掌拍地（foot slap）、腳外甩（circumduction）、足內翻/外翻
+- 皮膚、腫脹、傷疤、壓瘡等值得注意處
+
+請「只輸出 JSON」，格式：
+{
+ "sideAffected":"right|left|both|unclear",
+ "severity":"輕微|中等|明顯|無法從外觀判斷",
+ "observations":["具體外觀觀察，逐點"],
+ "dorsiflexion":"若有勾腳照，描述背屈能力；否則空字串",
+ "gait":["若有站立/步態照的觀察；否則空陣列"],
+ "redFlags":["需要儘快就醫的徵象；沒有就空陣列"],
+ "advice":["針對此人的生活化、可執行建議，結合背景（如控糖、避免壓迫腓神經、每天背屈與跟腱伸展、AFO 諮詢等）"],
+ "focusExercises":["建議加強的復健方向，對應下方復健模組"],
+ "confidence":"低|中|高",
+ "disclaimer":"一句提醒：僅供參考，請以神經科／復健科醫師與物理治療師評估為準"
+}`;
+}
+async function footVision(images){
+  const s=state.settings; const arr=Array.isArray(images)?images:[images]; const prompt=buildFootPrompt();
+  const useGemini=s.engine==='gemini'||(s.engine!=='openai'&&s.gemini);
+  if(useGemini&&s.gemini)return callGeminiVision(s.gemini,arr,prompt);
+  if(s.openai)return callOpenAIVision(s.openai,arr,prompt);
+  return callGeminiVision(s.gemini,arr,prompt);
+}
+async function analyzeFootPhoto(e){
+  const files=[...(e.target.files||[])].slice(0,4); e.target.value='';
+  if(!files.length)return;
+  const s=state.settings;
+  if(!s.gemini&&!s.openai){toast('請先到「設定」填入 Gemini 或 OpenAI API Key');go('settings');return;}
+  const st=document.getElementById('footPhotoStatus'); const setSt=(t,c)=>{if(st){st.textContent=t;st.style.color=c||'var(--g600)';}};
+  const resEl=document.getElementById('footPhotoResult');
+  try{
+    setSt('壓縮照片中…');
+    const images=[]; for(const f of files){ if(!/^image\//.test(f.type||'')&&!/\.(jpe?g|png|heic|heif|webp)$/i.test(f.name))continue; images.push(await resizeImage(f,1280,0.82)); }
+    if(!images.length){setSt('⚠️ 請選擇照片檔（JPG／PNG）','var(--err)');return;}
+    const thumb=await resizeImage(files[0],240,0.6);
+    setSt('🔍 AI 評估中…（約 5–20 秒）');
+    const raw=await footVision(images);
+    const r=parseVisionJSON(raw);
+    if(!r||(!r.observations&&!r.advice)){setSt('⚠️ 無法解析評估結果，請換清晰、腿腳入鏡的照片再試','var(--err)');return;}
+    setSt('✅ 評估完成');
+    resEl.innerHTML=footAssessHtml(r);
+    // 保存以利追蹤（上限 8 筆，含小縮圖）
+    state.footAssess=state.footAssess||[];
+    state.footAssess.push({ts:new Date().toISOString(),side:r.sideAffected||'',severity:r.severity||'',observations:r.observations||[],advice:r.advice||[],gait:r.gait||[],dorsiflexion:r.dorsiflexion||'',thumb});
+    if(state.footAssess.length>8)state.footAssess=state.footAssess.slice(-8);
+    save(); renderFootAssess();
+    if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  }catch(err){setSt('⚠️ 評估失敗：'+err.message,'var(--err)');}
+}
+const SIDE_TXT={right:'右側',left:'左側',both:'雙側',unclear:'不確定'};
+function footAssessHtml(r){
+  const sev=r.severity||'—';
+  const sevCol=/明顯|重/.test(sev)?'var(--err)':/中/.test(sev)?'var(--warn)':/輕/.test(sev)?'var(--pri)':'var(--g500)';
+  const list=(arr,ic)=>(arr&&arr.length)?('<ul style="margin:4px 0 8px 18px;line-height:1.7;">'+arr.map(x=>'<li>'+(ic||'')+esc(String(x))+'</li>').join('')+'</ul>'):'';
+  let h='<div class="card" style="background:var(--g50);box-shadow:none;border:1px solid var(--g200);">';
+  h+='<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:6px;">'+
+     '<span style="font-weight:800;">患側：'+esc(SIDE_TXT[r.sideAffected]||r.sideAffected||'不確定')+'</span>'+
+     '<span style="font-weight:800;color:'+sevCol+';">外觀嚴重度：'+esc(sev)+'</span>'+
+     (r.confidence?'<span class="hint">信心 '+esc(r.confidence)+'</span>':'')+'</div>';
+  if(r.observations&&r.observations.length){h+='<div class="ct" style="font-size:.9rem;">🔎 外觀觀察</div>'+list(r.observations);}
+  if(r.dorsiflexion){h+='<div class="ct" style="font-size:.9rem;">🦶 背屈能力</div><div style="margin:2px 0 8px;line-height:1.7;">'+esc(r.dorsiflexion)+'</div>';}
+  if(r.gait&&r.gait.length){h+='<div class="ct" style="font-size:.9rem;">🚶 站立／步態</div>'+list(r.gait);}
+  if(r.redFlags&&r.redFlags.length){h+='<div class="lab-alert crit" style="margin:8px 0;">🚨 <span>需注意：'+r.redFlags.map(x=>esc(String(x))).join('、')+'。建議儘快就醫評估。</span></div>';}
+  if(r.advice&&r.advice.length){h+='<div class="ct" style="font-size:.9rem;">✅ 給你的建議</div>'+list(r.advice,'');}
+  if(r.focusExercises&&r.focusExercises.length){h+='<div class="ct" style="font-size:.9rem;">🏋️ 建議加強</div>'+list(r.focusExercises)+'<div class="row-btn"><button class="btn bp" onclick="document.getElementById(\'foot-root\').scrollIntoView({behavior:\'smooth\'})">前往復健模組</button></div>';}
+  h+='<div class="hint" style="margin-top:8px;">'+esc(r.disclaimer||'僅供參考，請以神經科／復健科醫師與物理治療師評估為準。')+'</div>';
+  h+='</div>';
+  return h;
+}
+function renderFootAssess(){
+  const el=document.getElementById('footAssessHist'); if(!el)return;
+  const arr=state.footAssess||[];
+  if(!arr.length){el.innerHTML='';return;}
+  const rows=[...arr].reverse();
+  el.innerHTML='<div class="ct" style="font-size:.92rem;margin-top:4px;">🗓️ 歷次外觀評估（可追蹤變化）</div>'+
+    rows.map((a,i)=>{
+      const sev=a.severity||'—'; const sevCol=/明顯|重/.test(sev)?'var(--err)':/中/.test(sev)?'var(--warn)':/輕/.test(sev)?'var(--pri)':'var(--g500)';
+      return '<div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--g200);">'+
+        (a.thumb?'<img src="'+a.thumb+'" style="width:52px;height:52px;object-fit:cover;border-radius:8px;flex:none;">':'')+
+        '<div style="flex:1;min-width:0;">'+
+        '<div style="font-size:.78rem;color:var(--g600);">'+new Date(a.ts).toLocaleString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})+'</div>'+
+        '<div style="font-size:.82rem;"><b>'+esc(SIDE_TXT[a.side]||a.side||'')+'</b>　嚴重度：<b style="color:'+sevCol+';">'+esc(sev)+'</b></div>'+
+        (a.observations&&a.observations.length?'<div class="hint" style="line-height:1.6;">'+esc(a.observations.slice(0,2).join('；'))+(a.observations.length>2?'…':'')+'</div>':'')+
+        '<a class="link" style="cursor:pointer;font-size:.75rem;color:var(--err);" onclick="delFootAssess('+(arr.length-1-i)+')">刪除</a>'+
+        '</div></div>';
+    }).join('');
+}
+function delFootAssess(idx){ if(!confirm('刪除這筆外觀評估紀錄？'))return; (state.footAssess||[]).splice(idx,1); save(); renderFootAssess(); }
 async function callGeminiVision(key,images,prompt){
   const parts=[{text:prompt}];
   images.forEach(u=>{const m=u.match(/^data:(.*?);base64,(.*)$/);parts.push({inline_data:{mime_type:m?m[1]:'image/jpeg',data:m?m[2]:''}});});
