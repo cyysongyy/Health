@@ -3470,8 +3470,9 @@ function showLabParseCheck(){
       `<div class="hint" style="margin-bottom:6px;">共 ${secs.length} 個資料區段、合計 ${tot} 列；被當成檢驗區的有 ${keptN} 段。若你確定檢驗更多，很可能在「未採用」的區段裡——把這張截圖給開發者即可校正。</div>`+
       '<div style="overflow-x:auto;"><table style="font-size:.66rem;"><tr><th>區段</th><th>列數</th><th>取到標準項</th><th>未歸類</th><th>採用?</th></tr>'+
       secs.map(s=>`<tr><td>${esc(s.sec)}</td><td class="num">${s.rows}</td><td class="num">${s.hits}</td><td class="num">${s.extras}</td><td>${s.kept?'✅':'—'}</td></tr>`).join('')+'</table></div>';
-    // 顯示「未採用但有資料」區段的原始樣本（最可能藏著漏抓的檢驗）
-    const showRaw=(dropped.length?dropped:secs).slice(0,3);
+    // 優先顯示「被採用的檢驗區」原始樣本（用來定位採檢日期欄位），再補未採用區段
+    const keptSecs=secs.filter(s=>s.kept&&s.rows>0);
+    const showRaw=[...keptSecs, ...dropped].slice(0,3);
     diag+='<div style="font-weight:700;margin:8px 0 4px;">🧩 區段原始樣本（供比對結構）</div>'+
       showRaw.map(s=>`<div style="margin-bottom:6px;"><div class="hint">${esc(s.sec)}（列數 ${s.rows}，採用 ${s.kept?'是':'否'}）</div>`+
         (s.rawSamples||[]).map(rs=>`<pre style="white-space:pre-wrap;word-break:break-all;font-size:.6rem;background:var(--g100);border-radius:6px;padding:6px;margin-top:3px;">${esc(rs)}</pre>`).join('')+'</div>').join('');
@@ -4774,7 +4775,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-datediag';
+const APP_VERSION='2026.07.29-datediag2';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
