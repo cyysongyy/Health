@@ -3481,6 +3481,12 @@ function showLabParseCheck(){
     // 優先顯示「被採用的檢驗區」原始樣本（用來定位採檢日期欄位），再補未採用區段
     const keptSecs=secs.filter(s=>s.kept&&s.rows>0);
     const showRaw=[...keptSecs, ...dropped].slice(0,3);
+    // 近日日期的原始列（最可能是「採檢日抓錯、取到上傳/建檔日」的元兇）
+    if(BANK_LAB_DIAG.recentRows&&BANK_LAB_DIAG.recentRows.length){
+      diag+='<div style="font-weight:700;margin:8px 0 4px;color:#b45309;">⚠️ 採用到近日日期的原始列（請截這段給開發者）</div>'+
+        BANK_LAB_DIAG.recentRows.map(r=>`<div style="margin-bottom:6px;"><div class="hint">${esc(r.sec)}（採用日期 ${esc(r.pickedDate)}）</div>`+
+          `<pre style="white-space:pre-wrap;word-break:break-all;font-size:.6rem;background:#fff6e5;border:1px solid #f0c674;border-radius:6px;padding:6px;margin-top:3px;">${esc(r.raw)}</pre></div>`).join('');
+    }
     diag+='<div style="font-weight:700;margin:8px 0 4px;">🧩 區段原始樣本（供比對結構）</div>'+
       showRaw.map(s=>`<div style="margin-bottom:6px;"><div class="hint">${esc(s.sec)}（列數 ${s.rows}，採用 ${s.kept?'是':'否'}）</div>`+
         (s.rawSamples||[]).map(rs=>`<pre style="white-space:pre-wrap;word-break:break-all;font-size:.6rem;background:var(--g100);border-radius:6px;padding:6px;margin-top:3px;">${esc(rs)}</pre>`).join('')+'</div>').join('');
@@ -3710,7 +3716,8 @@ let BANK_LAB_DIAG=null;    // 解析診斷：各區段筆數／取到幾項／�
 function parseBankLabs(bd){
   const byDate={};
   BANK_LAB_SAMPLES={};
-  BANK_LAB_DIAG={sections:[]};
+  BANK_LAB_DIAG={sections:[],recentRows:[]};
+  const RECENT_CUT=new Date(Date.now()-45*864e5).toISOString().slice(0,10);   // 近 45 天＝可疑（可能取到上傳/建檔日）
   const sufOf=k=>{const m=String(k).match(/\.(\d+)$/);return m?+m[1]:0;};
   const isDateStr=s=>/^\d{7,8}$/.test(s)&&!!parseFlexDate(s);
   const numLike=e=>{const n=toNum(e.v);return (n!==null && /^\s*[<>]?\s*-?\d/.test(e.v) && e.v.replace(/[^\d.]/g,'').length<=7)?n:null;};
@@ -3758,6 +3765,11 @@ function parseBankLabs(bd){
       // 日期：一律取「原始檔案的檢驗時間」。優先 .5／.6／.7，否則徹底掃描本列所有欄位
       // （支援民國 7 碼／西元 8 碼／含斜線·橫線·年月日 等格式），排除未來日期。絕不使用匯入當天。
       let date=bankVisitDate(row,sec);
+      // 診斷：若採用到「近 45 天」的日期，很可能誤取上傳/建檔日，收集原始列供比對（上限 4 筆）
+      if(date && date.slice(0,10)>=RECENT_CUT && BANK_LAB_DIAG.recentRows.length<4){
+        let rs=''; try{rs=JSON.stringify(row);}catch(_){rs=String(row);}
+        BANK_LAB_DIAG.recentRows.push({sec,pickedDate:date.slice(0,10),raw:rs.length>1100?rs.slice(0,1100)+'…':rs});
+      }
       // 待掃描單元：本列純量欄位 ＋ 任何巢狀。但「就醫明細子陣列」（_1／_2…，
       // 為用藥／處置明細，非檢驗）一律不掃描——否則會把藥品成分（如碳酸鈣、氧化鎂、
       // 含葡萄糖／鉀／鈉之藥物）誤讀成檢驗值，屬健康資料的致命錯誤。
@@ -4784,7 +4796,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-labsummary';
+const APP_VERSION='2026.07.29-recentrows';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
