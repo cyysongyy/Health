@@ -1327,8 +1327,8 @@ function load(){
   // 一次性清理：舊版解析器匯入的健保檢驗可能把「區碼(4)」當成值、且日期記成匯入當天，
   // 會遮蓋重匯後的正確資料。清掉一次舊的健保檢驗（保留手動輸入），請使用者重匯一次即乾淨。
   try{
-    if(localStorage.getItem('ls_fix_nhilab_v5')!=='1'){
-      localStorage.setItem('ls_fix_nhilab_v5','1');
+    if(localStorage.getItem('ls_fix_nhilab_v6')!=='1'){
+      localStorage.setItem('ls_fix_nhilab_v6','1');
       if(s&&Array.isArray(s.labs)){
         const before=s.labs.length;
         s.labs=s.labs.filter(e=>e&&e.source!=='nhi');
@@ -3624,7 +3624,9 @@ function parseBankLabs(bd){
   // 藥品劑型字樣（連「標準項目」也要擋，真檢驗名稱不會有這些）
   const DRUG_FORM_RX=/錠|膠囊|毫克|微克|公絲|注射|針劑|軟膏|乳膏|乳劑|貼片|貼劑|滴劑|糖漿|栓劑|糖衣|膜衣|藥水|藥膏|口服液|懸液|發泡|口含|舌下/;
   // 礦物鹽類藥品成分（含鈣／鎂／鉀／鈉等，會誤中電解質檢驗）：碳酸鈣、氧化鎂、檸檬酸鈣…
-  const MINERAL_SALT_RX=/(碳酸|氧化|氫氧化|檸檬酸|葡萄糖酸|乳酸|醋酸|硫酸|甘油磷酸|磷酸氫|磷酸二氫|阿斯匹林|aspirin|carbonate|oxide|hydroxide|citrate|gluconate|lactate|acetate|sulfate|sulphate)\s*[鈣鎂鉀鈉鋅鐵鋁]|[鈣鎂鉀鈉][錠片粉]/i;
+  const MINERAL_SALT_RX=/(碳酸|氫?氧化|氯化|檸檬酸|葡萄糖酸|乳酸|醋酸|硫酸|甘油磷酸|磷酸[氫二]|阿斯匹林|aspirin|carbonate|oxide|hydroxide|chloride|citrate|gluconate|lactate|acetate|sulfate|sulphate)\s*[鈣鎂鉀鈉鋅鐵鋁]|[鈣鎂鉀鈉][錠片粉]/i;
+  // 判斷一個巢狀物件是否為「用藥明細」：含藥品代碼或劑型／礦物鹽成分字樣
+  const looksLikeDrugObj=obj=>{ try{ return Object.values(obj).some(v=>{ if(typeof v!=='string')return false; const s=v.trim(); return looksLikeDrugCode(s)||DRUG_FORM_RX.test(s)||MINERAL_SALT_RX.test(s); }); }catch(_){ return false; } };
   // 一列可能含多個檢驗項目（整組套組），且值可能藏在巢狀子物件／子陣列裡（該次就醫的逐項結果）
   const entriesOf=obj=>Object.keys(obj).filter(k=>typeof obj[k]==='string'||typeof obj[k]==='number')
     .map((k,i)=>({key:k,suf:sufOf(k),ord:i,v:String(obj[k]==null?'':obj[k]).trim()})).filter(e=>e.v!=='');
@@ -3660,11 +3662,15 @@ function parseBankLabs(bd){
       // 日期：健保原始日期（採檢／就醫 .5，報告日 .6），否則掃描本列合理日期
       let date=parseFlexDate(row[sec+'.5'])||parseFlexDate(row[sec+'.6']);
       if(!date){ for(const e of entriesOf(row).sort((a,b)=>a.suf-b.suf)){ if(isDateStr(e.v)){ date=parseFlexDate(e.v); break; } } }
-      // 待掃描單元：本列純量欄位 ＋ 任何巢狀（該次就醫的逐項檢驗結果）
+      // 待掃描單元：本列純量欄位 ＋ 任何巢狀。但「就醫明細子陣列」（_1／_2…，
+      // 為用藥／處置明細，非檢驗）一律不掃描——否則會把藥品成分（如碳酸鈣、氧化鎂、
+      // 含葡萄糖／鉀／鈉之藥物）誤讀成檢驗值，屬健康資料的致命錯誤。
       const units=[entriesOf(row)];
-      Object.keys(row).forEach(k=>{ const v=row[k];
-        if(Array.isArray(v)){ v.forEach(it=>{ if(it&&typeof it==='object')units.push(entriesOf(it)); }); }
-        else if(v&&typeof v==='object'){ units.push(entriesOf(v)); }
+      Object.keys(row).forEach(k=>{
+        if(/_\d+$/.test(k))return;   // 跳過就醫明細（用藥／處置）子結構
+        const v=row[k];
+        if(Array.isArray(v)){ v.forEach(it=>{ if(it&&typeof it==='object'&&!looksLikeDrugObj(it))units.push(entriesOf(it)); }); }
+        else if(v&&typeof v==='object'&&!looksLikeDrugObj(v)){ units.push(entriesOf(v)); }
       });
       units.forEach(ents=>{
         if(!ents.length)return;
@@ -4681,7 +4687,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.25-labs-nomineral';
+const APP_VERSION='2026.07.25-labs-nodrug';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
