@@ -3138,7 +3138,19 @@ const LAB_META={
   mcv:{label:'MCV',unit:'fL'}, mch:{label:'MCH',unit:'pg'}, mchc:{label:'MCHC',unit:'g/dL'}, rdw:{label:'RDW',unit:'%'}, plt:{label:'血小板 PLT',unit:'×10³/µL'},
   neut:{label:'嗜中性球',unit:'%'}, lymph:{label:'淋巴球',unit:'%'}, mono:{label:'單核球',unit:'%'}, eos:{label:'嗜酸性球',unit:'%'}, baso:{label:'嗜鹼性球',unit:'%'},
   tsh:{label:'甲狀腺 TSH',unit:'mIU/L'}, ft4:{label:'游離 T4 (FT4)',unit:'ng/dL'}, t4:{label:'T4',unit:'µg/dL'}, t3:{label:'T3',unit:'ng/dL'},
-  crp:{label:'C反應蛋白 CRP',unit:'mg/L'}, afp:{label:'甲型胎兒蛋白 AFP',unit:'ng/mL'}, cea:{label:'癌胚抗原 CEA',unit:'ng/mL'}, psa:{label:'攝護腺 PSA',unit:'ng/mL'}
+  crp:{label:'C反應蛋白 CRP',unit:'mg/L'}, afp:{label:'甲型胎兒蛋白 AFP',unit:'ng/mL'}, cea:{label:'癌胚抗原 CEA',unit:'ng/mL'}, psa:{label:'攝護腺 PSA',unit:'ng/mL'},
+  // ── 擴充：常見健檢／NHI 檢驗（依國際參考範圍）──
+  ft3:{label:'游離 T3 (FT3)',unit:'pg/mL'},
+  fe:{label:'血清鐵 Fe',unit:'µg/dL'}, ferritin:{label:'鐵蛋白 Ferritin',unit:'ng/mL'}, tibc:{label:'總鐵結合能 TIBC',unit:'µg/dL'},
+  vitd:{label:'維生素 D (25-OH)',unit:'ng/mL'}, b12:{label:'維生素 B12',unit:'pg/mL'}, folate:{label:'葉酸',unit:'ng/mL'},
+  esr:{label:'紅血球沉降速率 ESR',unit:'mm/hr'}, hcy:{label:'同半胱胺酸',unit:'µmol/L'},
+  ck:{label:'肌酸激酶 CK/CPK',unit:'U/L'}, ckmb:{label:'CK-MB',unit:'U/L'}, trop:{label:'肌鈣蛋白 Troponin',unit:'ng/mL'},
+  bnp:{label:'BNP',unit:'pg/mL'}, ntprobnp:{label:'NT-proBNP',unit:'pg/mL'}, ldh:{label:'乳酸去氫酶 LDH',unit:'U/L'},
+  amylase:{label:'澱粉酶 Amylase',unit:'U/L'}, lipase:{label:'脂肪酶 Lipase',unit:'U/L'},
+  pt:{label:'凝血酶原時間 PT',unit:'sec'}, inr:{label:'INR',unit:''}, aptt:{label:'aPTT',unit:'sec'}, ddimer:{label:'D-Dimer',unit:'µg/mL'},
+  insulin:{label:'胰島素 Insulin',unit:'µIU/mL'}, cpeptide:{label:'C-胜肽',unit:'ng/mL'}, cortisol:{label:'皮質醇 Cortisol',unit:'µg/dL'}, pth:{label:'副甲狀腺素 PTH',unit:'pg/mL'},
+  uacr:{label:'尿白蛋白/肌酸酐比 UACR',unit:'mg/g'}, co2:{label:'二氧化碳/碳酸氫根',unit:'mmol/L'}, lac:{label:'乳酸 Lactate',unit:'mmol/L'}, ammonia:{label:'氨 NH3',unit:'µmol/L'},
+  ca125:{label:'CA-125',unit:'U/mL'}, ca153:{label:'CA-15-3',unit:'U/mL'}, ca199:{label:'CA-19-9',unit:'U/mL'}
 };
 const LAB_ORDER=Object.keys(LAB_META);
 // 參考範圍表：ok=[wl,wh]；warn=向外一階（hl/hh）；high=再外（cl/ch 之內）；crit=最外。省略側＝該方向不判斷
@@ -3155,7 +3167,16 @@ const LAB_REF={
   mcv:{wl:80,wh:100,hl:70,hh:110}, mch:{wl:27,wh:33,hl:24,hh:36}, mchc:{wl:32,wh:36,hl:28,hh:38}, rdw:{wh:14.5,hh:18}, plt:{wl:150,wh:400,hl:50,hh:600,cl:20,ch:1000},
   neut:{wl:40,wh:75,hl:20,hh:90}, lymph:{wl:20,wh:45,hl:10,hh:60}, mono:{wl:2,wh:10,hh:20}, eos:{wh:6,hh:15}, baso:{wh:2,hh:5},
   tsh:{wl:0.4,wh:4,hl:0.1,hh:10,cl:0.05,ch:20}, ft4:{wl:0.8,wh:1.8,hl:0.4,hh:3}, t4:{wl:4.5,wh:12,hl:2,hh:16}, t3:{wl:80,wh:200,hl:40,hh:280},
-  crp:{wh:4.9,hh:9.9,ch:99}, afp:{wh:20,hh:100}, cea:{wh:5,hh:10}, psa:{wh:4,hh:10}
+  crp:{wh:4.9,hh:9.9,ch:99}, afp:{wh:20,hh:100}, cea:{wh:5,hh:10}, psa:{wh:4,hh:10},
+  ft3:{wl:2.3,wh:4.2,hl:1.5,hh:6}, fe:{wl:50,wh:170,hl:30,hh:250}, ferritin:{wl:20,wh:300,hl:10,hh:1000}, tibc:{wl:250,wh:450,hl:200,hh:550},
+  vitd:{wl:30,wh:100,hl:20,cl:10}, b12:{wl:200,wh:900,hl:150,hh:1500}, folate:{wl:3.1,wh:20,hl:2},
+  esr:{wh:20,hh:50,ch:100}, hcy:{wh:15,hh:30,ch:100},
+  ck:{wl:30,wh:200,hh:1000,ch:5000}, ckmb:{wh:25,hh:50}, trop:{wh:0.04,hh:0.5}, bnp:{wh:100,hh:400,ch:2000}, ntprobnp:{wh:125,hh:450,ch:2000}, ldh:{wl:120,wh:250,hh:500},
+  amylase:{wl:30,wh:110,hh:300}, lipase:{wl:10,wh:60,hh:180},
+  pt:{wl:10,wh:13,hh:20}, inr:{wl:0.8,wh:1.2,hh:4}, aptt:{wl:25,wh:38,hh:70}, ddimer:{wh:0.5,hh:2},
+  insulin:{wl:2,wh:25,hh:50}, cpeptide:{wl:0.8,wh:3.9,hl:0.5}, cortisol:{wl:5,wh:23,hh:40}, pth:{wl:15,wh:65,hh:200},
+  uacr:{wh:30,hh:300,ch:1000}, co2:{wl:22,wh:29,hl:15,hh:35}, lac:{wh:2.2,hh:4,ch:10}, ammonia:{wl:15,wh:45,hh:100},
+  ca125:{wh:35,hh:200}, ca153:{wh:30,hh:100}, ca199:{wh:37,hh:200}
 };
 const FLAG_COLOR={ok:'var(--ok)',warn:'var(--warn)',high:'var(--err)',crit:'#b91c1c'};
 const FLAG_ICON={ok:'',warn:'',high:'⚠️',crit:'🚨'};
@@ -3557,7 +3578,40 @@ const LAB_NAME_MAP=[
   [/\bua\b|uric/i,'ua'],
   [/r[-\s]?gt\b/i,'ggt'],
   [/\balb\b/i,'alb'],
-  [/\bglob\b/i,'glob']
+  [/\bglob\b/i,'glob'],
+  // ── 擴充檢驗名稱對應（specific 先於 general；CK-MB 先於 CK、NT-proBNP 先於 BNP）──
+  [/游離.*三碘|游離\s*t3|free\s*t3|\bft3\b/i,'ft3'],
+  [/鐵蛋白|ferritin/i,'ferritin'],
+  [/總鐵結合|iron[-\s]?binding|\btibc\b/i,'tibc'],
+  [/血清鐵|serum\s*iron/i,'fe'],
+  [/維生素\s*d|維他命\s*d|vitamin\s*d|25[-\s]?oh|25\(oh\)|骨化二醇/i,'vitd'],
+  [/維生素\s*b12|維他命\s*b12|\bb12\b|cobalamin|鈷胺/i,'b12'],
+  [/葉酸|folate|folic/i,'folate'],
+  [/紅血球沉降|血液?沉降|血沉|\besr\b/i,'esr'],
+  [/同(半|型半)胱胺酸|homocyst|\bhcy\b/i,'hcy'],
+  [/ck[-\s]?mb|creatine\s*kinase.{0,4}mb/i,'ckmb'],
+  [/肌酸激酶|creatine\s*kinase|\bcpk\b|\bck\b/i,'ck'],
+  [/肌鈣蛋白|troponin/i,'trop'],
+  [/nt[-\s]?pro[-\s]?bnp/i,'ntprobnp'],
+  [/\bbnp\b|利鈉(?:胜)?肽|natriuretic/i,'bnp'],
+  [/乳酸(去|脫)氫酶|\bldh\b/i,'ldh'],
+  [/澱粉酶|amylase/i,'amylase'],
+  [/脂肪酶|lipase/i,'lipase'],
+  [/凝血酶原|prothrombin/i,'pt'],
+  [/國際標準化比值|\binr\b/i,'inr'],
+  [/活化部分凝血|部分凝血活酶|\baptt\b/i,'aptt'],
+  [/d[-\s]?dimer|二聚體|雙合試驗/i,'ddimer'],
+  [/胰島素|insulin/i,'insulin'],
+  [/c[-\s]?peptide|c[-\s]?胜肽/i,'cpeptide'],
+  [/皮質醇|cortisol/i,'cortisol'],
+  [/副甲狀腺|parathyroid|\bpth\b/i,'pth'],
+  [/尿?白蛋白.{0,3}肌酸酐比|albumin.{0,3}creatinine\s*ratio|\bua?cr\b|微量白蛋白尿/i,'uacr'],
+  [/碳酸氫根|重碳酸|bicarbonate|\bhco3\b|二氧化碳|\bco2\b|\btco2\b/i,'co2'],
+  [/乳酸(?!去|脫)|\blactate\b|\blac\b/i,'lac'],
+  [/血氨|\bnh3\b|ammonia/i,'ammonia'],
+  [/ca[-\s]?125|糖鏈?抗原\s*125|醣蛋白\s*125/i,'ca125'],
+  [/ca[-\s]?15[-\s]?3|糖鏈?抗原\s*15/i,'ca153'],
+  [/ca[-\s]?19[-\s]?9|糖鏈?抗原\s*19/i,'ca199']
 ];
 function bankLabKey(name){ if(!name)return null; for(const[rx,k]of LAB_NAME_MAP){if(rx.test(name))return k;} return null; }
 // 各檢驗項的寬鬆生理範圍（用來剔除把「費用／代碼」誤當數值的情形，如膽固醇=14280）
@@ -3566,7 +3620,11 @@ const LAB_RANGE={sbp:[50,300],dbp:[30,200],hr:[20,250],glucose:[20,900],hba1c:[3
   ast:[2,6000],alt:[2,6000],ggt:[2,6000],alp:[10,4000],tbil:[0.1,50],dbil:[0.05,40],tp:[2,12],alb:[1,7],glob:[0.5,8],
   wbc:[0.1,300],rbc:[1,8],hb:[2,25],hct:[10,70],mcv:[50,140],mch:[15,45],mchc:[25,40],rdw:[8,30],plt:[5,2000],
   neut:[0,100],lymph:[0,100],mono:[0,100],eos:[0,100],baso:[0,100],tsh:[0.001,100],ft4:[0.1,12],t4:[1,30],t3:[10,600],
-  crp:[0,500],afp:[0,100000],cea:[0,10000],psa:[0,10000],weight:[20,300],height:[50,250],waist:[30,200]};
+  crp:[0,500],afp:[0,100000],cea:[0,10000],psa:[0,10000],weight:[20,300],height:[50,250],waist:[30,200],
+  ft3:[0.3,60],fe:[5,1000],ferritin:[1,40000],tibc:[50,1000],vitd:[1,200],b12:[10,4000],folate:[0.2,60],esr:[0,200],hcy:[1,500],
+  ck:[5,200000],ckmb:[0,5000],trop:[0,1000],bnp:[0,50000],ntprobnp:[0,100000],ldh:[20,50000],amylase:[2,50000],lipase:[2,50000],
+  pt:[5,120],inr:[0.4,15],aptt:[10,250],ddimer:[0,100],insulin:[0.1,1500],cpeptide:[0.05,120],cortisol:[0.1,200],pth:[1,5000],
+  uacr:[0,10000],co2:[5,60],lac:[0,50],ammonia:[1,2000],ca125:[0,100000],ca153:[0,100000],ca199:[0,1000000]};
 function bankLabInRange(key,v){ const r=LAB_RANGE[key]; return !r||(v>=r[0]&&v<=r[1]); }
 // 藥品代碼樣態（健保 10 碼藥品代碼：字母開頭＋英數）
 function looksLikeDrugCode(v){ return /^[A-Za-z][A-Za-z0-9]{6,11}$/.test(v)&&/\d/.test(v); }
@@ -3624,7 +3682,7 @@ function parseBankLabs(bd){
   // 藥品劑型字樣（連「標準項目」也要擋，真檢驗名稱不會有這些）
   const DRUG_FORM_RX=/錠|膠囊|毫克|微克|公絲|注射|針劑|軟膏|乳膏|乳劑|貼片|貼劑|滴劑|糖漿|栓劑|糖衣|膜衣|藥水|藥膏|口服液|懸液|發泡|口含|舌下/;
   // 礦物鹽類藥品成分（含鈣／鎂／鉀／鈉等，會誤中電解質檢驗）：碳酸鈣、氧化鎂、檸檬酸鈣…
-  const MINERAL_SALT_RX=/(碳酸|氫?氧化|氯化|檸檬酸|葡萄糖酸|乳酸|醋酸|硫酸|甘油磷酸|磷酸[氫二]|阿斯匹林|aspirin|carbonate|oxide|hydroxide|chloride|citrate|gluconate|lactate|acetate|sulfate|sulphate)\s*[鈣鎂鉀鈉鋅鐵鋁]|[鈣鎂鉀鈉][錠片粉]/i;
+  const MINERAL_SALT_RX=/(碳酸氫?|氫?氧化|氯化|檸檬酸|葡萄糖酸|乳酸|醋酸|硫酸|甘油磷酸|磷酸[氫二]|阿斯匹林|aspirin|carbonate|oxide|hydroxide|chloride|citrate|gluconate|lactate|acetate|sulfate|sulphate)\s*[鈣鎂鉀鈉鋅鐵鋁]|[鈣鎂鉀鈉][錠片粉]/i;
   // 判斷一個巢狀物件是否為「用藥明細」：含藥品代碼或劑型／礦物鹽成分字樣
   const looksLikeDrugObj=obj=>{ try{ return Object.values(obj).some(v=>{ if(typeof v!=='string')return false; const s=v.trim(); return looksLikeDrugCode(s)||DRUG_FORM_RX.test(s)||MINERAL_SALT_RX.test(s); }); }catch(_){ return false; } };
   // 一列可能含多個檢驗項目（整組套組），且值可能藏在巢狀子物件／子陣列裡（該次就醫的逐項結果）
@@ -4687,7 +4745,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.25-labs-nodrug';
+const APP_VERSION='2026.07.26-labs-dict';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
