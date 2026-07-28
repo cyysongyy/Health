@@ -1343,8 +1343,8 @@ function load(){
   // 一次性清理：舊版解析器匯入的健保檢驗可能把「區碼(4)」當成值、且日期記成匯入當天，
   // 會遮蓋重匯後的正確資料。清掉一次舊的健保檢驗（保留手動輸入），請使用者重匯一次即乾淨。
   try{
-    if(localStorage.getItem('ls_fix_nhilab_v6')!=='1'){
-      localStorage.setItem('ls_fix_nhilab_v6','1');
+    if(localStorage.getItem('ls_fix_nhilab_v7')!=='1'){
+      localStorage.setItem('ls_fix_nhilab_v7','1');
       if(s&&Array.isArray(s.labs)){
         const before=s.labs.length;
         s.labs=s.labs.filter(e=>e&&e.source!=='nhi');
@@ -3646,12 +3646,13 @@ function bankLabInRange(key,v){ const r=LAB_RANGE[key]; return !r||(v>=r[0]&&v<=
 // 藥品代碼樣態（健保 10 碼藥品代碼：字母開頭＋英數）
 function looksLikeDrugCode(v){ return /^[A-Za-z][A-Za-z0-9]{6,11}$/.test(v)&&/\d/.test(v); }
 function bankVisitDate(visit,vk){
+  const notFuture=iso=>iso&&iso.slice(0,10)<=todayKey();   // 排除未來日期（避免匯入當天等異常）
   // 健保原始日期：優先就醫／報告日期欄位 .5、.6、.7
-  let d=parseFlexDate(visit[vk+'.5'])||parseFlexDate(visit[vk+'.6'])||parseFlexDate(visit[vk+'.7']); if(d)return d;
+  let d=parseFlexDate(visit[vk+'.5'])||parseFlexDate(visit[vk+'.6'])||parseFlexDate(visit[vk+'.7']); if(d&&notFuture(d))return d;
   // 否則掃描所有欄位，收集「合理的」日期（西元 8 碼／民國 7 碼／含分隔符），取最早一個（避免抓到代碼）
   const cands=[];
   Object.keys(visit).forEach(k=>{ const v=visit[k]; if(typeof v!=='string')return; const s=v.trim();
-    if(/^\d{7}$/.test(s)||/^\d{8}$/.test(s)||/^\d{2,4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}$/.test(s)||/^\d{2,4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}/.test(s)){ const p=parseFlexDate(s); if(p)cands.push(p); }
+    if(/^\d{7}$/.test(s)||/^\d{8}$/.test(s)||/^\d{2,4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}$/.test(s)||/^\d{2,4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}/.test(s)){ const p=parseFlexDate(s); if(p&&notFuture(p))cands.push(p); }
   });
   if(cands.length){ cands.sort(); return cands[0]; }
   return null;
@@ -3734,9 +3735,9 @@ function parseBankLabs(bd){
     const hits=[], extras=[];
     rows.forEach(row=>{
       if(!row||typeof row!=='object')return;
-      // 日期：健保原始日期（採檢／就醫 .5，報告日 .6），否則掃描本列合理日期
-      let date=parseFlexDate(row[sec+'.5'])||parseFlexDate(row[sec+'.6']);
-      if(!date){ for(const e of entriesOf(row).sort((a,b)=>a.suf-b.suf)){ if(isDateStr(e.v)){ date=parseFlexDate(e.v); break; } } }
+      // 日期：一律取「原始檔案的檢驗時間」。優先 .5／.6／.7，否則徹底掃描本列所有欄位
+      // （支援民國 7 碼／西元 8 碼／含斜線·橫線·年月日 等格式），排除未來日期。絕不使用匯入當天。
+      let date=bankVisitDate(row,sec);
       // 待掃描單元：本列純量欄位 ＋ 任何巢狀。但「就醫明細子陣列」（_1／_2…，
       // 為用藥／處置明細，非檢驗）一律不掃描——否則會把藥品成分（如碳酸鈣、氧化鎂、
       // 含葡萄糖／鉀／鈉之藥物）誤讀成檢驗值，屬健康資料的致命錯誤。
@@ -3767,8 +3768,9 @@ function parseBankLabs(bd){
       BANK_LAB_DIAG.sections.push({sec,rows:rows.length,hits:hits.length,extras:extras.length,noDate,kept,rawSamples});
     }
     if(!kept)return;   // 沒有標準檢驗項目，不視為檢驗結果區
-    hits.forEach(({key,val,date})=>{ const iso=date||new Date().toISOString(); const dk=iso.slice(0,10); (byDate[dk]=byDate[dk]||{date:iso,values:{},extra:[]}).values[key]=val; });
-    if(keepExtras)extras.forEach(({name,val,date})=>{ const iso=date||new Date().toISOString(); const dk=iso.slice(0,10); const rec=(byDate[dk]=byDate[dk]||{date:iso,values:{},extra:[]}); rec.extra=rec.extra||[]; if(!rec.extra.some(x=>x.name===name&&x.val===val))rec.extra.push({name,val}); });
+    // 只用原始檢驗日期；若某筆真的無法取得日期，寧可略過也不用匯入當天（避免誤導為最新）
+    hits.forEach(({key,val,date})=>{ if(!date)return; const dk=date.slice(0,10); (byDate[dk]=byDate[dk]||{date,values:{},extra:[]}).values[key]=val; });
+    if(keepExtras)extras.forEach(({name,val,date})=>{ if(!date)return; const dk=date.slice(0,10); const rec=(byDate[dk]=byDate[dk]||{date,values:{},extra:[]}); rec.extra=rec.extra||[]; if(!rec.extra.some(x=>x.name===name&&x.val===val))rec.extra.push({name,val}); });
   });
   const records=Object.values(byDate).sort((a,b)=>new Date(a.date)-new Date(b.date));
   const fields={}; records.forEach(r=>Object.assign(fields,r.values));   // 最新一筆（依日期）帶入表單
@@ -4762,7 +4764,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.26-foot-vision';
+const APP_VERSION='2026.07.28-lab-origdate';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
