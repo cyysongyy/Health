@@ -3817,9 +3817,52 @@ function showLabParseCheck(){
     ${summary}
     <div class="hint" style="margin:2px 0 8px;">每項顯示系統「取到的值」與整列原始欄位（⬅️ 為取值處、名稱欄已標示）。若取錯，截圖該項給開發者即可校正。</div>
     ${diag}${body}
-    <div class="row-btn" style="margin-top:8px;"><button class="btn bg" onclick="document.getElementById('labChkModal').style.display='none'">關閉</button></div>
+    <div class="row-btn" style="margin-top:8px;gap:8px;">
+      <button class="btn bp" style="flex:1;" onclick="copyLabDiag()">📋 複製解析診斷（貼給開發者）</button>
+      <button class="btn bg" onclick="document.getElementById('labChkModal').style.display='none'">關閉</button>
+    </div>
+    <div class="hint" style="margin-top:6px;line-height:1.6;">📋 只含<b>檢驗欄位結構與數值</b>（院所／項目／日期欄），<b>不含身分證字號等個資</b>，可安全貼給開發者用於校正日期解析。</div>
   </div>`;
   m.style.display='flex';
+}
+// 把解析診斷組成純文字（欄位結構＋近日日期原始列＋樣本），複製到剪貼簿供開發者校正；不含身分證等個資
+function copyLabDiag(){
+  const L=[];
+  L.push('=== LifeSpan 健保檢驗解析診斷 v'+APP_VERSION+' ===');
+  const allLabs=(state.labs||[]).filter(e=>e.values&&Object.keys(e.values).length);
+  const dates=[...new Set(allLabs.map(e=>e.date.slice(0,10)))].sort();
+  L.push('已存檢驗筆數：'+allLabs.length+'；採用日期：'+(dates.join('、')||'—'));
+  if(BANK_LAB_DIAG&&BANK_LAB_DIAG.sections.length){
+    L.push('\n--- 區段結構（sec｜列數｜標準項｜未歸類｜採用）---');
+    BANK_LAB_DIAG.sections.forEach(s=>L.push(`${s.sec} | ${s.rows} | ${s.hits} | ${s.extras} | ${s.kept?'採用':'—'}`));
+    if(BANK_LAB_DIAG.recentRows&&BANK_LAB_DIAG.recentRows.length){
+      L.push('\n--- ⚠️ 採用到近日日期的原始列（最可能取錯採檢日的元兇）---');
+      BANK_LAB_DIAG.recentRows.forEach(r=>L.push(`[${r.sec}] 採用日期=${r.pickedDate}\n${r.raw}`));
+    }
+    const keptSecs=BANK_LAB_DIAG.sections.filter(s=>s.kept&&s.rows>0);
+    if(keptSecs.length){
+      L.push('\n--- 採用檢驗區的原始列樣本 ---');
+      keptSecs.slice(0,3).forEach(s=>{ (s.rawSamples||[]).forEach(rs=>L.push(`[${s.sec}] ${rs}`)); });
+    }
+  }
+  const keys=Object.keys(BANK_LAB_SAMPLES||{});
+  if(keys.length){
+    L.push('\n--- 各檢驗取值樣本（項目→取值｜取值欄｜名稱欄｜採用日期）---');
+    keys.slice(0,20).forEach(k=>{ const s=BANK_LAB_SAMPLES[k];
+      L.push(`${(LAB_META[k]?LAB_META[k].label:k)}→${s.picked} | 取值欄=${s.pickedKey} | 名稱欄=${s.nameField} | 日期=${s.date?s.date.slice(0,10):'—'}`); });
+  }
+  if(!BANK_LAB_DIAG || !BANK_LAB_DIAG.sections.length){
+    L.push('\n（無解析診斷——請先到「🔗 匯入串接」重新匯入一次健保檔，再開啟本畫面按複製）');
+  }
+  const txt=L.join('\n');
+  const done=()=>toast('📋 已複製診斷，請貼到對話給開發者');
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(done).catch(()=>fallbackCopy(txt,done)); }
+  else fallbackCopy(txt,done);
+}
+function fallbackCopy(txt,done){
+  try{ const ta=document.createElement('textarea'); ta.value=txt; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta);
+    ta.focus(); ta.select(); document.execCommand('copy'); ta.remove(); done&&done(); }
+  catch(e){ toast('複製失敗，請改用截圖'); }
 }
 /* 單筆檢驗紀錄：新增 / 編輯 / 刪除 */
 function labSyncMaybe(){ save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{}); }
@@ -5116,7 +5159,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-egfr-ref';
+const APP_VERSION='2026.07.29-labdiag-copy';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
