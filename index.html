@@ -1365,6 +1365,10 @@ service cloud.firestore {
       <span class="hint">本工具僅供衛教與自我管理參考，不構成醫療建議。· 2026</span><br>
       <span class="hint">版本 <b id="buildTag"></b></span>
     </div>
+    <div class="row-btn" style="margin-top:10px;">
+      <button class="btn bg" style="flex:1;min-width:120px;" onclick="openLegal('privacy')">🔒 隱私權政策</button>
+      <button class="btn bg" style="flex:1;min-width:120px;" onclick="openLegal('terms')">📜 服務條款</button>
+    </div>
   </div>
 </div>
 
@@ -2750,6 +2754,85 @@ function maybeDailyAlert(){
   let seen=''; try{seen=localStorage.getItem('ls_alertSeen')||'';}catch(e){}
   if(seen===todayKey())return;
   showHealthAlert(false);
+}
+
+/* ============ 隱私政策 / 服務條款 / 首次使用同意 ============ */
+const LEGAL_VERSION='2026-07-29';
+function legalContent(which){
+  if(which==='privacy'){
+    return `<h3 style="margin:.2em 0;">🔒 隱私權政策</h3>
+    <p class="hint" style="margin:.2em 0 .8em;">最後更新：${LEGAL_VERSION}</p>
+    <p>本 App（LifeSpan 健康預測）以「<b>本機優先、隱私自主</b>」為原則設計。開發者<b>沒有伺服器、沒有中央資料庫，收不到、也看不到你的任何健康資料</b>。</p>
+    <ol style="padding-left:1.2em;line-height:1.85;">
+      <li><b>資料存放位置：</b>你輸入的個人檔案、檢驗數據、用藥、影像與問答紀錄，只儲存在<b>你自己的裝置</b>（瀏覽器 localStorage）。清除瀏覽器資料或移除 App 即會刪除。</li>
+      <li><b>雲端備份（選填）：</b>當你主動使用「備份 / 加密備份 / Google Drive 同步 / Firebase 登入」時，資料才會存到<b>你自己的 Google／Firebase 帳號</b>。Google Drive 僅使用 <code>drive.file</code> 權限（只能存取本 App 建立的檔案），受 Google 隱私政策約束。<b>其他使用者無法看到你的備份，你的備份也不會進入開發者的帳號。</b></li>
+      <li><b>加密備份：</b>「🔒 加密備份」以 AES-GCM 於你的裝置本機加密，<b>密碼只在你手上、永不上傳</b>。忘記密碼將無法還原。</li>
+      <li><b>AI 分析（選填）：</b>只有在你<b>自行填入 API 金鑰</b >並使用「AI 綜合分析 / 健康Q&AI」時，才會把你的健康摘要傳送到你選擇的 AI 供應商（Google Gemini 或 OpenAI）進行處理，並受各供應商隱私政策約束。不使用 AI 功能則不會外傳。</li>
+      <li><b>不含廣告與追蹤：</b>本 App 不置入廣告 SDK、不做跨站追蹤、不販售你的資料。</li>
+      <li><b>你的權利與責任：</b>你可隨時匯出、還原或清除全部資料；請自行妥善保管裝置、雲端帳號與備份密碼。</li>
+    </ol>`;
+  }
+  return `<h3 style="margin:.2em 0;">📜 服務條款</h3>
+  <p class="hint" style="margin:.2em 0 .8em;">最後更新：${LEGAL_VERSION}</p>
+  <ol style="padding-left:1.2em;line-height:1.85;">
+    <li><b>用途：</b>本 App 為<b>個人健康自我管理與衛教參考工具</b>，用於整理、追蹤與呈現你自己的健康資料。</li>
+    <li><b>非醫療診斷：</b>本 App <b>不是醫療器材</b>，所有分數、風險估計、警示與建議<b>僅供衛教參考，不構成醫療診斷、治療或處方</b>。任何健康決策請諮詢合格醫療專業人員；<b>若有危急症狀請立即就醫或撥打緊急電話。</b></li>
+    <li><b>資料正確性：</b>估算結果依你輸入與匯入的資料計算，可能因資料不全或辨識誤差而不準確；使用者應自行核對，風險自負。</li>
+    <li><b>適用對象：</b>建議由成年人使用；未成年人請在監護人同意與陪同下使用。</li>
+    <li><b>免責：</b>本 App 以「現狀」提供，於法律允許範圍內不對使用結果承擔責任。</li>
+    <li><b>條款更新：</b>條款如有重大變更，會於 App 內再次請你確認同意。</li>
+  </ol>`;
+}
+function openLegal(which){
+  let m=document.getElementById('legalModal');
+  if(!m){m=document.createElement('div');m.id='legalModal';m.className='modal-overlay';document.body.appendChild(m);}
+  m.innerHTML=`<div class="modal-box" style="max-height:86vh;overflow:auto;">
+    ${legalContent(which)}
+    <div class="row-btn" style="margin-top:14px;">
+      <button class="btn bg" onclick="openLegal('${which==='privacy'?'terms':'privacy'}')">${which==='privacy'?'看 服務條款':'看 隱私權政策'}</button>
+      <button class="btn bp" onclick="closeLegal()">關閉</button>
+    </div></div>`;
+  m.style.display='flex';
+}
+function closeLegal(){const m=document.getElementById('legalModal');if(m){m.style.display='none';m.innerHTML='';}}
+function consentAccepted(){
+  try{ return (localStorage.getItem('ls_consent')||'') >= LEGAL_VERSION; }catch(e){ return false; }
+}
+function acceptConsent(){
+  const chk=document.getElementById('consentChk');
+  if(chk&&!chk.checked){ toast('請先勾選「我已閱讀並同意」'); return; }
+  try{ localStorage.setItem('ls_consent',LEGAL_VERSION); }catch(e){}
+  const m=document.getElementById('consentGate'); if(m){m.style.display='none';m.innerHTML='';}
+  toast('✅ 感謝，開始使用吧');
+  setTimeout(maybeDailyAlert,300);
+}
+function showConsentGate(){
+  let m=document.getElementById('consentGate');
+  if(!m){m=document.createElement('div');m.id='consentGate';m.className='modal-overlay';m.style.zIndex='1200';document.body.appendChild(m);}
+  m.innerHTML=`<div class="modal-box" style="max-height:88vh;overflow:auto;">
+    <div class="ct">👋 歡迎使用 LifeSpan 健康預測</div>
+    <div class="hint" style="margin:4px 0 12px;line-height:1.85;">開始前，請花一分鐘了解我們如何保護你的隱私：</div>
+    <ul style="padding-left:1.15em;line-height:1.9;margin:0 0 12px;">
+      <li>🔒 資料<b>只存在你的裝置</b>；開發者<b>沒有伺服器、收不到你的資料</b>。</li>
+      <li>☁️ 備份與 AI 皆為<b>選填</b>，且只連到<b>你自己的帳號／你填的金鑰</b>。</li>
+      <li>🩺 本 App 為<b>衛教參考工具，非醫療診斷</b>；危急請就醫。</li>
+    </ul>
+    <div class="hint" style="line-height:1.75;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;margin-bottom:12px;">
+      詳情請閱讀
+      <a href="javascript:void(0)" onclick="openLegal('privacy')" style="color:var(--acc);font-weight:700;">隱私權政策</a> 與
+      <a href="javascript:void(0)" onclick="openLegal('terms')" style="color:var(--acc);font-weight:700;">服務條款</a>。
+    </div>
+    <label style="display:flex;align-items:flex-start;gap:8px;font-size:.9rem;color:var(--g600);line-height:1.6;cursor:pointer;">
+      <input type="checkbox" id="consentChk" style="margin-top:3px;flex:none;"> 我已閱讀並同意上述<b>隱私權政策</b>與<b>服務條款</b>，並了解本 App 提供的資訊僅供衛教參考、非醫療診斷。</label>
+    <div class="row-btn" style="margin-top:14px;">
+      <button class="btn bp" style="flex:1;" onclick="acceptConsent()">✅ 同意並開始</button>
+    </div></div>`;
+  m.style.display='flex';
+}
+function maybeConsentGate(){
+  if(consentAccepted())return false;
+  showConsentGate();
+  return true;
 }
 /* ============ 健康顧問：整合檢驗×用藥×風險×影像，收斂成整體狀態＋優先行動＋就醫準備單 ============ */
 function advisorStatus(){
@@ -4991,7 +5074,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-encrypted-backup';
+const APP_VERSION='2026.07.29-consent-gate';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -5117,7 +5200,8 @@ function init(){
   applyI18n();
   if(state._nhiPurged){const n=state._nhiPurged;delete state._nhiPurged;save();setTimeout(()=>{toast('已清除 '+n+' 筆舊的健保檢驗，請到「匯入串接」重新匯入一次');},400);}
   if(state._vitalsPurged){const n=state._vitalsPurged;delete state._vitalsPurged;save();setTimeout(()=>{toast('已將 '+n+' 筆「健康評估數值」移出檢驗庫（仍保留於趨勢紀錄）');},800);}
-  setTimeout(maybeDailyAlert,600);
+  if(maybeConsentGate()){ /* 首次使用：先取得同意，同意後才跳每日健康警戒 */ }
+  else setTimeout(maybeDailyAlert,600);
   setTimeout(checkDueNotifications,1200);
   setInterval(checkDueNotifications,60000);
 }
