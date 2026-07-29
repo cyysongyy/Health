@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>隱私權政策與服務條款 · LifeSpan 健康預測</title>
+<meta name="description" content="LifeSpan 健康預測 App 的隱私權政策與服務條款：本機優先、隱私自主，開發者不蒐集你的健康資料。">
+<style>
+  :root{
+    --bg:#f6f8fb; --card:#ffffff; --text:#1f2937; --muted:#5b6472;
+    --acc:#2563eb; --line:#e5e9f0; --code:#eef2f7;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#0f141b; --card:#161d27; --text:#e6eaf0; --muted:#9aa4b2;
+           --acc:#6ea8fe; --line:#26303c; --code:#1c2430; }
+  }
+  *{box-sizing:border-box;}
+  html{font-size:17px;}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    line-height:1.85;-webkit-text-size-adjust:100%;}
+  .wrap{max-width:760px;margin:0 auto;padding:28px 18px 64px;}
+  header{margin-bottom:22px;}
+  .brand{font-size:.9rem;color:var(--acc);font-weight:700;letter-spacing:.02em;}
+  h1{font-size:1.5rem;margin:.35em 0 .15em;line-height:1.35;}
+  .updated{color:var(--muted);font-size:.85rem;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:20px 22px;margin:18px 0;}
+  h2{font-size:1.18rem;margin:.2em 0 .5em;display:flex;align-items:center;gap:.4em;}
+  h3{font-size:1rem;margin:1.1em 0 .3em;color:var(--acc);}
+  p{margin:.5em 0;}
+  ol{padding-left:1.25em;margin:.4em 0;}
+  ol li{margin:.5em 0;}
+  code{background:var(--code);padding:.08em .4em;border-radius:5px;font-size:.86em;
+    font-family:"DM Mono",ui-monospace,SFMono-Regular,Menlo,monospace;}
+  .note{background:color-mix(in srgb,var(--acc) 8%,transparent);
+    border:1px solid color-mix(in srgb,var(--acc) 30%,transparent);
+    border-radius:10px;padding:12px 14px;font-size:.92rem;}
+  .toc{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0 0;}
+  .toc a{color:var(--acc);text-decoration:none;font-size:.9rem;
+    border:1px solid var(--line);border-radius:999px;padding:5px 13px;}
+  .toc a:hover{background:color-mix(in srgb,var(--acc) 10%,transparent);}
+  a{color:var(--acc);}
+  footer{margin-top:28px;color:var(--muted);font-size:.82rem;text-align:center;line-height:1.7;}
+  .back{display:inline-block;margin-top:6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">🫀 LifeSpan 健康預測</div>
+    <h1>隱私權政策與服務條款</h1>
+    <div class="updated">最後更新：2026-07-29</div>
+    <nav class="toc">
+      <a href="#privacy">🔒 隱私權政策</a>
+      <a href="#terms">📜 服務條款</a>
+      <a href="#contact">✉️ 聯絡與資料權利</a>
+    </nav>
+  </header>
+
+  <section class="card" id="privacy">
+    <h2>🔒 隱私權政策</h2>
+    <p>本 App（LifeSpan 健康預測）以「<b>本機優先、隱私自主</b>」為原則設計。開發者<b>沒有伺服器、沒有中央資料庫，收不到、也看不到你的任何健康資料</b>。</p>
+    <ol>
+      <li><b>資料存放位置：</b>你輸入的個人檔案、檢驗數據、用藥、影像與問答紀錄，只儲存在<b>你自己的裝置</b>（瀏覽器 localStorage）。清除瀏覽器資料或移除 App 即會刪除。</li>
+      <li><b>雲端備份（選填）：</b>當你主動使用「備份 / 加密備份 / Google Drive 同步 / Firebase 登入」時，資料才會存到<b>你自己的 Google／Firebase 帳號</b>。Google Drive 僅使用 <code>drive.file</code> 權限（只能存取本 App 建立的檔案），受 Google 隱私政策約束。<b>其他使用者無法看到你的備份，你的備份也不會進入開發者的帳號。</b></li>
+      <li><b>加密備份：</b>「🔒 加密備份」以 AES-GCM 於你的裝置本機加密，<b>密碼只在你手上、永不上傳</b>。忘記密碼將無法還原。</li>
+      <li><b>AI 分析（選填）：</b>只有在你<b>自行填入 API 金鑰</b>並使用「AI 綜合分析 / 健康Q&AI」時，才會把你的健康摘要傳送到你選擇的 AI 供應商（Google Gemini 或 OpenAI）進行處理，並受各供應商隱私政策約束（涉及跨境傳輸至國外處理）。不使用 AI 功能則不會外傳。</li>
+      <li><b>不含廣告與追蹤：</b>本 App 不置入廣告 SDK、不做跨站追蹤、不販售你的資料。</li>
+      <li><b>你的權利與責任：</b>你可隨時匯出、還原或清除全部資料；請自行妥善保管裝置、雲端帳號與備份密碼。</li>
+    </ol>
+  </section>
+
+  <section class="card" id="terms">
+    <h2>📜 服務條款</h2>
+    <ol>
+      <li><b>用途：</b>本 App 為<b>個人健康自我管理與衛教參考工具</b>，用於整理、追蹤與呈現你自己的健康資料。</li>
+      <li><b>非醫療診斷：</b>本 App <b>不是醫療器材</b>，所有分數、風險估計、警示與建議<b>僅供衛教參考，不構成醫療診斷、治療或處方</b>。任何健康決策請諮詢合格醫療專業人員；<b>若有危急症狀請立即就醫或撥打緊急電話。</b></li>
+      <li><b>資料正確性：</b>估算結果依你輸入與匯入的資料計算，可能因資料不全或辨識誤差而不準確；使用者應自行核對，風險自負。</li>
+      <li><b>適用對象：</b>建議由成年人使用；未成年人請在監護人同意與陪同下使用。</li>
+      <li><b>免責：</b>本 App 以「現狀」提供，於法律允許範圍內不對使用結果承擔責任。</li>
+      <li><b>條款更新：</b>條款如有重大變更，會於 App 內再次請你確認同意。</li>
+    </ol>
+  </section>
+
+  <section class="card" id="contact">
+    <h2>✉️ 聯絡方式與資料權利</h2>
+    <h3>如何行使你的資料權利</h3>
+    <p>由於資料僅存於你自己的裝置與帳號，你可自行完整掌控：</p>
+    <ol>
+      <li><b>查詢／匯出：</b>設定 → 資料管理 →「匯出檔案（JSON）」。</li>
+      <li><b>更正：</b>於各功能頁直接編輯你的紀錄。</li>
+      <li><b>刪除：</b>設定 → 資料管理 →「清除全部資料」；如有雲端備份，請一併刪除你雲端硬碟中的備份檔。</li>
+    </ol>
+    <h3>資料保存期間</h3>
+    <p>本機資料保存至你主動清除或移除 App 為止；開發者端不留存任何個人健康資料。</p>
+    <h3>聯絡窗口</h3>
+    <p class="note">如對本政策有任何疑問，可來信：<a href="mailto:cyysongyy@gmail.com">cyysongyy@gmail.com</a></p>
+  </section>
+
+  <footer>
+    <div>本工具僅供衛教與自我管理參考，不構成醫療建議。</div>
+    <a class="back" href="./index.html">← 回到 LifeSpan 健康預測</a>
+  </footer>
+</div>
+</body>
+</html>
