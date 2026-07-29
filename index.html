@@ -334,6 +334,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   <div class="nt" data-sec="daily">📅 日常</div>
   <div class="nt" data-sec="foot">🦶 足部訓練</div>
   <div class="nt" data-sec="settings">⚙️ 設定</div>
+  <div class="nt" data-sec="qa">💬 健康Q&AI</div>
 </div>
 
 <div class="main">
@@ -599,11 +600,10 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   <div id="advisorBody"></div>
 </div>
 
-<!-- ========== 健康問答 Q&A ========== -->
+<!-- ========== 健康Q&AI ========== -->
 <div class="sec" id="sec-qa">
-  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('analysis')">‹ 綜合分析</button></div>
   <div class="card">
-    <div class="ct">❓ 健康問答 <span class="hint">AI 依你的整體狀況回答</span></div>
+    <div class="ct">💬 健康Q&AI <span class="hint">AI 依你的整體狀況回答</span></div>
     <div class="hint" style="line-height:1.7;">問任何關於你健康的問題，AI 會<b>根據你 App 內的全部資料</b>（檢驗、用藥、風險評估、目標、影像報告）針對「你這個人」來回答。衛教參考、非醫療診斷。</div>
     <div id="qaKeyNote" class="hint" style="display:none;background:#fffbeb;color:#92400e;border-radius:8px;padding:8px 10px;margin-top:8px;">尚未設定 AI 金鑰：請到「⚙️ 設定 → 🤖 AI 引擎設定」填入 Gemini 或 OpenAI API Key（Gemini 可免費申請）。</div>
     <div id="qaLog" style="max-height:52vh;overflow:auto;margin-top:12px;padding:4px;"></div>
@@ -1502,7 +1502,7 @@ function go(sec){
   const SUBT={labs:'🧪 檢驗數據庫',meds:'💊 用藥紀錄',surgery:'🔧 手術紀錄',reports:'🩻 影像病理',
     trend:'📈 趨勢追蹤',connect:'🔗 匯入串接',
     assess:'📝 健康評估',risk:'🔬 風險預測',medscore:'🩺 醫療級評估',smart:'🚨 智慧預警',
-    report:'📋 綜合報告',advice:'💡 建議 & AI',qa:'❓ 健康問答',advisor:'🧭 健康顧問',
+    report:'📋 綜合報告',advice:'💡 建議 & AI',advisor:'🧭 健康顧問',
     remind:'⏰ 提醒',habit:'✅ 每日習慣'};
   if(nc){ if(cur)nc.textContent=cur.textContent; else if(SUBT[sec])nc.textContent=SUBT[sec]; }
   closeNav();
@@ -1609,7 +1609,6 @@ function renderAnalysisHub(){
   hubCards('analysisHub',[
     {sec:'report',icon:'📋',title:'綜合報告',sub:'整合檢驗／風險／趨勢的重點報告（本機＋AI）'},
     {sec:'advice',icon:'💡',title:'建議 & AI',sub:'個人化健康建議',tag:aiTag},
-    {sec:'qa',icon:'❓',title:'健康問答',sub:'根據你的資料回答問題',tag:aiTag},
     {sec:'advisor',icon:'🧭',title:'健康顧問',sub:'目標追蹤與行動計畫'}
   ]);
 }
@@ -4945,7 +4944,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-data-trunk';
+const APP_VERSION='2026.07.29-qa-tab';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
