@@ -863,6 +863,8 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
     <div class="ct">🧠 綜合分析</div>
     <div class="hint" style="margin-bottom:4px;"><b>本機分析</b>（免金鑰）隨時可用；<b>AI 深入解讀</b>（需 API 金鑰）為加值層。</div>
   </div>
+  <div id="localAnalysis"></div>
+  <div class="hint" style="margin:14px 4px 6px;font-weight:700;color:var(--g600);">🤖 AI 深入分析（下列功能可用 AI 加值）</div>
   <div id="analysisHub"></div>
 </div>
 
@@ -1561,7 +1563,46 @@ function renderEvalHub(){
     {sec:'smart',icon:'🚨',title:'智慧預警',sub:'依你的數據自動偵測需注意的警訊'}
   ]);
 }
+// 本機綜合分析（免金鑰、即時計算）：整合健康分、風險、檢驗異常、交互作用、警訊
+function renderLocalAnalysis(){
+  const el=document.getElementById('localAnalysis'); if(!el)return;
+  const r=state.result, L=(typeof labLatest==='function')?labLatest():{};
+  let alerts=[]; try{alerts=buildHealthAlerts();}catch(_){alerts=[];}
+  const actionable=alerts.filter(x=>x.lvl!=='info');
+  const crit=alerts.filter(x=>x.lvl==='crit');
+  const abn=LAB_ORDER.filter(k=>L[k]!=null&&labFlag(k,L[k].v)!=='ok');
+  let ix=[]; try{ix=medInteractions();}catch(_){ix=[];}
+  const hasKey=!!(state.settings&&(state.settings.gemini||state.settings.openai));
+  let h='<div class="card" style="border-left:4px solid var(--pri);">';
+  h+='<div class="ct">🧮 本機綜合分析 <span class="hint">免金鑰・即時計算</span></div>';
+  if(r){
+    h+=`<div class="sg" style="grid-template-columns:repeat(2,1fr);margin-bottom:8px;">`+
+      `<div class="sc"><div class="sv">${r.score}</div><div class="sl">綜合健康分</div></div>`+
+      `<div class="sc p"><div class="sv">${r.bio}<small> 歲</small></div><div class="sl">生理年齡（實際 ${r.chrono||(state.profile&&state.profile.age)||'--'}）</div></div></div>`;
+    if(r.risks)h+=`<div style="font-size:.82rem;margin-bottom:8px;">風險：心血管 <b>${LEVEL_TXT[r.risks.cvd.level]}</b>・糖尿病 <b>${LEVEL_TXT[r.risks.dm.level]}</b>・代謝症候群 <b>${r.risks.mets.count}/5</b> 項</div>`;
+  }else{
+    h+='<div class="hint" style="margin-bottom:8px;">尚未做健康評估。到「📝 評估中心」完成評估，可加入健康分、生理年齡與風險預測。</div>';
+  }
+  const chips=[];
+  if(crit.length)chips.push(`<span style="color:#b91c1c;font-weight:700;">🚨 嚴重 ${crit.length}</span>`);
+  const warnN=actionable.length-crit.length;
+  if(warnN>0)chips.push(`<span style="color:var(--warn);font-weight:700;">⚠️ 需注意 ${warnN}</span>`);
+  if(abn.length)chips.push(`<span>🧪 檢驗異常 ${abn.length}</span>`);
+  if(ix.length)chips.push(`<span style="color:var(--err);">💊 交互作用 ${ix.length}</span>`);
+  if(chips.length)h+='<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:.84rem;margin-bottom:8px;">'+chips.join('')+'</div>';
+  else h+='<div class="hint" style="color:var(--ok);font-weight:600;margin-bottom:8px;">✅ 目前沒有偵測到需要注意的健康警訊。</div>';
+  if(actionable.length)h+=actionable.slice(0,3).map(x=>`<div class="hb"><div class="hb-l"><span>${x.icon} ${esc(x.title)}</span></div></div>`).join('');
+  h+='<div class="row-btn" style="margin-top:10px;gap:8px;flex-wrap:wrap;">'+
+     '<button class="btn bp" onclick="go(\'report\')">📋 完整本機報告</button>'+
+     '<button class="btn bg" onclick="showHealthAlert(true)">🔔 查看所有警訊</button></div>';
+  h+='</div>';
+  if(!hasKey){
+    h+='<div class="card" style="background:#f0f9ff;border:1px solid #bae6fd;"><div style="font-size:.85rem;line-height:1.75;">🔑 <b>想要 AI 白話深入解讀？</b><br>上方「本機綜合分析」<b>不需金鑰、已完整</b>。若想讓 AI 再用白話幫你解讀、還能對話問答，到「⚙️ 設定」填入 Gemini 或 OpenAI 金鑰，即可解鎖下方 AI 功能（金鑰只存在你手機、不外傳）。</div><div class="row-btn" style="margin-top:8px;"><button class="btn bg" onclick="go(\'settings\')">前往設定填金鑰</button></div></div>';
+  }
+  el.innerHTML=h;
+}
 function renderAnalysisHub(){
+  renderLocalAnalysis();
   const hasKey=!!(state.settings&&(state.settings.gemini||state.settings.openai));
   const aiTag=hasKey?'<span class="hint" style="color:var(--ok);">AI 已啟用</span>':'<span class="hint" style="color:var(--g500);">需金鑰</span>';
   hubCards('analysisHub',[
@@ -4880,7 +4921,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-nav-hub';
+const APP_VERSION='2026.07.29-local-analysis';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
