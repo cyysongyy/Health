@@ -3495,7 +3495,7 @@ const LAB_REF={
   sbp:{wl:90,wh:119,hh:139,ch:179}, dbp:{wl:60,wh:79,hh:89,ch:119}, hr:{wl:50,wh:100,hl:41,hh:130,cl:41,ch:130},
   glucose:{wl:70,wh:99,hl:60,hh:125,cl:45,ch:249}, hba1c:{wh:5.6,hh:6.4,ch:9.9},
   chol:{wh:199,hh:239,ch:319}, tg:{wh:149,hh:199,ch:499}, hdl:{wl:50,hl:40,cl:25}, ldl:{wh:129,hh:159,ch:189},
-  bun:{wl:7,wh:20,hh:39,ch:79}, cr:{wh:1.19,hh:1.49,ch:2.99}, egfr:{wl:90,hl:45,cl:15}, ua:{wh:6.9,hh:8.9,ch:11.9},
+  bun:{wl:7,wh:20,hh:39,ch:79}, cr:{wh:1.19,hh:1.49,ch:2.99}, egfr:{wl:60,hl:30,cl:15}, ua:{wh:6.9,hh:8.9,ch:11.9},
   na:{wl:135,wh:145,hl:125,hh:155,cl:120,ch:160}, k:{wl:3.5,wh:5.1,hl:3,hh:6,cl:2.5,ch:6.5}, cl:{wl:98,wh:107,hl:90,hh:115},
   ca:{wl:8.5,wh:10.5,hl:7.5,hh:12,cl:6,ch:14}, phos:{wl:2.5,wh:4.5,hl:1.5,hh:6}, mg:{wl:1.7,wh:2.4,hl:1.2,hh:3},
   ast:{wh:39,hh:119,ch:299}, alt:{wh:39,hh:119,ch:299}, ggt:{wh:49,hh:199,ch:599}, alp:{wl:40,wh:130,hh:300},
@@ -5116,7 +5116,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-privacy-page';
+const APP_VERSION='2026.07.29-egfr-ref';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
