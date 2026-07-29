@@ -1322,6 +1322,7 @@ service cloud.firestore {
       <button class="btn bp" style="flex:1;min-width:140px;background:var(--ok);border-color:var(--ok);" onclick="document.getElementById('importFile').click()">♻️ 還原（選備份檔）</button>
     </div>
     <div class="hint" style="margin-top:8px;line-height:1.7;">💡 <b>立即備份</b>：手機會跳出「分享」→ 選「儲存到雲端硬碟」即可（免登入、免設定）。<b>還原</b>：選之前存的 <code>lifespan-health-*.json</code> 檔。</div>
+    <div class="hint" style="margin-top:8px;line-height:1.75;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;">🔒 <b>隱私說明：</b>本 App <b>沒有伺服器、沒有中央資料庫</b>。你的資料只存在<b>你自己的手機</b>與<b>你自己的雲端硬碟</b>，<b>不會上傳給開發者，也不會與其他使用者共用</b>；備份檔只有你看得到。即使多人使用，每個人的資料都各自獨立。</div>
   </div>
   <div class="card">
     <div class="ct">🗂️ 進階資料管理</div>
@@ -4957,7 +4958,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-backup-ui';
+const APP_VERSION='2026.07.29-privacy-note';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
