@@ -1368,6 +1368,7 @@ service cloud.firestore {
     <div class="row-btn" style="margin-top:10px;">
       <button class="btn bg" style="flex:1;min-width:120px;" onclick="openLegal('privacy')">🔒 隱私權政策</button>
       <button class="btn bg" style="flex:1;min-width:120px;" onclick="openLegal('terms')">📜 服務條款</button>
+      <button class="btn bg" style="flex:1;min-width:120px;" onclick="startOnboarding(true)">🧭 重看導覽</button>
     </div>
   </div>
 </div>
@@ -2804,7 +2805,7 @@ function acceptConsent(){
   try{ localStorage.setItem('ls_consent',LEGAL_VERSION); }catch(e){}
   const m=document.getElementById('consentGate'); if(m){m.style.display='none';m.innerHTML='';}
   toast('✅ 感謝，開始使用吧');
-  setTimeout(maybeDailyAlert,300);
+  if(!maybeOnboarding()) setTimeout(maybeDailyAlert,300); // 同意後接首次導覽；導覽結束再跳每日警戒
 }
 function showConsentGate(){
   let m=document.getElementById('consentGate');
@@ -2834,6 +2835,47 @@ function maybeConsentGate(){
   showConsentGate();
   return true;
 }
+
+/* ============ 首次使用導覽（Onboarding Tour）============ */
+const ONBOARD_STEPS=[
+  {icon:'🫀', title:'歡迎使用 LifeSpan 健康預測', desc:'把你的健康資料集中管理：算出<b>生理年齡、預期壽命與慢性病風險</b>，並給出可執行的改善建議。<b>資料只存在你的裝置</b>，隱私自主。'},
+  {icon:'📝', title:'從「評估中心」開始', desc:'在「<b>📝 評估中心</b>」輸入身高體重、血壓、血糖與生活習慣，立即算出健康分數、生理年齡與風險。定期「<b>存為紀錄點</b>」即可追蹤趨勢。'},
+  {icon:'🗂️', title:'匯入你的檢驗與用藥', desc:'在「<b>🗂️ 醫藥紀錄</b>」可匯入健保健康存摺的檢驗／用藥，或用相機辨識檢驗報告；數據會自動整理成時序，供分析引用。'},
+  {icon:'🧠', title:'綜合分析（免金鑰也能用）', desc:'「<b>🧠 綜合分析</b>」提供<b>免金鑰的本地分析</b>（風險、趨勢、代謝症候群…）；若你填入自己的 AI 金鑰，還能取得 <b>AI 個人化解讀</b>與行動計畫。'},
+  {icon:'🦶', title:'足部訓練與健康問答', desc:'「<b>🦶 足部訓練</b>」有垂足復健與暖身導引；「<b>💬 健康Q&AI</b>」可就你的個人資料問任何健康問題（衛教參考，非醫療診斷）。'},
+  {icon:'💾', title:'別忘了備份', desc:'在「<b>⚙️ 設定 → 備份與還原</b>」一鍵把資料存到<b>你自己的雲端</b>，或用「<b>🔒 加密備份</b>」加上密碼。換手機、清快取都不怕丟。'}
+];
+let _obIdx=0, _obFirstRun=false;
+function onboarded(){ try{ return localStorage.getItem('ls_onboarded')==='1'; }catch(e){ return false; } }
+function startOnboarding(replay){ _obFirstRun=!replay; _obIdx=0; renderOnboarding(); }
+function renderOnboarding(){
+  let m=document.getElementById('onboardModal');
+  if(!m){m=document.createElement('div');m.id='onboardModal';m.className='modal-overlay';m.style.zIndex='1150';document.body.appendChild(m);}
+  const s=ONBOARD_STEPS[_obIdx], last=_obIdx===ONBOARD_STEPS.length-1;
+  const dots=ONBOARD_STEPS.map((_,i)=>`<span style="width:8px;height:8px;border-radius:50%;background:${i===_obIdx?'var(--acc)':'var(--g300,#cbd5e1)'};display:inline-block;"></span>`).join(' ');
+  m.innerHTML=`<div class="modal-box" style="text-align:center;">
+    <div style="font-size:3rem;line-height:1;margin:6px 0 10px;">${s.icon}</div>
+    <div class="ct" style="justify-content:center;">${s.title}</div>
+    <div class="hint" style="margin:8px 4px 14px;line-height:1.9;text-align:left;">${s.desc}</div>
+    <div style="display:flex;gap:8px;justify-content:center;margin-bottom:14px;">${dots}</div>
+    <div class="row-btn" style="gap:8px;">
+      ${_obIdx>0?'<button class="btn bg" style="flex:1;" onclick="obPrev()">‹ 上一步</button>':''}
+      <button class="btn bp" style="flex:2;" onclick="obNext()">${last?'🚀 開始使用':'下一步 ›'}</button>
+    </div>
+    <div style="margin-top:8px;"><a href="javascript:void(0)" onclick="skipOnboarding()" class="hint" style="color:var(--g600);text-decoration:underline;">略過導覽</a></div>
+  </div>`;
+  m.style.display='flex';
+}
+function obNext(){ if(_obIdx<ONBOARD_STEPS.length-1){_obIdx++;renderOnboarding();} else finishOnboarding(); }
+function obPrev(){ if(_obIdx>0){_obIdx--;renderOnboarding();} }
+function closeOnboardModal(){ const m=document.getElementById('onboardModal'); if(m){m.style.display='none';m.innerHTML='';} }
+function finishOnboarding(){
+  try{ localStorage.setItem('ls_onboarded','1'); }catch(e){}
+  closeOnboardModal();
+  if(_obFirstRun){ _obFirstRun=false; setTimeout(maybeDailyAlert,300); }
+}
+function skipOnboarding(){ finishOnboarding(); }
+function maybeOnboarding(){ if(onboarded())return false; startOnboarding(false); return true; }
 /* ============ 健康顧問：整合檢驗×用藥×風險×影像，收斂成整體狀態＋優先行動＋就醫準備單 ============ */
 function advisorStatus(){
   const A=buildHealthAlerts();
@@ -5074,7 +5116,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-consent-gate';
+const APP_VERSION='2026.07.29-onboarding';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -5200,7 +5242,8 @@ function init(){
   applyI18n();
   if(state._nhiPurged){const n=state._nhiPurged;delete state._nhiPurged;save();setTimeout(()=>{toast('已清除 '+n+' 筆舊的健保檢驗，請到「匯入串接」重新匯入一次');},400);}
   if(state._vitalsPurged){const n=state._vitalsPurged;delete state._vitalsPurged;save();setTimeout(()=>{toast('已將 '+n+' 筆「健康評估數值」移出檢驗庫（仍保留於趨勢紀錄）');},800);}
-  if(maybeConsentGate()){ /* 首次使用：先取得同意，同意後才跳每日健康警戒 */ }
+  if(maybeConsentGate()){ /* 首次使用：先取得同意 → 導覽 → 每日健康警戒 */ }
+  else if(maybeOnboarding()){ /* 已同意、尚未看過導覽（含既有使用者）：先跑導覽 */ }
   else setTimeout(maybeDailyAlert,600);
   setTimeout(checkDueNotifications,1200);
   setInterval(checkDueNotifications,60000);
