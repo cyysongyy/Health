@@ -317,7 +317,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   <h1>🫀 LifeSpan 健康預測</h1>
   <div class="hd-right">
     <span id="langToggle" class="api-badge" onclick="toggleLang()" style="cursor:pointer;background:rgba(255,255,255,.18);color:#fff;font-weight:700;">EN</span>
-    <span id="cloudBadge" class="api-badge api-off" onclick="go('settings')" style="cursor:pointer;">☁️ 未連線</span>
+    <span id="cloudBadge" class="api-badge api-off" onclick="quickBackup()" style="cursor:pointer;" title="點一下備份到 Google Drive">💾 備份</span>
     <span id="aiBadge" class="api-badge api-off">AI 未設定</span>
   </div>
 </div>
@@ -3018,7 +3018,7 @@ async function gdriveBackup(){
     state.settings.gdriveLast=new Date().toISOString(); save();
     gdriveState('✅ 已備份到 Google Drive（'+new Date().toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})+'）');
     toast('☁️ 備份完成');
-  }catch(e){ gdriveState('❌ 備份失敗：'+(e.message||e)+'（若是 403，請先展開下方說明「啟用 Google Drive API」）'); }
+  }catch(e){ gdriveState('❌ 備份失敗：'+(e.message||e)+'（若是 403，請先展開下方說明「啟用 Google Drive API」）'); toast('❌ 備份失敗：'+(e.message||e)); }
 }
 async function gdriveRestore(){
   if(!confirm('從 Google Drive 還原，會用雲端備份「覆蓋」這台裝置目前的資料。\n\n建議先在「有最新資料的那台」按一次備份。確定要還原嗎？'))return;
@@ -4944,7 +4944,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-qa-tab';
+const APP_VERSION='2026.07.29-backup-btn';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -5049,7 +5049,7 @@ function setupCloudGate(){
   const card=document.getElementById('fbCard');
   const badge=document.getElementById('cloudBadge');
   if(card)card.style.display=on?'block':'none';
-  if(badge)badge.style.display=on?'':'none';
+  if(badge)badge.style.display='';   // 「💾 備份」按鈕一律顯示（Google Drive 備份，人人可用）
   if(on){ fbInit(); }
   // 隱藏解鎖：連點版本號 5 下
   const bt=document.getElementById('buildTag');
@@ -5060,10 +5060,27 @@ function setupCloudGate(){
 
 /* ============ 雲端後台 ============ */
 function refreshCloudBadge(){
-  const on=!!(fbUser||state.settings.gas);
+  const b=document.getElementById('cloudBadge'); if(!b)return;
+  const last=state.settings&&state.settings.gdriveLast;
+  b.className='api-badge '+(last?'api-on':'api-off');
+  b.textContent='💾 備份';
+  b.title=last?('上次備份：'+new Date(last).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})+'（點一下再次備份）'):'點一下備份到 Google Drive';
+}
+// 標頭「💾 備份」：一鍵備份到 Google Drive（狀態以 toast＋徽章呈現，任何頁面都看得到）
+async function quickBackup(){
   const b=document.getElementById('cloudBadge');
-  b.className='api-badge '+(on?'api-on':'api-off');
-  b.textContent=fbUser?'☁️ 已登入':(on?'☁️ 已連線':'☁️ 未連線');
+  const cid=(state.settings&&state.settings.gcalClientId||'').trim();
+  if(!cid){ toast('第一次備份請先到「⚙️ 設定 → 📆 Google 日曆連結」貼上 Client ID'); go('settings'); return; }
+  const prev=state.settings.gdriveLast;
+  if(b){ b.textContent='⏳ 備份中…'; b.className='api-badge api-on'; }
+  toast('☁️ 備份中…（若跳 Google 授權請點允許）');
+  try{
+    await gdriveBackup();   // 內含授權＋上傳＋成功 toast，並更新 gdriveLast
+  }catch(e){ /* gdriveBackup 內已處理，這裡保底 */ }
+  const ok=state.settings.gdriveLast && state.settings.gdriveLast!==prev;
+  if(b){ b.textContent= ok?'✅ 已備份':'💾 備份'; b.className='api-badge '+(state.settings.gdriveLast?'api-on':'api-off');
+    if(ok)setTimeout(()=>{ const bb=document.getElementById('cloudBadge'); if(bb){bb.textContent='💾 備份';} },2600); }
+  if(!ok)toast('⚠️ 備份未完成，請再試一次或到「設定」查看訊息');
 }
 
 /* ---- Firebase 雲端同步 ---- */
