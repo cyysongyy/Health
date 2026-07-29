@@ -4948,7 +4948,27 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-backup-all';
+const APP_VERSION='2026.07.29-share-backup';
+// 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
+// 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
+async function shareOrDownloadBackup(){
+  const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
+  const name='lifespan-health-'+todayKey()+'.json';
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+  try{
+    if(navigator.canShare){
+      const file=new File([blob],name,{type:'application/json'});
+      if(navigator.canShare({files:[file]})){
+        await navigator.share({files:[file],title:'LifeSpan 健康資料備份',text:'我的健康資料備份檔（可存到雲端硬碟）'});
+        toast('已開啟分享 → 選「儲存到雲端硬碟」即可存到你的 Google Drive');
+        return true;
+      }
+    }
+  }catch(e){ if(e&&e.name==='AbortError')return false; /* 使用者取消，不再下載 */ }
+  const a2=document.createElement('a');a2.href=URL.createObjectURL(blob);a2.download=name;a2.click();
+  toast('💾 已下載備份檔，請存到雲端硬碟／相簿保管');
+  return true;
+}
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -5074,8 +5094,8 @@ function refreshCloudBadge(){
 async function quickBackup(){
   const b=document.getElementById('cloudBadge');
   const cid=effectiveClientId();
-  // 沒有雲端設定：直接下載一份備份檔，存到雲端硬碟／相簿即可（零設定、100% 可用）
-  if(!cid){ try{ exportData(); toast('💾 已下載備份檔，請存到雲端硬碟／相簿保管（在另一支手機用「設定→匯入」還原）'); }catch(e){ toast('下載失敗：'+(e.message||e)); } return; }
+  // 沒有雲端設定：叫出手機「分享」面板 → 直接「儲存到雲端硬碟」（零設定、免 OAuth、100% 可用）
+  if(!cid){ try{ await shareOrDownloadBackup(); }catch(e){ toast('備份失敗：'+(e.message||e)); } return; }
   const prev=state.settings.gdriveLast;
   if(b){ b.textContent='⏳ 備份中…'; b.className='api-badge api-on'; }
   toast('☁️ 備份中…（若跳 Google 授權請點允許）');
@@ -5083,8 +5103,8 @@ async function quickBackup(){
   const ok=state.settings.gdriveLast && state.settings.gdriveLast!==prev;
   if(b){ b.textContent= ok?'✅ 已備份':'💾 備份'; b.className='api-badge '+(state.settings.gdriveLast?'api-on':'api-off');
     if(ok)setTimeout(()=>{ const bb=document.getElementById('cloudBadge'); if(bb){bb.textContent='💾 備份';} },2600); }
-  // 雲端沒成功（未授權／離線／額度）→ 保底改下載備份檔，確保一定備份得到
-  if(!ok){ try{ exportData(); toast('雲端備份未完成，已改為下載備份檔給你保管'); }catch(_){ toast('⚠️ 備份未完成，請再試一次'); } }
+  // 雲端沒成功（未授權／離線／額度）→ 保底改用分享／下載備份檔，確保一定備份得到
+  if(!ok){ try{ await shareOrDownloadBackup(); }catch(_){ toast('⚠️ 備份未完成，請再試一次'); } }
 }
 
 /* ---- Firebase 雲端同步 ---- */
