@@ -1579,7 +1579,8 @@ function renderLocalAnalysis(){
     h+=`<div class="sg" style="grid-template-columns:repeat(2,1fr);margin-bottom:8px;">`+
       `<div class="sc"><div class="sv">${r.score}</div><div class="sl">綜合健康分</div></div>`+
       `<div class="sc p"><div class="sv">${r.bio}<small> 歲</small></div><div class="sl">生理年齡（實際 ${r.chrono||(state.profile&&state.profile.age)||'--'}）</div></div></div>`;
-    if(r.risks)h+=`<div style="font-size:.82rem;margin-bottom:8px;">風險：心血管 <b>${LEVEL_TXT[r.risks.cvd.level]}</b>・糖尿病 <b>${LEVEL_TXT[r.risks.dm.level]}</b>・代謝症候群 <b>${r.risks.mets.count}/5</b> 項</div>`;
+    if(r.risks){h+=`<div style="font-size:.82rem;margin-bottom:2px;">風險：心血管 <b>${LEVEL_TXT[r.risks.cvd.level]}</b>・糖尿病 <b>${LEVEL_TXT[r.risks.dm.level]}</b>・代謝症候群 <b>${r.risks.mets.count}/5</b> 項</div>`;
+      if(Object.keys(L).length)h+='<div class="hint" style="margin-bottom:8px;">🔗 已自動納入最新檢驗值（LDL／HbA1c／三酸甘油酯／eGFR…）精算</div>';}
   }else{
     h+='<div class="hint" style="margin-bottom:8px;">尚未做健康評估。到「📝 評估中心」完成評估，可加入健康分、生理年齡與風險預測。</div>';
   }
@@ -1665,8 +1666,20 @@ function fillProfile(p){
   buildSeg('seg-stress',STRESS_LABELS,state.stressVal,v=>{state.stressVal=v;save();});
 }
 
+/* ============ 資料主幹：把真實檢驗值餵進評估／風險模型 ============ */
+// 表單值優先；表單缺的欄位以最新檢驗補上，並額外帶入 LDL／HbA1c／TG／eGFR… 供模型精算。
+function enrichProfileWithLabs(p){
+  if(!p) return p;
+  const L=(typeof labLatest==='function')?labLatest():{};
+  const q={...p};
+  const lv=k=>L[k]!=null?toNum(L[k].v):null;
+  ['sbp','dbp','glucose','chol','hdl','hr','waist','weight','height'].forEach(k=>{ if(q[k]==null){const x=lv(k); if(x!=null)q[k]=x;} });
+  ['ldl','tg','hba1c','egfr','cr','ua','ast','alt','ggt'].forEach(k=>{ if(q[k]==null){const x=lv(k); if(x!=null)q[k]=x;} });
+  return q;
+}
 /* ============ 核心：健康預測模型 ============ */
 function compute(p){
+  p=enrichProfileWithLabs(p);   // 單一事實來源：計算前先把真實檢驗值補進來
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   // 衍生指標
   const bmi = (p.weight&&p.height)? p.weight/Math.pow(p.height/100,2) : null;
@@ -1772,7 +1785,12 @@ function computeRisks(p,bmi,whtr){
   if(p.sbp){ if(p.sbp>=160)cvd+=3; else if(p.sbp>=140)cvd+=2; else if(p.sbp>=130)cvd+=1; }
   if(p.chol&&p.hdl){ const r=p.chol/p.hdl; if(r>=5)cvd+=2; else if(r>=4)cvd+=1; }
   else if(p.chol&&p.chol>=240)cvd+=1;
-  if(p.glucose&&p.glucose>=126)cvd+=2; else if(p.glucose>=100)cvd+=1;
+  if(p.ldl){ if(p.ldl>=190)cvd+=2; else if(p.ldl>=160)cvd+=1; }   // 真實 LDL：家族性高膽固醇等
+  // 高血糖／高血色素（取較嚴重者，避免重複計分）
+  let cvdGlu=0; if(p.glucose){ if(p.glucose>=126)cvdGlu=2; else if(p.glucose>=100)cvdGlu=1; }
+  if(p.hba1c){ if(p.hba1c>=6.5)cvdGlu=Math.max(cvdGlu,2); else if(p.hba1c>=5.7)cvdGlu=Math.max(cvdGlu,1); }
+  cvd+=cvdGlu;
+  if(p.egfr&&p.egfr<60)cvd+=1;   // 慢性腎病是獨立心血管風險因子
   if(bmi&&bmi>=30)cvd+=1;
   if(p.exercise===0)cvd+=1;
   if(p.fhHeart)cvd+=1;
@@ -1786,18 +1804,24 @@ function computeRisks(p,bmi,whtr){
   else if(p.waist){ const m=p.sex==='male'; if(p.waist>=(m?102:88))dm+=4; else if(p.waist>=(m?94:80))dm+=3; }
   if(p.exercise<150)dm+=2;
   if(p.diet<=2)dm+=1;
-  if(p.glucose){ if(p.glucose>=126)dm+=5; else if(p.glucose>=100)dm+=3; }
+  // 血糖失調：空腹血糖與 HbA1c 取較嚴重者（HbA1c 為更穩定的長期指標）
+  let dysgly=0;
+  if(p.glucose){ if(p.glucose>=126)dysgly=5; else if(p.glucose>=100)dysgly=3; }
+  if(p.hba1c){ if(p.hba1c>=6.5)dysgly=Math.max(dysgly,5); else if(p.hba1c>=5.7)dysgly=Math.max(dysgly,3); }
+  dm+=dysgly;
   if(p.fhDiabetes)dm+=3;
   const dmLevel = dm>=12?'vhigh':dm>=8?'high':dm>=5?'mod':'low';
 
   // 代謝症候群（5 項）
   const m=p.sex==='male';
+  // 代謝症候群國際準則（NCEP ATP III）：腰圍／血壓／空腹血糖／三酸甘油酯／HDL
+  const gluHit = (p.glucose!=null||p.hba1c!=null)? ((p.glucose!=null&&p.glucose>=100)||(p.hba1c!=null&&p.hba1c>=5.7)) : null;
   const mets=[
     {label:'腰圍', hit: p.waist? p.waist>=(m?90:80):null, val:p.waist?p.waist+' cm':'—'},
     {label:'血壓', hit: p.sbp? (p.sbp>=130||(p.dbp&&p.dbp>=85)):null, val:p.sbp?(p.sbp+'/'+(p.dbp||'?')):'—'},
-    {label:'空腹血糖', hit: p.glucose? p.glucose>=100:null, val:p.glucose?p.glucose+' mg/dL':'—'},
-    {label:'HDL', hit: p.hdl? p.hdl<(m?40:50):null, val:p.hdl?p.hdl+' mg/dL':'—'},
-    {label:'總膽固醇', hit: p.chol? p.chol>=200:null, val:p.chol?p.chol+' mg/dL':'—'}
+    {label:'空腹血糖', hit: gluHit, val:p.glucose!=null?p.glucose+' mg/dL':(p.hba1c!=null?'HbA1c '+p.hba1c+'%':'—')},
+    {label:'三酸甘油酯', hit: p.tg!=null? p.tg>=150:null, val:p.tg!=null?p.tg+' mg/dL':'—'},
+    {label:'HDL', hit: p.hdl? p.hdl<(m?40:50):null, val:p.hdl?p.hdl+' mg/dL':'—'}
   ];
   const metsCount = mets.filter(x=>x.hit===true).length;
   const metsLevel = metsCount>=3?'high':metsCount>=2?'mod':'low';
@@ -2029,7 +2053,7 @@ function autoSyncFromLabs(){
   if(!state.profile) return false;   // 需先有評估基本資料才能重算
   const L=labLatest();
   const p={...state.profile}; let changed=false;
-  ['sbp','dbp','glucose','chol','hdl','hr','waist','weight','height'].forEach(k=>{
+  ['sbp','dbp','glucose','chol','hdl','hr','waist','weight','height','ldl','tg','hba1c','egfr','cr','ua'].forEach(k=>{
     if(L[k]!=null){const n=toNum(L[k].v); if(n!==null&&p[k]!==n){p[k]=n;changed=true;}}
   });
   if(!changed) return false;
@@ -4921,7 +4945,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-local-analysis';
+const APP_VERSION='2026.07.29-data-trunk';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
