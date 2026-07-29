@@ -1185,9 +1185,10 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <span style="min-width:52px;text-align:right;font-weight:700;" id="fontScaleLbl">150%</span>
     </div>
   </div>
-  <div class="card">
-    <div class="ct">☁️ Google Drive 備份／同步 <span class="hint">（推薦）</span></div>
-    <div class="hint" style="line-height:1.7;margin-bottom:8px;">把資料備份到<b>你自己的 Google Drive</b>——換手機或清除快取都不會丟；在另一支手機按「還原」即可同步。<b>重用你在「📆 Google 日曆連結」設定的同一組 Client ID</b>，不需再設定。備份檔只存在你的 Drive、且只有本 App 看得到，隱私安全。</div>
+  <details class="card">
+    <summary style="cursor:pointer;font-weight:800;color:var(--prid);list-style:none;">☁️ 進階：全自動 Google Drive（選配，點開設定）</summary>
+    <div class="hint" style="line-height:1.75;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:8px 10px;margin:10px 0;">💡 <b>一般使用者不用碰這裡。</b>想備份，直接按上方「💾 立即備份」或右上角「💾 備份」→ 選「儲存到雲端硬碟」就好，<b>免申請、免設定</b>。<br>這張卡是給想要「<b>按一下就自動存、不用每次選檔</b>」的進階使用者／擁有者，需一次性設定 Client ID 與啟用 Drive API。</div>
+    <div class="hint" style="line-height:1.7;margin-bottom:8px;">設定後可把資料備份到<b>你自己的 Google Drive</b>，換手機也不丟；<b>重用「📆 Google 日曆連結」的同一組 Client ID</b>。備份檔只存在你的 Drive、且只有本 App 看得到（<code>drive.file</code> 權限）。</div>
     <div class="hint" style="line-height:1.75;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;margin-bottom:8px;">🔒 <b>資料只會備份到「你自己」的 Google 帳號。</b>備份時你登入哪個 Google，檔案就存進那個人的 Drive，人人一份、各自獨立、互不相通，也不會傳給開發者。App 只能存取它自己建立的那一個備份檔（<code>drive.file</code> 權限），碰不到你 Drive 的其他東西。</div>
     <div id="gdriveState" class="hint" style="margin-bottom:8px;"></div>
     <div class="row-btn" style="flex-wrap:wrap;gap:8px;">
@@ -1202,7 +1203,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <summary style="cursor:pointer;color:var(--acc);font-weight:600;">▸ 第一次使用要先啟用「Google Drive API」（約 30 秒）</summary>
       <div style="margin-top:6px;">點這個連結 → 按「啟用」：<br><a class="link" href="https://console.cloud.google.com/apis/library/drive.googleapis.com?project=young-app-library" target="_blank">啟用 Google Drive API</a><br>之後回來按「☁️ 備份」，第一次會跳一次 Google 授權（允許存取「本 App 建立的檔案」），點繼續／允許即可。需連線；離線版請用下方「資料管理 → 匯出 JSON」。</div>
     </details>
-  </div>
+  </details>
   <div class="card" id="fbCard" style="display:none;">
     <div class="ct">🔥 Firebase 雲端同步 <span class="hint">（舊版·選用）</span></div>
     <div class="hint" style="color:#92400e;background:#fffbeb;border-radius:8px;padding:8px 10px;margin-bottom:8px;">此為舊的雲端方式，先前連線有問題；<b>建議改用上方的「☁️ Google Drive 備份」</b>。</div>
@@ -4987,7 +4988,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-privacy2';
+const APP_VERSION='2026.07.29-simple-backup';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
