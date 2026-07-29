@@ -1327,7 +1327,10 @@ service cloud.firestore {
       <button class="btn bp" style="flex:1;min-width:140px;" onclick="quickBackup()">💾 立即備份</button>
       <button class="btn bp" style="flex:1;min-width:140px;background:var(--ok);border-color:var(--ok);" onclick="document.getElementById('importFile').click()">♻️ 還原（選備份檔）</button>
     </div>
-    <div class="hint" style="margin-top:8px;line-height:1.7;">💡 <b>立即備份</b>：手機會跳出「分享」→ 選「儲存到雲端硬碟」即可（免登入、免設定）。<b>還原</b>：選之前存的 <code>lifespan-health-*.json</code> 檔。</div>
+    <div class="row-btn" style="gap:10px;margin-top:10px;">
+      <button class="btn bg" style="flex:1;min-width:140px;" onclick="encryptedBackup()">🔒 加密備份（設密碼）</button>
+    </div>
+    <div class="hint" style="margin-top:8px;line-height:1.7;">💡 <b>立即備份</b>：手機會跳出「分享」→ 選「儲存到雲端硬碟」即可（免登入、免設定）。<b>還原</b>：選之前存的 <code>lifespan-health-*.json</code> 檔。<br>🔒 <b>加密備份</b>：另存一份用<b>密碼上鎖</b>的 <code>*.enc.json</code>，適合放公用電腦或分享雲端；還原時用同一顆「還原」按鈕、輸入密碼即可。<b>密碼只存在你腦中，忘記將無法還原。</b></div>
     <div class="hint" style="margin-top:8px;line-height:1.75;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:8px 10px;">🔒 <b>隱私說明：</b>本 App <b>沒有伺服器、沒有中央資料庫</b>。你的資料只存在<b>你自己的手機</b>與<b>你自己的雲端硬碟</b>，<b>不會上傳給開發者，也不會與其他使用者共用</b>；備份檔只有你看得到。即使多人使用，每個人的資料都各自獨立。</div>
   </div>
   <div class="card">
@@ -4988,7 +4991,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-simple-backup';
+const APP_VERSION='2026.07.29-encrypted-backup';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -5009,6 +5012,59 @@ async function shareOrDownloadBackup(){
   toast('💾 已下載備份檔，請存到雲端硬碟／相簿保管');
   return true;
 }
+
+/* ============ 加密備份（AES-GCM + PBKDF2，離線本機加密，密碼只在你手上）============ */
+const _KDF_ITER=150000;
+function _b64(buf){ const b=new Uint8Array(buf); let s=''; for(let i=0;i<b.length;i++)s+=String.fromCharCode(b[i]); return btoa(s); }
+function _unb64(str){ const s=atob(str); const b=new Uint8Array(s.length); for(let i=0;i<s.length;i++)b[i]=s.charCodeAt(i); return b; }
+async function _deriveKey(pw,salt,iter){
+  const enc=new TextEncoder();
+  const base=await crypto.subtle.importKey('raw',enc.encode(pw),{name:'PBKDF2'},false,['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {name:'PBKDF2',salt,iterations:iter,hash:'SHA-256'},
+    base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+async function encryptBackupEnvelope(pw){
+  const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
+  const plain=new TextEncoder().encode(JSON.stringify(payload));
+  const salt=crypto.getRandomValues(new Uint8Array(16));
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const key=await _deriveKey(pw,salt,_KDF_ITER);
+  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,plain);
+  return {app:'LifeSpan', enc:'AES-GCM', kdf:'PBKDF2', hash:'SHA-256', iter:_KDF_ITER,
+          salt:_b64(salt), iv:_b64(iv), ct:_b64(ct), exportedAt:payload.exportedAt};
+}
+async function decryptBackupEnvelope(pw,env){
+  const salt=_unb64(env.salt), iv=_unb64(env.iv), ct=_unb64(env.ct);
+  const key=await _deriveKey(pw,salt,+env.iter||_KDF_ITER);
+  const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct); // 密碼錯誤 → 於此丟出例外
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+async function encryptedBackup(){
+  if(!(crypto&&crypto.subtle)){ toast('此瀏覽器不支援加密（需 HTTPS）'); return; }
+  const pw=prompt('設定備份密碼（用來加密這份檔案，請牢記；忘記密碼將無法還原）：');
+  if(pw===null)return; // 取消
+  if(!pw||pw.length<4){ toast('密碼太短，請至少 4 個字'); return; }
+  const pw2=prompt('請再輸入一次密碼確認：');
+  if(pw2===null)return;
+  if(pw!==pw2){ toast('兩次密碼不一致，請重試'); return; }
+  let env; try{ env=await encryptBackupEnvelope(pw); }catch(e){ toast('加密失敗'); return; }
+  const name='lifespan-health-'+todayKey()+'.enc.json';
+  const blob=new Blob([JSON.stringify(env,null,2)],{type:'application/json'});
+  try{
+    if(navigator.canShare){
+      const file=new File([blob],name,{type:'application/json'});
+      if(navigator.canShare({files:[file]})){
+        await navigator.share({files:[file],title:'LifeSpan 加密備份',text:'我的健康資料加密備份檔（需密碼才能還原）'});
+        toast('🔒 已開啟分享 → 選「儲存到雲端硬碟」即可存到你的 Google Drive');
+        return;
+      }
+    }
+  }catch(e){ if(e&&e.name==='AbortError')return; }
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();
+  toast('🔒 已下載加密備份檔，請牢記密碼並存到雲端保管');
+}
+
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -5019,12 +5075,20 @@ function exportData(){
 function importData(e){
   const f=e.target.files[0];if(!f)return;
   const rd=new FileReader();
-  rd.onload=()=>{try{
-    const parsed=JSON.parse(rd.result);
-    const data=(parsed&&parsed.schemaVersion&&parsed.data)?parsed.data:parsed; // 相容新（含中繼）與舊（純 state）格式
+  rd.onload=async()=>{try{
+    let parsed=JSON.parse(rd.result);
+    if(parsed&&parsed.enc==='AES-GCM'){ // 加密備份：需密碼解密
+      const pw=prompt('這是加密備份檔，請輸入備份密碼以還原：');
+      if(pw===null){e.target.value='';return;}
+      try{ parsed=await decryptBackupEnvelope(pw,parsed); }
+      catch(err){ toast('密碼錯誤或檔案毀損，無法還原'); e.target.value=''; return; }
+    }
+    const data=(parsed&&parsed.schemaVersion&&parsed.data)?parsed.data:parsed; // 相容含中繼／純 state 格式
+    if(!data||typeof data!=='object'){ toast('匯入失敗：格式錯誤'); e.target.value=''; return; }
     state=Object.assign(defaults(),data);save();toast('✅ 匯入成功');init();
-  }catch(err){toast('匯入失敗：格式錯誤');}};
-  rd.readAsText(f);e.target.value='';
+  }catch(err){toast('匯入失敗：格式錯誤');}
+  finally{ e.target.value=''; }};
+  rd.readAsText(f);
 }
 function resetAll(){ if(confirm('確定清除所有資料？此動作無法復原。')){localStorage.removeItem(LS_KEY);state=defaults();init();toast('已清除全部資料');} }
 

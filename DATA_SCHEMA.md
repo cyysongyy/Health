@@ -12,7 +12,10 @@
 | Firestore `users/{uid}/lifespan/data` | `{profile, history[], labs[], meds[], habits{}, updatedAt}` | 雲端同步（選填，Firebase 登入後） |
 | Firestore `users/{uid}/lifespan_images/{snapId}` | `{image(base64), kind, date}` | 報告原檔留底（選填） |
 | 匯出檔 `lifespan-health-YYYY-MM-DD.json` | `{app, schemaVersion, exportedAt, data:state}` | 手動匯出（設定 → 資料管理） |
+| 加密備份 `lifespan-health-YYYY-MM-DD.enc.json` | `{app, enc:'AES-GCM', kdf:'PBKDF2', hash:'SHA-256', iter, salt, iv, ct, exportedAt}` | 密碼加密備份（設定 → 備份與還原 → 🔒 加密備份） |
 | 匯出檔 `lifespan-labs-YYYY-MM-DD.csv` | 檢驗數據平表 | 檢驗數據庫 CSV 匯出 |
+
+> **加密備份格式**：以 Web Crypto 於本機加密，密碼永不離開裝置。`salt`（16 bytes）/`iv`（12 bytes）/`ct`（密文，含 GCM 驗證標籤）皆為 base64；金鑰由密碼經 **PBKDF2-SHA256、150,000 次迭代**推導出 **AES-GCM 256-bit**。明文即上方標準匯出檔 `{app, schemaVersion, exportedAt, data:state}`。還原時由「還原（選備份檔）」自動偵測 `enc==='AES-GCM'` 後提示輸入密碼；密碼錯誤會在解密時丟出例外並中止，原資料不受影響。**忘記密碼將無法還原**。
 
 > `schemaVersion` 目前為 **1**。匯入同時相容舊格式（無中繼、直接是 `state`）。
 
