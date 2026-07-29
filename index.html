@@ -2356,7 +2356,7 @@ function loadGsi(){
   });
 }
 function connectGcalVisits(){
-  const cid=(state.settings&&state.settings.gcalClientId||'').trim();
+  const cid=effectiveClientId();
   if(!cid){
     gcalSetState('尚未設定 Client ID。請到「⚙️ 設定 → 📆 Google 日曆連結」貼上你的 OAuth Client ID（一次性，約 5 分鐘）。');
     toast('請先到「設定」貼上 Google Client ID'); go('settings'); return;
@@ -2981,10 +2981,14 @@ function exportQA(){
 /* ============ Google Drive 備份／同步（重用日曆 OAuth 的 Client ID，drive.file 非機敏權限） ============ */
 let gdriveToken=null, gdriveTC=null;
 const GDRIVE_FILE='lifespan-health-backup.json';
+// 全 App 共用的預設 OAuth Client ID（公開值、非機敏）。擁有者於此填入一次後，
+// 所有使用者不必自行設定，即可一鍵備份到「自己的」Google Drive。留空＝退回「下載備份檔」。
+const DEFAULT_GCAL_CLIENT_ID='';
+function effectiveClientId(){ return ((state.settings&&state.settings.gcalClientId||'').trim())||DEFAULT_GCAL_CLIENT_ID; }
 function gdriveState(msg){ const el=document.getElementById('gdriveState'); if(el)el.innerHTML=msg; }
 function gdriveAuth(){
   return new Promise((res,rej)=>{
-    const cid=(state.settings&&state.settings.gcalClientId||'').trim();
+    const cid=effectiveClientId();
     if(!cid){ toast('請先到「📆 Google 日曆連結」貼上 OAuth Client ID'); rej(new Error('尚未設定 Client ID，請先在上方「Google 日曆連結」貼上。')); return; }
     if(!navigator.onLine){ rej(new Error('目前離線；離線請改用「資料管理 → 匯出 JSON」')); return; }
     loadGsi().then(()=>{
@@ -4944,7 +4948,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-backup-btn';
+const APP_VERSION='2026.07.29-backup-all';
 function exportData(){
   // 包一層中繼資料，方便未來後端移轉／版本判讀（data 內即完整 state）
   const payload={app:'LifeSpan', schemaVersion:SCHEMA_VERSION, exportedAt:new Date().toISOString(), data:state};
@@ -5066,21 +5070,21 @@ function refreshCloudBadge(){
   b.textContent='💾 備份';
   b.title=last?('上次備份：'+new Date(last).toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})+'（點一下再次備份）'):'點一下備份到 Google Drive';
 }
-// 標頭「💾 備份」：一鍵備份到 Google Drive（狀態以 toast＋徽章呈現，任何頁面都看得到）
+// 標頭「💾 備份」：一鍵備份。有 Google 設定→備份到你自己的 Drive；否則→下載備份檔（人人可用、免帳號）
 async function quickBackup(){
   const b=document.getElementById('cloudBadge');
-  const cid=(state.settings&&state.settings.gcalClientId||'').trim();
-  if(!cid){ toast('第一次備份請先到「⚙️ 設定 → 📆 Google 日曆連結」貼上 Client ID'); go('settings'); return; }
+  const cid=effectiveClientId();
+  // 沒有雲端設定：直接下載一份備份檔，存到雲端硬碟／相簿即可（零設定、100% 可用）
+  if(!cid){ try{ exportData(); toast('💾 已下載備份檔，請存到雲端硬碟／相簿保管（在另一支手機用「設定→匯入」還原）'); }catch(e){ toast('下載失敗：'+(e.message||e)); } return; }
   const prev=state.settings.gdriveLast;
   if(b){ b.textContent='⏳ 備份中…'; b.className='api-badge api-on'; }
   toast('☁️ 備份中…（若跳 Google 授權請點允許）');
-  try{
-    await gdriveBackup();   // 內含授權＋上傳＋成功 toast，並更新 gdriveLast
-  }catch(e){ /* gdriveBackup 內已處理，這裡保底 */ }
+  try{ await gdriveBackup(); }catch(e){ /* gdriveBackup 內已處理 */ }
   const ok=state.settings.gdriveLast && state.settings.gdriveLast!==prev;
   if(b){ b.textContent= ok?'✅ 已備份':'💾 備份'; b.className='api-badge '+(state.settings.gdriveLast?'api-on':'api-off');
     if(ok)setTimeout(()=>{ const bb=document.getElementById('cloudBadge'); if(bb){bb.textContent='💾 備份';} },2600); }
-  if(!ok)toast('⚠️ 備份未完成，請再試一次或到「設定」查看訊息');
+  // 雲端沒成功（未授權／離線／額度）→ 保底改下載備份檔，確保一定備份得到
+  if(!ok){ try{ exportData(); toast('雲端備份未完成，已改為下載備份檔給你保管'); }catch(_){ toast('⚠️ 備份未完成，請再試一次'); } }
 }
 
 /* ---- Firebase 雲端同步 ---- */
