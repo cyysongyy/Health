@@ -1634,6 +1634,7 @@ function renderLocalAnalysis(){
      '<button class="btn bp" onclick="go(\'report\')">📋 完整本機報告</button>'+
      '<button class="btn bg" onclick="showHealthAlert(true)">🔔 查看所有警訊</button></div>';
   h+='</div>';
+  h+=trajectoryCardHtml();   // 🔮 健康走向預測（免金鑰、依檢驗趨勢推估）
   if(!hasKey){
     h+='<div class="card" style="background:#f0f9ff;border:1px solid #bae6fd;"><div style="font-size:.85rem;line-height:1.75;">🔑 <b>想要 AI 白話深入解讀？</b><br>上方「本機綜合分析」<b>不需金鑰、已完整</b>。若想讓 AI 再用白話幫你解讀、還能對話問答，到「⚙️ 設定」填入 Gemini 或 OpenAI 金鑰，即可解鎖下方 AI 功能（金鑰只存在你手機、不外傳）。</div><div class="row-btn" style="margin-top:8px;"><button class="btn bg" onclick="go(\'settings\')">前往設定填金鑰</button></div></div>';
   }
@@ -3566,6 +3567,63 @@ function labStats(metric){
     min:Math.min.apply(null,vals), max:Math.max.apply(null,vals),
     avg:Math.round(vals.reduce((a,b)=>a+b,0)/vals.length*10)/10};
 }
+/* 變化速率與門檻預測：以歷次檢驗做最小平方直線，推估「照此速度多久會跨過風險門檻」。
+   方向沿用 LAB_GOOD（哪邊是好），門檻沿用 LAB_REF（既有參考邊界），不另建表。 */
+function labVelocity(metric){
+  const good=LAB_GOOD[metric], ref=LAB_REF[metric]; if(!good)return null;
+  const s=labSeries(metric); if(s.length<3)return null;              // 至少 3 點才談趨勢
+  const t0=new Date(s[0].date).getTime();
+  const pts=s.map(p=>({x:(new Date(p.date).getTime()-t0)/(365.25*864e5), y:+p.value})); // x 以「年」為單位
+  const span=pts[pts.length-1].x; if(span<0.25)return null;          // 跨度 < 3 個月，斜率不可靠
+  const n=pts.length; let sx=0,sy=0,sxx=0,sxy=0;
+  pts.forEach(p=>{sx+=p.x;sy+=p.y;sxx+=p.x*p.x;sxy+=p.x*p.y;});
+  const denom=(n*sxx-sx*sx); if(!denom)return null;
+  const slope=(n*sxy-sx*sy)/denom;                                   // 每年變化量
+  const cur=+s[s.length-1].value;
+  const worseUp=(good==='down');                                     // down 好 → 上升為惡化
+  const worsening=(worseUp&&slope>0)||(!worseUp&&slope<0);
+  let target=null;
+  if(ref){ const bounds=[ref.wl,ref.wh,ref.hl,ref.hh,ref.cl,ref.ch].filter(v=>v!=null);
+    if(worseUp){ const up=bounds.filter(b=>b>cur).sort((a,b)=>a-b); target=up.length?up[0]:null; }
+    else{ const dn=bounds.filter(b=>b<cur).sort((a,b)=>b-a); target=dn.length?dn[0]:null; }
+  }
+  let years=null;
+  if(worsening&&target!=null&&Math.abs(slope)>1e-9){ years=(target-cur)/slope; if(years<0)years=null; }
+  return {metric,n,span,slope:Math.round(slope*100)/100,cur,worsening,target,years};
+}
+function fmtHorizon(y){ return y<1?('約 '+Math.max(1,Math.round(y*12))+' 個月後'):('約 '+(Math.round(y*10)/10)+' 年後'); }
+function buildTrajectories(){
+  const out=[];
+  Object.keys(LAB_GOOD).forEach(m=>{ if(!LAB_META[m])return; const v=labVelocity(m); if(!v)return;
+    const a=Math.abs(v.slope); if(a<Math.abs(v.cur)*0.01 && a<0.02)return;   // 變化太小＝雜訊，略過
+    out.push(v);
+  });
+  out.sort((a,b)=>{
+    const ay=(a.worsening&&a.years!=null)?a.years:(a.worsening?1e6:2e6);
+    const by=(b.worsening&&b.years!=null)?b.years:(b.worsening?1e6:2e6);
+    return ay-by;
+  });
+  return out;
+}
+function trajectoryCardHtml(){
+  const T=buildTrajectories(); if(!T.length)return '';
+  const rows=T.slice(0,6).map(v=>{
+    const lab=LAB_META[v.metric].label, unit=LAB_META[v.metric].unit||'';
+    const arrow=v.slope>0?'↑':'↓', rate=`每年 ${arrow}${Math.abs(v.slope)}${unit}`;
+    let col='var(--g400,#94a3b8)', tail='';
+    if(v.worsening){
+      if(v.years!=null&&v.years<=15){ col=v.years<=3?'var(--err)':'var(--warn)';
+        tail=`，<b style="color:${col};">${fmtHorizon(v.years)}可能${v.slope>0?'超過':'跌破'} ${v.target}${unit}</b>`;
+      }else if(v.target==null){ col='var(--warn)'; tail='，已超出標準範圍，建議追蹤'; }
+      else { col='var(--warn)'; tail='，緩慢變化中'; }
+    }else{ col='var(--ok)'; tail='，持續改善 👍'; }
+    return `<div style="border-left:3px solid ${col};padding:6px 10px;margin:6px 0;background:var(--g100);border-radius:6px;font-size:.84rem;line-height:1.5;">`+
+      `<b>${esc(lab)}</b> ${v.cur}${unit}｜${rate}${tail}</div>`;
+  }).join('');
+  return `<div class="card"><div class="ct">🔮 健康走向預測 <span class="hint">依你的檢驗趨勢推估</span></div>`+
+    `<div class="hint" style="margin-bottom:6px;line-height:1.6;">用你歷次檢驗做直線推估「若照目前速度會往哪走、多久跨過風險門檻」。<b>僅供參考、非預測診斷</b>；資料點越多越準確。</div>`+
+    rows+'</div>';
+}
 function recordLabEntry(fields,source){
   const values={};
   Object.keys(LAB_META).forEach(k=>{const n=toNum(fields[k]); if(n!==null) values[k]=n;});
@@ -5176,7 +5234,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-labdiag-persist';
+const APP_VERSION='2026.07.30-trajectory';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
