@@ -3755,7 +3755,15 @@ function clearLabs(){
   }
 }
 // 解析檢查：顯示每個健保檢驗項目「取到的值」與其原始欄位，供校正對應
+// 若本次未重新匯入（記憶體診斷為空），從 localStorage 還原上次匯入的解析診斷
+function hydrateLabDiag(){
+  if(BANK_LAB_DIAG&&BANK_LAB_DIAG.sections&&BANK_LAB_DIAG.sections.length)return;
+  try{ const s=localStorage.getItem('ls_labdiag'); if(!s)return; const o=JSON.parse(s);
+    if(o&&o.diag&&o.diag.sections){ BANK_LAB_DIAG=o.diag; BANK_LAB_SAMPLES=o.samples||{}; BANK_LAB_DIAG._restoredTs=o.ts; BANK_LAB_DIAG._restoredVer=o.ver; }
+  }catch(_){}
+}
 function showLabParseCheck(){
+  hydrateLabDiag();
   const keys=Object.keys(BANK_LAB_SAMPLES||{});
   let m=document.getElementById('labChkModal');
   if(!m){m=document.createElement('div');m.id='labChkModal';m.className='modal-overlay';document.body.appendChild(m);}
@@ -3827,8 +3835,10 @@ function showLabParseCheck(){
 }
 // 把解析診斷組成純文字（欄位結構＋近日日期原始列＋樣本），複製到剪貼簿供開發者校正；不含身分證等個資
 function copyLabDiag(){
+  hydrateLabDiag();
   const L=[];
   L.push('=== LifeSpan 健保檢驗解析診斷 v'+APP_VERSION+' ===');
+  if(BANK_LAB_DIAG&&BANK_LAB_DIAG._restoredTs)L.push('（來自上次匯入的診斷快照：'+BANK_LAB_DIAG._restoredTs.slice(0,16).replace('T',' ')+'，版本 '+(BANK_LAB_DIAG._restoredVer||'?')+'）');
   const allLabs=(state.labs||[]).filter(e=>e.values&&Object.keys(e.values).length);
   const dates=[...new Set(allLabs.map(e=>e.date.slice(0,10)))].sort();
   L.push('已存檢驗筆數：'+allLabs.length+'；採用日期：'+(dates.join('、')||'—'));
@@ -4169,6 +4179,13 @@ function parseBankLabs(bd){
   });
   const records=Object.values(byDate).sort((a,b)=>new Date(a.date)-new Date(b.date));
   const fields={}; records.forEach(r=>Object.assign(fields,r.values));   // 最新一筆（依日期）帶入表單
+  // 持久化本次匯入的解析診斷，讓「🔬 解析檢查／複製」在日後（未重匯）也能查看，不再受限於當下記憶體
+  try{
+    const samples={}; Object.keys(BANK_LAB_SAMPLES).slice(0,20).forEach(k=>{const s=BANK_LAB_SAMPLES[k];
+      samples[k]={picked:s.picked,pickedKey:s.pickedKey,nameField:s.nameField,name:s.name,date:s.date,row:s.row};});
+    const str=JSON.stringify({diag:BANK_LAB_DIAG,samples,ver:APP_VERSION,ts:new Date().toISOString()});
+    if(str.length<250000)localStorage.setItem('ls_labdiag',str);
+  }catch(_){}
   return {fields,records};
 }
 // 手術／處置名稱關鍵字（健保醫療類的手術名稱多以「術」結尾或含這些動詞）
@@ -5159,7 +5176,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.29-labdiag-copy';
+const APP_VERSION='2026.07.30-labdiag-persist';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
