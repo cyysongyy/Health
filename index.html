@@ -1636,6 +1636,7 @@ function renderLocalAnalysis(){
   h+='</div>';
   h+=trajectoryCardHtml();   // 🔮 健康走向預測（免金鑰、依檢驗趨勢推估）
   h+=adherenceCardHtml();    // 💊 用藥依從性（依健保領藥紀錄估算 PDC）
+  h+=careGapCardHtml();       // 🩺 照護缺口提醒（該做未做）
   if(!hasKey){
     h+='<div class="card" style="background:#f0f9ff;border:1px solid #bae6fd;"><div style="font-size:.85rem;line-height:1.75;">🔑 <b>想要 AI 白話深入解讀？</b><br>上方「本機綜合分析」<b>不需金鑰、已完整</b>。若想讓 AI 再用白話幫你解讀、還能對話問答，到「⚙️ 設定」填入 Gemini 或 OpenAI 金鑰，即可解鎖下方 AI 功能（金鑰只存在你手機、不外傳）。</div><div class="row-btn" style="margin-top:8px;"><button class="btn bg" onclick="go(\'settings\')">前往設定填金鑰</button></div></div>';
   }
@@ -3679,6 +3680,84 @@ function adherenceCardHtml(){
     `<div class="hint" style="margin-bottom:6px;line-height:1.6;">以你的<b>領藥日期與給藥天數</b>估算慢性病藥物的「服藥涵蓋率（PDC）」，<b>≥80%</b> 一般視為規律。僅供自我管理參考；用藥調整請與醫師討論，<b>切勿自行停藥</b>。</div>`+
     rows+'</div>';
 }
+/* 照護缺口（該做未做）：依你的狀況（檢驗＋用藥＋基本資料）推斷慢性病與族群，
+   對照指引建議的追蹤間隔，標出「逾期未驗」的檢驗與「建議篩檢」。衛教參考、非診斷。*/
+function detectConditions(){
+  const L=labLatest()||{}, cls=(typeof medClasses==='function')?medClasses(400):{}, p=state.profile||{};
+  const lv=k=>(L[k]&&L[k].v!=null)?+L[k].v:null;
+  const num=v=>(v!=null&&!isNaN(+v))?+v:null;
+  const hba1c=lv('hba1c'), glu=lv('glucose'), egfr=lv('egfr'), cr=lv('cr'), ldl=lv('ldl'), chol=lv('chol');
+  const sbp=lv('sbp')!=null?lv('sbp'):num(p.sbp), dbp=lv('dbp')!=null?lv('dbp'):num(p.dbp);
+  const dm=(cls.dm>0)||(hba1c!=null&&hba1c>=6.5)||(glu!=null&&glu>=126);
+  const htn=(cls.bp>0)||(sbp!=null&&sbp>=140)||(dbp!=null&&dbp>=90);
+  const ckd=(egfr!=null&&egfr<60)||(cr!=null&&cr>=1.3);
+  const statin=(cls.statin>0);
+  const dyslip=statin||(ldl!=null&&ldl>=160)||(chol!=null&&chol>=240);
+  return {dm,htn,ckd,statin,dyslip,age:num(p.age),sex:p.sex||null,smoker:(p.smoke==='current')};
+}
+function careLabGaps(){
+  const C=detectConditions(), now=Date.now(), DAY=864e5;
+  const rules=[
+    {cond:'dm',metric:'hba1c',label:'糖化血色素 HbA1c',days:180,why:'糖尿病建議每 3–6 個月追蹤血糖控制'},
+    {cond:'dm',metric:'egfr',label:'腎功能 eGFR',days:365,why:'糖尿病每年應評估腎功能'},
+    {cond:'dm',metric:'uacr',label:'尿蛋白 UACR',days:365,why:'糖尿病每年應驗尿蛋白，早期發現腎病變'},
+    {cond:'dm',metric:'ldl',label:'血脂 LDL',days:365,why:'糖尿病每年應追蹤血脂'},
+    {cond:'htn',metric:'egfr',label:'腎功能 eGFR',days:365,why:'高血壓每年應評估腎功能'},
+    {cond:'htn',metric:'k',label:'血鉀 K',days:365,why:'服用降血壓藥建議定期追蹤電解質'},
+    {cond:'ckd',metric:'egfr',label:'腎功能 eGFR',days:180,why:'慢性腎臟病建議每 3–6 個月追蹤'},
+    {cond:'ckd',metric:'uacr',label:'尿蛋白 UACR',days:365,why:'慢性腎臟病每年應驗尿蛋白'},
+    {cond:'statin',metric:'ldl',label:'血脂 LDL',days:365,why:'服用降血脂藥應定期確認血脂達標'},
+    {cond:'statin',metric:'alt',label:'肝功能 ALT',days:365,why:'服用 statin 建議定期追蹤肝功能'},
+    {cond:'dyslip',metric:'ldl',label:'血脂 LDL',days:365,why:'血脂偏高建議每年追蹤'}
+  ];
+  const need={};
+  rules.forEach(r=>{ if(!C[r.cond])return; const e=need[r.metric]||(need[r.metric]={days:r.days,label:r.label,whys:new Set()});
+    if(r.days<e.days)e.days=r.days; e.whys.add(r.why); });
+  const gaps=[];
+  Object.keys(need).forEach(metric=>{ const n=need[metric], s=labSeries(metric);
+    const last=s.length?new Date(s[s.length-1].date).getTime():null;
+    if(last==null){ gaps.push({metric,label:n.label,status:'never',intervalDays:n.days,whys:[...n.whys]}); }
+    else{ const ageDays=Math.round((now-last)/DAY); if(ageDays>n.days)
+      gaps.push({metric,label:n.label,status:'overdue',ageDays,intervalDays:n.days,whys:[...n.whys]}); }
+  });
+  // 逾期越久排前面；從未驗排最前
+  return gaps.sort((a,b)=>(a.status==='never'?-1:0)-(b.status==='never'?-1:0)||((b.ageDays||0)-(a.ageDays||0)));
+}
+function careScreenings(){
+  const C=detectConditions(), a=C.age, out=[];
+  if(a!=null){
+    if(a>=40)out.push({label:'成人預防保健健檢',detail:'40–64 歲每 3 年、65 歲以上每年一次（國健署補助）'});
+    if(a>=45&&a<=74)out.push({label:'大腸癌篩檢（糞便潛血）',detail:'45–74 歲每 2 年一次免費'});
+    if(C.sex==='female'&&a>=40&&a<=74)out.push({label:'乳癌篩檢（乳房攝影）',detail:'40–74 歲女性每 2 年一次'});
+    if(C.sex==='female'&&a>=25)out.push({label:'子宮頸抹片',detail:'25 歲以上女性建議定期（約每 3 年）'});
+    if(a>=30&&C.smoker)out.push({label:'口腔癌篩檢',detail:'有吸菸／嚼檳榔者每 2 年一次'});
+    if(a>=50&&C.smoker)out.push({label:'肺癌低劑量電腦斷層（LDCT）',detail:'重度吸菸等高風險族群可與醫師討論'});
+  }
+  if(C.dm){ out.push({label:'糖尿病眼底（視網膜）檢查',detail:'糖尿病建議每年一次，預防視網膜病變'});
+    out.push({label:'糖尿病足部檢查',detail:'糖尿病建議每年檢查足部感覺與血流'}); }
+  return out;
+}
+function fmtAgo(days){ return days>=365?('約 '+(Math.round(days/365*10)/10)+' 年前'):(days>=30?('約 '+Math.round(days/30)+' 個月前'):(days+' 天前')); }
+function careGapCardHtml(){
+  const gaps=careLabGaps(), screens=careScreenings();
+  if(!gaps.length&&!screens.length)return '';
+  let h=`<div class="card"><div class="ct">🩺 照護缺口提醒 <span class="hint">該做未做</span></div>`+
+    `<div class="hint" style="margin-bottom:6px;line-height:1.6;">依你的檢驗與用藥推斷的慢性病／族群，對照建議追蹤間隔。<b>衛教參考、非診斷</b>；實際項目與頻率請以醫師及國健署規定為準。</div>`;
+  if(gaps.length){
+    h+='<div style="font-weight:700;font-size:.86rem;margin:6px 0 2px;">🧪 檢驗追蹤</div>';
+    h+=gaps.slice(0,6).map(g=>{
+      const col=g.status==='never'?'var(--warn)':(g.ageDays>g.intervalDays*2?'var(--err)':'var(--warn)');
+      const head=g.status==='never'?`<b>${esc(g.label)}</b>：紀錄中<b style="color:${col};">從未檢驗</b>`
+        :`<b>${esc(g.label)}</b>：上次 <b style="color:${col};">${fmtAgo(g.ageDays)}</b>（建議每 ${g.intervalDays>=365?Math.round(g.intervalDays/365)+' 年':Math.round(g.intervalDays/30)+' 個月'}）`;
+      return `<div style="border-left:3px solid ${col};padding:6px 10px;margin:6px 0;background:var(--g100);border-radius:6px;font-size:.84rem;line-height:1.5;">${head}<div class="hint" style="margin-top:2px;">${esc(g.whys[0])}</div></div>`;
+    }).join('');
+  }
+  if(screens.length){
+    h+='<div style="font-weight:700;font-size:.86rem;margin:10px 0 2px;">🔎 建議篩檢 <span class="hint">（若近期已做請忽略）</span></div>';
+    h+=screens.map(s=>`<div style="padding:5px 10px;margin:4px 0;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;font-size:.82rem;line-height:1.5;"><b>${esc(s.label)}</b>：${esc(s.detail)}</div>`).join('');
+  }
+  return h+'</div>';
+}
 function recordLabEntry(fields,source){
   const values={};
   Object.keys(LAB_META).forEach(k=>{const n=toNum(fields[k]); if(n!==null) values[k]=n;});
@@ -5289,7 +5368,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-adherence';
+const APP_VERSION='2026.07.30-caregap';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
