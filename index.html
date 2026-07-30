@@ -934,6 +934,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
     </div>
     <div class="card">
       <div class="ct">🗂️ 全部檢驗紀錄（依日期彙整）</div>
+      <div id="labDateHint" class="hint" style="display:none;margin-bottom:6px;line-height:1.6;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;"></div>
       <div style="overflow-x:auto;"><table id="labAllTable"></table></div>
       <div class="row-btn" style="margin-top:10px;">
         <button class="btn bp" onclick="openLabEditor()">➕ 新增紀錄</button>
@@ -3855,10 +3856,20 @@ function renderLabs(){
     [...series].reverse().map(s=>{const fl=labFlag(curLab,s.value);return `<tr><td>${new Date(s.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})}</td><td class="num" style="color:${FLAG_COLOR[fl]};">${s.value}</td><td style="color:${FLAG_COLOR[fl]};font-size:.72rem;">${FLAG_ICON[fl]?FLAG_ICON[fl]+' ':''}${FLAG_TXT[fl]}</td></tr>`;}).join('');
   // 全部紀錄
   let head='<tr><th>日期</th><th>來源</th>'+present.map(k=>'<th>'+LAB_META[k].label+'</th>').join('')+'<th>操作</th></tr>';
-  const body=[...valLabs].reverse().map(e=>'<tr><td>'+new Date(e.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})+'</td><td style="font-size:.72rem;">'+(SRC_LABEL[e.source]||e.source||'—')+'</td>'+
-    present.map(k=>{const v=e.values&&e.values[k];if(v==null)return '<td class="num">—</td>';const fl=labFlag(k,v);return '<td class="num" style="color:'+FLAG_COLOR[fl]+';">'+v+'</td>';}).join('')+
-    '<td style="white-space:nowrap;"><a class="link" style="cursor:pointer;" onclick="openLabEditor(\''+e.id+'\')">✏️</a>　<a class="link" style="cursor:pointer;color:var(--err);" onclick="labDelete(\''+e.id+'\')">🗑️</a></td></tr>').join('');
+  // 健保紀錄若日期落在近 30 天內，可能誤取到下載/建檔日而非採檢日 → 標「待確認」供人工核對
+  const nowMs=Date.now(), SUSPECT_MS=30*864e5; let suspectN=0;
+  const body=[...valLabs].reverse().map(e=>{
+    const suspect=(e.source==='nhi'&&(nowMs-new Date(e.date).getTime())<SUSPECT_MS); if(suspect)suspectN++;
+    const dcell='<td style="white-space:nowrap;">'+new Date(e.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})+
+      (suspect?' <span title="此日期接近匯入/下載日，可能非真正採檢日，請點右方 ✏️ 核對修正" style="color:var(--warn);cursor:help;">⚠️</span>':'')+'</td>';
+    return '<tr>'+dcell+'<td style="font-size:.72rem;">'+(SRC_LABEL[e.source]||e.source||'—')+'</td>'+
+      present.map(k=>{const v=e.values&&e.values[k];if(v==null)return '<td class="num">—</td>';const fl=labFlag(k,v);return '<td class="num" style="color:'+FLAG_COLOR[fl]+';">'+v+'</td>';}).join('')+
+      '<td style="white-space:nowrap;"><a class="link" style="cursor:pointer;" onclick="openLabEditor(\''+e.id+'\')">✏️</a>　<a class="link" style="cursor:pointer;color:var(--err);" onclick="labDelete(\''+e.id+'\')">🗑️</a></td></tr>';
+  }).join('');
   document.getElementById('labAllTable').innerHTML=head+body;
+  const dh=document.getElementById('labDateHint');
+  if(dh){ if(suspectN){ dh.style.display='block'; dh.innerHTML='⚠️ 有 <b>'+suspectN+'</b> 筆健保紀錄的日期落在近 30 天內，<b>可能是下載/建檔日而非真正採檢日</b>。請對照你的實際報告，點該列的 ✏️ 修正日期（若確實是近期抽血，忽略即可）。'; }
+    else dh.style.display='none'; }
   renderLabsExtra();
   renderLabFlat();
 }
@@ -5368,7 +5379,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-caregap';
+const APP_VERSION='2026.07.30-datecheck';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
