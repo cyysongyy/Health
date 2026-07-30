@@ -1041,6 +1041,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <div style="overflow-x:auto;"><table id="dxTable"></table></div>
       <div class="row-btn" style="margin-top:10px;">
         <button class="btn bp" onclick="openDxEditor()">➕ 新增診斷</button>
+        <button class="btn bg" onclick="exportDx()">📤 匯出 CSV</button>
         <button class="btn bd" onclick="clearDx()">🗑️ 清除全部診斷</button>
       </div>
       <div class="hint" style="margin-top:8px;">由健保就醫紀錄的 ICD 診斷整理，供回顧與就醫參考；以醫師與健保紀錄為準。</div>
@@ -1050,6 +1051,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <div style="overflow-x:auto;"><table id="scrTable"></table></div>
       <div class="row-btn" style="margin-top:10px;">
         <button class="btn bp" onclick="openScrEditor()">➕ 新增篩檢</button>
+        <button class="btn bg" onclick="exportScreen()">📤 匯出 CSV</button>
       </div>
       <div class="hint" style="margin-top:8px;">目前擷取糞便潛血（大腸癌篩檢）；陰／陽性與日期會用於「照護缺口」判斷。</div>
     </div>
@@ -5139,6 +5141,22 @@ function clearSurgeries(){
     if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
   }
 }
+function csvDownload(name,head,rows){
+  const esc=x=>/[",\n]/.test(String(x))?'"'+String(x).replace(/"/g,'""')+'"':x;
+  const csv=[head.join(','),...rows.map(r=>r.map(esc).join(','))].join('\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click();
+}
+function exportDx(){
+  const dxs=state.dx||[]; if(!dxs.length){toast('沒有可匯出的診斷紀錄');return;}
+  csvDownload('lifespan-diagnoses-'+todayKey()+'.csv',['date','code','name','hospital','source'],
+    dxs.map(d=>[d.date?new Date(d.date).toISOString():'',d.code||'',d.name||'',d.hospital||'',d.source||'']));
+}
+function exportScreen(){
+  const scr=state.screen||[]; if(!scr.length){toast('沒有可匯出的篩檢紀錄');return;}
+  csvDownload('lifespan-screenings-'+todayKey()+'.csv',['date','test','label','result','raw','hospital','source'],
+    scr.map(s=>[s.date?new Date(s.date).toISOString():'',s.test||'',s.label||'',s.result||'',s.raw||'',s.hospital||'',s.source||'']));
+}
 
 /* ============ 影像病理報告（英文報告＋AI 翻譯） ============ */
 function ingestReports(reps,source){
@@ -5639,7 +5657,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-dx-page';
+const APP_VERSION='2026.07.30-export-all';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
