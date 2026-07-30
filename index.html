@@ -1434,7 +1434,7 @@ function load(){
   return s;
 }
 function defaults(){
-  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], dx:[], reminders:[], mhx:{}, goals:{sbp:130,ldl:100,hba1c:7}, qa:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true,fontScale:1.5,autoBackup:false}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], dx:[], screen:[], reminders:[], mhx:{}, goals:{sbp:130,ldl:100,hba1c:7}, qa:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true,fontScale:1.5,autoBackup:false}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));scheduleAutoBackup();}
 // 自動備份到 Google Drive：開啟且已設 Client ID 時，資料變更後自動（安靜）上傳；授權過一次後不再跳窗
@@ -3731,7 +3731,15 @@ function careScreenings(){
   const C=detectConditions(), a=C.age, out=[];
   if(a!=null){
     if(a>=40)out.push({label:'成人預防保健健檢',detail:'40–64 歲每 3 年、65 歲以上每年一次（國健署補助）'});
-    if(a>=45&&a<=74)out.push({label:'大腸癌篩檢（糞便潛血）',detail:'45–74 歲每 2 年一次免費'});
+    if(a>=45&&a<=74){
+      const f=(typeof latestScreen==='function')?latestScreen('fobt'):null;
+      if(f&&f.date){ const ymd=new Date(f.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'});
+        const ageD=(Date.now()-new Date(f.date).getTime())/864e5;
+        if(f.result==='pos')out.push({label:'大腸癌篩檢（糞便潛血）',detail:'⚠️ 最近一次（'+ymd+'）為<b>陽性</b>，建議與醫師討論安排大腸鏡進一步檢查',flag:'alert'});
+        else if(ageD<=730)out.push({label:'大腸癌篩檢（糞便潛血）',detail:'✅ 已於 '+ymd+' 完成'+(f.result==='neg'?'（陰性）':'')+'，約每 2 年再篩一次',flag:'done'});
+        else out.push({label:'大腸癌篩檢（糞便潛血）',detail:'上次 '+ymd+'，已超過 2 年，建議再篩（45–74 歲每 2 年免費）'});
+      } else out.push({label:'大腸癌篩檢（糞便潛血）',detail:'45–74 歲每 2 年一次免費'});
+    }
     if(C.sex==='female'&&a>=40&&a<=74)out.push({label:'乳癌篩檢（乳房攝影）',detail:'40–74 歲女性每 2 年一次'});
     if(C.sex==='female'&&a>=25)out.push({label:'子宮頸抹片',detail:'25 歲以上女性建議定期（約每 3 年）'});
     if(a>=30&&C.smoker)out.push({label:'口腔癌篩檢',detail:'有吸菸／嚼檳榔者每 2 年一次'});
@@ -3758,7 +3766,8 @@ function careGapCardHtml(){
   }
   if(screens.length){
     h+='<div style="font-weight:700;font-size:.86rem;margin:10px 0 2px;">🔎 建議篩檢 <span class="hint">（若近期已做請忽略）</span></div>';
-    h+=screens.map(s=>`<div style="padding:5px 10px;margin:4px 0;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;font-size:.82rem;line-height:1.5;"><b>${esc(s.label)}</b>：${esc(s.detail)}</div>`).join('');
+    h+=screens.map(s=>{ const st=s.flag==='alert'?'background:#fef2f2;border:1px solid #fecaca;':s.flag==='done'?'background:#f0fdf4;border:1px solid #bbf7d0;':'background:#f0f9ff;border:1px solid #bae6fd;';
+      return `<div style="padding:5px 10px;margin:4px 0;${st}border-radius:6px;font-size:.82rem;line-height:1.5;"><b>${esc(s.label)}</b>：${s.detail}</div>`; }).join('');
   }
   return h+'</div>';
 }
@@ -4847,6 +4856,47 @@ function ingestDiagnoses(list,source){
     if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{}); }
   return added;
 }
+/* 質性篩檢結果（如糞便潛血 FOBT／iFOBT）：健保檢驗區的非數值結果，數值解析器會略過，
+   在此另行擷取，讓「大腸癌篩檢」照護缺口能依實際完成日期與陰／陽性判斷，而非盲提醒。*/
+function parseBankScreenings(bd){
+  const out=[]; const FOBT=/糞便潛血|大便潛血|i?fobt|fecal\s*occult|faecal\s*occult/i;
+  Object.keys(bd).filter(k=>/^r\d+$/.test(k)).forEach(sec=>{
+    const rows=bd[sec]; if(!Array.isArray(rows))return;
+    rows.forEach(row=>{
+      if(!row||typeof row!=='object')return;
+      const strs=Object.keys(row).filter(k=>typeof row[k]==='string').map(k=>String(row[k]).trim());
+      if(!FOBT.test(strs.join(' ')))return;
+      const date=bankVisitDate(row,sec), hosp=(row[sec+'.4']||'').toString().trim();
+      let result='unknown', raw='';
+      for(const v of strs){ if(/\(\+\)|陽性|positive|\breactive\b/i.test(v)){result='pos';raw=v;break;}
+        if(/\(-\)|陰性|negative|non[-\s]?reactive/i.test(v)){result='neg';raw=v;break;} }
+      out.push({date,test:'fobt',label:'糞便潛血',result,raw,hospital:hosp,source:'nhi'});
+    });
+  });
+  return out;
+}
+function ingestScreenings(list,source){
+  if(!list||!list.length)return 0;
+  state.screen=state.screen||[];
+  const sig=s=>((s.date||'').slice(0,10)+'|'+(s.test||'')+'|'+(s.result||''));
+  const seen=new Set(state.screen.map(sig));
+  let added=0;
+  list.forEach(s=>{ const k=sig(s); if(seen.has(k))return; seen.add(k);
+    let iso=null; if(s.date){const dt=new Date(s.date);if(!isNaN(dt))iso=dt.toISOString();}
+    state.screen.push({id:'scr_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),
+      date:iso||s.date||null,test:s.test,label:s.label,result:s.result||'unknown',raw:s.raw||'',hospital:s.hospital||'',source:source||'nhi'});
+    added++; });
+  if(added){ if(state.screen.length>1000)state.screen=state.screen.slice(-1000); save();
+    if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{}); }
+  return added;
+}
+// 取某篩檢最近一次（同日多筆時陽性優先）
+function latestScreen(test){
+  const rs=(state.screen||[]).filter(s=>s.test===test&&s.date).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  if(!rs.length)return null;
+  const day=rs[0].date.slice(0,10), same=rs.filter(s=>s.date.slice(0,10)===day);
+  return same.find(s=>s.result==='pos')||rs[0];
+}
 function dxSummary(){
   const g={};
   (state.dx||[]).forEach(d=>{ const key=(d.code||'')+'|'+(d.name||''); const t=d.date?new Date(d.date).getTime():0;
@@ -5434,7 +5484,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-diagnoses';
+const APP_VERSION='2026.07.30-screening';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -5913,13 +5963,13 @@ async function handleImport(e,kind){
   }
   try{
     const entries=await extractTextEntries(f);   // 自動解壓縮（.zip/.gz），回傳多個文字檔
-    const fields={};const notes=[];const records=[];const meds=[];const surs=[];const reps=[];const dxs=[];
+    const fields={};const notes=[];const records=[];const meds=[];const surs=[];const reps=[];const dxs=[];const scrs=[];
     let ok=0,failed=0,firstJson=null,firstText=null;
     entries.forEach(({name,text})=>{
       try{
         if(kind==='nhi'){ if(firstText===null)firstText=text; if(firstJson===null){try{firstJson=jsonParseLenient(text);}catch(e){}} }
         let parsed;
-        if(kind==='nhi'){ parsed=parseNHI(text); try{const j=jsonParseLenient(text);parseMeds(j).forEach(m=>meds.push(m));const bd=nhiBankData(j);if(bd){parseBankSurgeries(bd).forEach(s=>surs.push(s));parseBankReports(bd).forEach(x=>reps.push(x));parseBankDiagnoses(bd).forEach(d=>dxs.push(d));}}catch(e){} }
+        if(kind==='nhi'){ parsed=parseNHI(text); try{const j=jsonParseLenient(text);parseMeds(j).forEach(m=>meds.push(m));const bd=nhiBankData(j);if(bd){parseBankSurgeries(bd).forEach(s=>surs.push(s));parseBankReports(bd).forEach(x=>reps.push(x));parseBankDiagnoses(bd).forEach(d=>dxs.push(d));parseBankScreenings(bd).forEach(x=>scrs.push(x));}}catch(e){} }
         else if(kind==='wearable')parsed=parseWearable(text,name);
         else parsed=parseAppFile(text,name);
         if(parsed&&parsed.fields){Object.assign(fields,parsed.fields);ok++;}
@@ -5932,12 +5982,14 @@ async function handleImport(e,kind){
     if(surs.length)state.surgeries=(state.surgeries||[]).filter(e=>e.source!=='nhi');
     if(reps.length)state.reports=(state.reports||[]).filter(e=>e.source!=='nhi');
     if(dxs.length)state.dx=(state.dx||[]).filter(e=>e.source!=='nhi');
+    if(scrs.length)state.screen=(state.screen||[]).filter(e=>e.source!=='nhi');
     const addedRec=records.length?ingestLabRecords(records,'nhi'):0;
     const addedMed=meds.length?ingestMeds(meds,'nhi'):0;
     const addedSur=surs.length?ingestSurgeries(surs,'nhi'):0;
     const addedRpt=reps.length?ingestReports(reps,'nhi'):0;
     const addedDx=dxs.length?ingestDiagnoses(dxs,'nhi'):0;
-    if(!Object.keys(fields).length && !addedRec && !addedMed && !addedSur && !addedRpt && !addedDx){
+    const addedScr=scrs.length?ingestScreenings(scrs,'nhi'):0;
+    if(!Object.keys(fields).length && !addedRec && !addedMed && !addedSur && !addedRpt && !addedDx && !addedScr){
       let debug=null,debugTitle='';
       if(firstJson){debug=jsonOutlineText(firstJson);debugTitle='🔧 檔案結構（僅欄位名稱與截短樣本，可安全分享）';}
       else if(firstText){debug=firstText.replace(/[\u0000-\u001F]/g,'·').slice(0,800);debugTitle='🔧 檔案內容前 800 字（無法解析為 JSON，請看實際格式；分享前可自行遮蔽敏感值）';}
@@ -5955,6 +6007,7 @@ async function handleImport(e,kind){
     if(addedSur)notes.unshift('🔧 已將 '+addedSur+' 筆手術／處置加入「手術紀錄」');
     if(addedRpt)notes.unshift('🩻 已將 '+addedRpt+' 筆影像／病理報告加入「影像病理」（可 AI 翻譯）');
     if(addedDx)notes.unshift('🩺 已將 '+addedDx+' 筆就醫診斷（ICD）整理為「病史」，並用於照護缺口判斷');
+    if(addedScr)notes.unshift('🔎 已擷取 '+addedScr+' 筆篩檢結果（如糞便潛血），用於照護缺口判斷');
     pendingImport={kind,fields,notes};
     renderImportResult();go('connect');
     const bits=[]; if(addedRec)bits.push(addedRec+' 筆檢驗'); if(addedMed)bits.push(addedMed+' 筆用藥'); if(addedSur)bits.push(addedSur+' 筆手術'); if(addedRpt)bits.push(addedRpt+' 筆影像病理');
@@ -6315,7 +6368,7 @@ async function handleTextImport(kind){
       if(kind==='nhi'){
         if(parsed&&parsed.records&&parsed.records.length)state.labs=(state.labs||[]).filter(e=>e.source!=='nhi');
         const addedRec=(parsed&&parsed.records&&parsed.records.length)?ingestLabRecords(parsed.records,'nhi'):0;
-        let addedMed=0,addedSur=0,addedRpt=0,addedDx=0; try{ const j=jsonParseLenient(text); addedMed=ingestMeds(parseMeds(j),'nhi'); const bd=nhiBankData(j); if(bd){const bs=parseBankSurgeries(bd),br=parseBankReports(bd),bx=parseBankDiagnoses(bd); if(bs.length)state.surgeries=(state.surgeries||[]).filter(e=>e.source!=='nhi'); if(br.length)state.reports=(state.reports||[]).filter(e=>e.source!=='nhi'); if(bx.length)state.dx=(state.dx||[]).filter(e=>e.source!=='nhi'); addedSur=ingestSurgeries(bs,'nhi');addedRpt=ingestReports(br,'nhi');addedDx=ingestDiagnoses(bx,'nhi');} }catch(e){}
+        let addedMed=0,addedSur=0,addedRpt=0,addedDx=0,addedScr=0; try{ const j=jsonParseLenient(text); addedMed=ingestMeds(parseMeds(j),'nhi'); const bd=nhiBankData(j); if(bd){const bs=parseBankSurgeries(bd),br=parseBankReports(bd),bx=parseBankDiagnoses(bd),bsc=parseBankScreenings(bd); if(bs.length)state.surgeries=(state.surgeries||[]).filter(e=>e.source!=='nhi'); if(br.length)state.reports=(state.reports||[]).filter(e=>e.source!=='nhi'); if(bx.length)state.dx=(state.dx||[]).filter(e=>e.source!=='nhi'); if(bsc.length)state.screen=(state.screen||[]).filter(e=>e.source!=='nhi'); addedSur=ingestSurgeries(bs,'nhi');addedRpt=ingestReports(br,'nhi');addedDx=ingestDiagnoses(bx,'nhi');addedScr=ingestScreenings(bsc,'nhi');} }catch(e){}
         if(addedRec){notes=notes||[];notes.unshift('✅ 已將 '+addedRec+' 筆檢驗紀錄加入檢驗數據庫');}
         if(addedMed){notes=notes||[];notes.unshift('💊 已將 '+addedMed+' 筆用藥紀錄加入「用藥紀錄」');}
         if(addedSur){notes=notes||[];notes.unshift('🔧 已將 '+addedSur+' 筆手術／處置加入「手術紀錄」');}
