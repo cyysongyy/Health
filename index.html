@@ -5497,7 +5497,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-context-dx';
+const APP_VERSION='2026.07.30-import-summary';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -6021,9 +6021,16 @@ async function handleImport(e,kind){
     if(addedRpt)notes.unshift('🩻 已將 '+addedRpt+' 筆影像／病理報告加入「影像病理」（可 AI 翻譯）');
     if(addedDx)notes.unshift('🩺 已將 '+addedDx+' 筆就醫診斷（ICD）整理為「病史」，並用於照護缺口判斷');
     if(addedScr)notes.unshift('🔎 已擷取 '+addedScr+' 筆篩檢結果（如糞便潛血），用於照護缺口判斷');
-    pendingImport={kind,fields,notes};
+    const summary=[];
+    if(addedRec)summary.push({icon:'🧪',label:'檢驗',n:addedRec});
+    if(addedMed)summary.push({icon:'💊',label:'用藥',n:addedMed});
+    if(addedSur)summary.push({icon:'🔧',label:'手術',n:addedSur});
+    if(addedRpt)summary.push({icon:'🩻',label:'影像病理',n:addedRpt});
+    if(addedDx)summary.push({icon:'🩺',label:'診斷',n:addedDx});
+    if(addedScr)summary.push({icon:'🔎',label:'篩檢',n:addedScr});
+    pendingImport={kind,fields,notes,summary};
     renderImportResult();go('connect');
-    const bits=[]; if(addedRec)bits.push(addedRec+' 筆檢驗'); if(addedMed)bits.push(addedMed+' 筆用藥'); if(addedSur)bits.push(addedSur+' 筆手術'); if(addedRpt)bits.push(addedRpt+' 筆影像病理');
+    const bits=summary.map(s=>s.n+' 筆'+s.label);
     toast(bits.length?('✅ 已匯入 '+bits.join('、')):'✅ 解析完成');
   }catch(err){toast('解析失敗：'+err.message);}
 }
@@ -6387,9 +6394,17 @@ async function handleTextImport(kind){
         if(addedSur){notes=notes||[];notes.unshift('🔧 已將 '+addedSur+' 筆手術／處置加入「手術紀錄」');}
         if(addedRpt){notes=notes||[];notes.unshift('🩻 已將 '+addedRpt+' 筆影像／病理報告加入「影像病理」');}
         if(addedDx){notes=notes||[];notes.unshift('🩺 已將 '+addedDx+' 筆就醫診斷（ICD）整理為「病史」');}
-        if((addedRec||addedMed||addedSur||addedRpt||addedDx)&&!fields){
-          pendingImport={kind:cfg.out,fields:{},notes};renderImportResult();go('connect');
-          setSt('✅ 已匯入');toast('✅ 已匯入'+(addedRec?' '+addedRec+' 筆檢驗':'')+(addedMed?' '+addedMed+' 筆用藥':'')+(addedSur?' '+addedSur+' 筆手術':'')+(addedRpt?' '+addedRpt+' 筆影像病理':'')+(addedDx?' '+addedDx+' 筆診斷':''));return;
+        if(addedScr){notes=notes||[];notes.unshift('🔎 已擷取 '+addedScr+' 筆篩檢結果（如糞便潛血）');}
+        if((addedRec||addedMed||addedSur||addedRpt||addedDx||addedScr)&&!fields){
+          const summary=[];
+          if(addedRec)summary.push({icon:'🧪',label:'檢驗',n:addedRec});
+          if(addedMed)summary.push({icon:'💊',label:'用藥',n:addedMed});
+          if(addedSur)summary.push({icon:'🔧',label:'手術',n:addedSur});
+          if(addedRpt)summary.push({icon:'🩻',label:'影像病理',n:addedRpt});
+          if(addedDx)summary.push({icon:'🩺',label:'診斷',n:addedDx});
+          if(addedScr)summary.push({icon:'🔎',label:'篩檢',n:addedScr});
+          pendingImport={kind:cfg.out,fields:{},notes,summary};renderImportResult();go('connect');
+          setSt('✅ 已匯入');toast('✅ 已匯入 '+summary.map(s=>s.n+' 筆'+s.label).join('、'));return;
         }
       }
     }catch(e){}
@@ -6666,7 +6681,12 @@ function renderImportResult(){
     `<details style="margin-top:10px;" open><summary style="cursor:pointer;font-size:.8rem;color:var(--acc);font-weight:600;">${esc(pendingImport.debugTitle||'🔧 檔案結構（供診斷，可安全分享）')}</summary>
       <pre id="importDebugPre" style="white-space:pre-wrap;word-break:break-word;font-size:.68rem;background:var(--g100);border-radius:8px;padding:10px;margin-top:6px;max-height:320px;overflow:auto;font-family:'DM Mono',monospace;">${esc(pendingImport.debug)}</pre>
       <button class="btn bg" style="padding:5px 12px;font-size:.72rem;margin-top:6px;" onclick="copyDebug()">📋 複製</button></details>`:'';
-  el.innerHTML=(rows||'<div class="hint">無數值</div>')+
+  const sum=(pendingImport.summary&&pendingImport.summary.length)?
+    '<div style="font-weight:800;font-size:.9rem;margin-bottom:6px;">📥 本次匯入新增</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">'+
+    pendingImport.summary.map(s=>`<div style="background:var(--pri);color:#fff;border-radius:999px;padding:5px 13px;font-size:.84rem;font-weight:700;white-space:nowrap;">${s.icon} ${esc(s.label)} ${s.n}</div>`).join('')+
+    '</div>':'';
+  el.innerHTML=sum+(rows||(sum?'':'<div class="hint">無數值</div>'))+
     (pendingImport.notes.length?'<div class="hint" style="margin-top:8px;">'+pendingImport.notes.map(n=>'· '+n).join('<br>')+'</div>':'')+dbg;
 }
 function applyImportFields(){
