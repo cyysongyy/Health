@@ -1024,6 +1024,38 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   </div>
 </div>
 
+<!-- ========== DIAGNOSES / SCREENINGS (病史／篩檢) ========== -->
+<div class="sec" id="sec-dx">
+  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('records')">‹ 醫藥紀錄</button></div>
+  <div id="dxEmpty" class="card empty">
+    <div class="em">🩺</div>
+    <div>尚無病史／篩檢紀錄。到「🔗 匯入串接」匯入健保「健康存摺」醫療類，系統會自動擷取就醫的 <b>ICD 診斷</b> 與 <b>糞便潛血</b> 等篩檢結果；也可在下方手動新增。</div>
+    <div class="row-btn" style="margin-top:12px;justify-content:center;">
+      <button class="btn bp" onclick="go('connect')">🔗 前往匯入</button>
+      <button class="btn bg" onclick="openDxEditor()">➕ 手動新增診斷</button>
+    </div>
+  </div>
+  <div id="dxContent" style="display:none;">
+    <div class="card">
+      <div class="ct">🩺 病史／診斷清單 <span class="hint" id="dxCount"></span></div>
+      <div style="overflow-x:auto;"><table id="dxTable"></table></div>
+      <div class="row-btn" style="margin-top:10px;">
+        <button class="btn bp" onclick="openDxEditor()">➕ 新增診斷</button>
+        <button class="btn bd" onclick="clearDx()">🗑️ 清除全部診斷</button>
+      </div>
+      <div class="hint" style="margin-top:8px;">由健保就醫紀錄的 ICD 診斷整理，供回顧與就醫參考；以醫師與健保紀錄為準。</div>
+    </div>
+    <div class="card">
+      <div class="ct">🔎 篩檢紀錄 <span class="hint" id="scrCount"></span></div>
+      <div style="overflow-x:auto;"><table id="scrTable"></table></div>
+      <div class="row-btn" style="margin-top:10px;">
+        <button class="btn bp" onclick="openScrEditor()">➕ 新增篩檢</button>
+      </div>
+      <div class="hint" style="margin-top:8px;">目前擷取糞便潛血（大腸癌篩檢）；陰／陽性與日期會用於「照護缺口」判斷。</div>
+    </div>
+  </div>
+</div>
+
 <!-- ========== IMAGING / PATHOLOGY REPORTS ========== -->
 <div class="sec" id="sec-reports">
   <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('records')">‹ 醫藥紀錄</button></div>
@@ -1537,7 +1569,7 @@ function go(sec){
   document.querySelectorAll('.sec').forEach(s=>s.classList.remove('active'));
   document.getElementById('sec-'+sec).classList.add('active');
   const cur=document.querySelector('.nt[data-sec="'+sec+'"]'), nc=document.getElementById('navCurrent');
-  const SUBT={labs:'🧪 檢驗數據庫',meds:'💊 用藥紀錄',surgery:'🔧 手術紀錄',reports:'🩻 影像病理',
+  const SUBT={labs:'🧪 檢驗數據庫',meds:'💊 用藥紀錄',surgery:'🔧 手術紀錄',dx:'🩺 病史／篩檢',reports:'🩻 影像病理',
     trend:'📈 趨勢追蹤',connect:'🔗 匯入串接',
     assess:'📝 健康評估',risk:'🔬 風險預測',medscore:'🩺 醫療級評估',smart:'🚨 智慧預警',
     report:'📋 綜合報告',advice:'💡 建議 & AI',advisor:'🧭 健康顧問',
@@ -1550,6 +1582,7 @@ function go(sec){
   if(sec==='labs')renderLabs();
   if(sec==='meds')renderMeds();
   if(sec==='surgery')renderSurgeries();
+  if(sec==='dx')renderDx();
   if(sec==='reports')renderReports();
   if(sec==='report')renderReport();
   if(sec==='habit')renderHabits();
@@ -1587,6 +1620,7 @@ function renderRecords(){
     {sec:'labs',icon:'🧪',title:'檢驗數據庫',sub:'血壓、血糖、血脂、肝腎功能、血球…',tag:`<span class="hint">${n(state.labs)} 筆</span>`},
     {sec:'meds',icon:'💊',title:'用藥紀錄',sub:'用藥清單、統計、交互作用提醒',tag:`<span class="hint">${n(state.meds)} 筆</span>`},
     {sec:'surgery',icon:'🔧',title:'手術紀錄',sub:'手術／處置史',tag:`<span class="hint">${n(state.surgeries)} 筆</span>`},
+    {sec:'dx',icon:'🩺',title:'病史／篩檢',sub:'健保就醫診斷（ICD）與糞便潛血等篩檢',tag:`<span class="hint">${n(state.dx)+n(state.screen)} 筆</span>`},
     {sec:'reports',icon:'🩻',title:'影像病理',sub:'超音波／X光／內視鏡／病理（可 AI 翻譯）',tag:`<span class="hint">${n(state.reports)} 筆</span>`},
     {sec:'trend',icon:'📈',title:'趨勢追蹤',sub:'血壓、體重、檢驗值等跨時間變化'},
     {sec:'connect',icon:'🔗',title:'匯入串接',sub:'健保健康存摺、穿戴裝置、報告辨識'}
@@ -4982,6 +5016,114 @@ function surDelete(id){
   save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
   renderSurgeries();toast('已刪除');
 }
+/* ===== 病史（ICD 診斷）／篩檢：瀏覽清單＋手動增修 ===== */
+function renderDx(){
+  const dxs=(state.dx||[]).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+  const scr=(state.screen||[]).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+  const empty=document.getElementById('dxEmpty'),content=document.getElementById('dxContent');
+  if(!dxs.length&&!scr.length){ if(empty)empty.style.display='block'; if(content)content.style.display='none'; return; }
+  if(empty)empty.style.display='none'; if(content)content.style.display='block';
+  const fmt=d=>d?new Date(d).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'}):'—';
+  document.getElementById('dxCount').textContent='共 '+dxs.length+' 筆';
+  document.getElementById('dxTable').innerHTML=
+    '<tr><th>日期</th><th>診斷</th><th>ICD</th><th>院所</th><th></th></tr>'+
+    (dxs.length?dxs.map(d=>`<tr><td style="white-space:nowrap;">${fmt(d.date)}</td><td><b>${esc(d.name||'')}</b></td>`+
+      `<td class="hint" style="white-space:nowrap;">${esc(d.code||'')}</td><td class="hint" style="white-space:nowrap;">${esc(d.hospital||'')}</td>`+
+      `<td style="white-space:nowrap;"><span onclick="openDxEditor('${d.id}')" style="cursor:pointer;color:var(--acc);">✏️</span> <span onclick="dxDelete('${d.id}')" style="cursor:pointer;color:var(--err);">🗑️</span></td></tr>`).join('')
+      :'<tr><td colspan="5" class="hint">尚無診斷紀錄</td></tr>');
+  const scrCnt=document.getElementById('scrCount'); if(scrCnt)scrCnt.textContent='共 '+scr.length+' 筆';
+  const rTxt=r=>r==='pos'?'<b style="color:var(--err);">陽性</b>':r==='neg'?'<b style="color:var(--ok);">陰性</b>':'—';
+  document.getElementById('scrTable').innerHTML=
+    '<tr><th>日期</th><th>篩檢</th><th>結果</th><th>院所</th><th></th></tr>'+
+    (scr.length?scr.map(s=>`<tr><td style="white-space:nowrap;">${fmt(s.date)}</td><td>${esc(s.label||s.test||'')}</td>`+
+      `<td>${rTxt(s.result)}</td><td class="hint" style="white-space:nowrap;">${esc(s.hospital||'')}</td>`+
+      `<td style="white-space:nowrap;"><span onclick="openScrEditor('${s.id}')" style="cursor:pointer;color:var(--acc);">✏️</span> <span onclick="scrDelete('${s.id}')" style="cursor:pointer;color:var(--err);">🗑️</span></td></tr>`).join('')
+      :'<tr><td colspan="5" class="hint">尚無篩檢紀錄</td></tr>');
+}
+function openDxEditor(id){
+  const editing=id?((state.dx||[]).find(d=>d.id===id)):null; const e=editing||{};
+  const dateVal=e.date?new Date(e.date).toISOString().slice(0,10):todayKey();
+  let m=document.getElementById('dxModal');
+  if(!m){m=document.createElement('div');m.id='dxModal';m.className='modal-overlay';document.body.appendChild(m);}
+  m.innerHTML=`<div class="modal-box">
+    <div class="ct">${editing?'✏️ 編輯診斷':'➕ 新增診斷'}</div>
+    <div class="fg"><label class="fl">日期</label><input class="fi" type="date" id="dxIn_date" value="${dateVal}"></div>
+    <div class="fg"><label class="fl">診斷名稱 <span class="hint">必填</span></label><input class="fi" id="dxIn_name" value="${esc(e.name||'')}" placeholder="例：本態性高血壓"></div>
+    <div class="fg"><label class="fl">ICD 碼</label><input class="fi" id="dxIn_code" value="${esc(e.code||'')}" placeholder="例：I10"></div>
+    <div class="fg"><label class="fl">醫療院所</label><input class="fi" id="dxIn_hosp" value="${esc(e.hospital||'')}" placeholder="例：某某診所"></div>
+    <div class="row-btn" style="margin-top:14px;">
+      <button class="btn bp" onclick="saveDxEditor('${editing?editing.id:''}')">💾 儲存</button>
+      <button class="btn bg" onclick="closeDxEditor()">取消</button>
+    </div></div>`;
+  m.style.display='flex';
+}
+function closeDxEditor(){const m=document.getElementById('dxModal');if(m){m.style.display='none';m.innerHTML='';}}
+function saveDxEditor(id){
+  const name=(document.getElementById('dxIn_name').value||'').trim();
+  if(!name){toast('請填入診斷名稱');return;}
+  const ds=document.getElementById('dxIn_date').value;
+  const date=ds?new Date(ds+'T00:00:00').toISOString():null;
+  const code=(document.getElementById('dxIn_code').value||'').trim().toUpperCase();
+  const hospital=(document.getElementById('dxIn_hosp').value||'').trim();
+  state.dx=state.dx||[];
+  if(id){const d=state.dx.find(x=>x.id===id); if(d)Object.assign(d,{date,name,code,hospital,edited:true});}
+  else state.dx.push({id:'dx_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),date,name,code,hospital,source:'manual'});
+  save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  closeDxEditor();renderDx();toast(id?'✅ 已更新':'✅ 已新增');
+}
+function dxDelete(id){
+  if(!confirm('確定刪除這一筆診斷？'))return;
+  state.dx=(state.dx||[]).filter(d=>d.id!==id);
+  save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  renderDx();toast('已刪除');
+}
+function clearDx(){
+  if(!(state.dx||[]).length)return;
+  if(!confirm('確定清除所有診斷紀錄？此動作無法復原。'))return;
+  state.dx=[]; save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  renderDx();toast('已清除全部診斷');
+}
+function openScrEditor(id){
+  const editing=id?((state.screen||[]).find(s=>s.id===id)):null; const e=editing||{};
+  const dateVal=e.date?new Date(e.date).toISOString().slice(0,10):todayKey();
+  const res=e.result||'neg';
+  let m=document.getElementById('scrModal');
+  if(!m){m=document.createElement('div');m.id='scrModal';m.className='modal-overlay';document.body.appendChild(m);}
+  m.innerHTML=`<div class="modal-box">
+    <div class="ct">${editing?'✏️ 編輯篩檢':'➕ 新增篩檢'}</div>
+    <div class="fg"><label class="fl">日期</label><input class="fi" type="date" id="scrIn_date" value="${dateVal}"></div>
+    <div class="fg"><label class="fl">篩檢項目</label><input class="fi" id="scrIn_label" value="${esc(e.label||'糞便潛血')}" placeholder="例：糞便潛血"></div>
+    <div class="fg"><label class="fl">結果</label><select class="fi" id="scrIn_result">
+      <option value="neg"${res==='neg'?' selected':''}>陰性</option>
+      <option value="pos"${res==='pos'?' selected':''}>陽性</option>
+      <option value="unknown"${res==='unknown'?' selected':''}>未判定</option></select></div>
+    <div class="fg"><label class="fl">醫療院所</label><input class="fi" id="scrIn_hosp" value="${esc(e.hospital||'')}" placeholder="例：某某醫院"></div>
+    <div class="row-btn" style="margin-top:14px;">
+      <button class="btn bp" onclick="saveScrEditor('${editing?editing.id:''}')">💾 儲存</button>
+      <button class="btn bg" onclick="closeScrEditor()">取消</button>
+    </div></div>`;
+  m.style.display='flex';
+}
+function closeScrEditor(){const m=document.getElementById('scrModal');if(m){m.style.display='none';m.innerHTML='';}}
+function saveScrEditor(id){
+  const label=(document.getElementById('scrIn_label').value||'').trim()||'糞便潛血';
+  const ds=document.getElementById('scrIn_date').value;
+  const date=ds?new Date(ds+'T00:00:00').toISOString():null;
+  const result=document.getElementById('scrIn_result').value||'unknown';
+  const hospital=(document.getElementById('scrIn_hosp').value||'').trim();
+  const test=/糞便|潛血|fobt/i.test(label)?'fobt':label;
+  state.screen=state.screen||[];
+  if(id){const s=state.screen.find(x=>x.id===id); if(s)Object.assign(s,{date,label,result,hospital,test,edited:true});}
+  else state.screen.push({id:'scr_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),date,test,label,result,raw:'',hospital,source:'manual'});
+  save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  closeScrEditor();renderDx();toast(id?'✅ 已更新':'✅ 已新增');
+}
+function scrDelete(id){
+  if(!confirm('確定刪除這一筆篩檢？'))return;
+  state.screen=(state.screen||[]).filter(s=>s.id!==id);
+  save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  renderDx();toast('已刪除');
+}
 function exportSurgeries(){
   const surs=state.surgeries||[]; if(!surs.length){toast('沒有可匯出的手術紀錄');return;}
   const head=['date','name','dx','hospital','source'];
@@ -5497,7 +5639,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-import-summary';
+const APP_VERSION='2026.07.30-dx-page';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
