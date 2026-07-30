@@ -1635,6 +1635,7 @@ function renderLocalAnalysis(){
      '<button class="btn bg" onclick="showHealthAlert(true)">🔔 查看所有警訊</button></div>';
   h+='</div>';
   h+=trajectoryCardHtml();   // 🔮 健康走向預測（免金鑰、依檢驗趨勢推估）
+  h+=adherenceCardHtml();    // 💊 用藥依從性（依健保領藥紀錄估算 PDC）
   if(!hasKey){
     h+='<div class="card" style="background:#f0f9ff;border:1px solid #bae6fd;"><div style="font-size:.85rem;line-height:1.75;">🔑 <b>想要 AI 白話深入解讀？</b><br>上方「本機綜合分析」<b>不需金鑰、已完整</b>。若想讓 AI 再用白話幫你解讀、還能對話問答，到「⚙️ 設定」填入 Gemini 或 OpenAI 金鑰，即可解鎖下方 AI 功能（金鑰只存在你手機、不外傳）。</div><div class="row-btn" style="margin-top:8px;"><button class="btn bg" onclick="go(\'settings\')">前往設定填金鑰</button></div></div>';
   }
@@ -3624,6 +3625,60 @@ function trajectoryCardHtml(){
     `<div class="hint" style="margin-bottom:6px;line-height:1.6;">用你歷次檢驗做直線推估「若照目前速度會往哪走、多久跨過風險門檻」。<b>僅供參考、非預測診斷</b>；資料點越多越準確。</div>`+
     rows+'</div>';
 }
+/* 用藥依從性（PDC 服藥涵蓋率）：健保領藥紀錄含「領藥日期＋給藥天數」，
+   可估算慢性病藥物近一年的覆蓋比例，並與相關檢驗趨勢交叉。純本機、免金鑰。 */
+// 延遲取用（MED_CLASS_RX 於檔案後段定義，避免載入期 TDZ）
+function rxAdherenceList(){ return [
+  {key:'bp', label:'降血壓藥', labs:['sbp','dbp'], rx:MED_CLASS_RX.bp},
+  {key:'dm', label:'降血糖藥／胰島素', labs:['hba1c','glucose'], rx:MED_CLASS_RX.dm},
+  {key:'statin', label:'降血脂藥（statin）', labs:['ldl','chol'], rx:MED_CLASS_RX.statin},
+  {key:'uric', label:'降尿酸藥', labs:['ua'], rx:MED_CLASS_RX.uricLowering}
+]; }
+function classPDC(rx){
+  const now=Date.now(), DAY=864e5, WIN=365;
+  const fills=(state.meds||[]).filter(m=>m.name&&isRealDrug(m.name)&&rx.test(m.name)&&m.date)
+    .map(m=>({t:new Date(m.date).getTime(), days:(m.days!=null&&!isNaN(+m.days)&&+m.days>0)?+m.days:null}))
+    .filter(f=>!isNaN(f.t)).sort((a,b)=>a.t-b.t);
+  if(!fills.length)return null;
+  const recent=fills.filter(f=>f.t>=now-WIN*DAY);
+  if(recent.length<2)return null;                        // 近一年至少 2 次領藥才評估
+  const winStart=Math.max(fills[0].t, now-WIN*DAY);
+  const winDays=Math.max(1,Math.round((now-winStart)/DAY));
+  if(winDays<60)return null;                              // 觀察窗太短
+  const covered=new Uint8Array(winDays+2); let withDays=0, estUsed=false;
+  fills.forEach(f=>{ let d=f.days; if(d==null){d=30;estUsed=true;}else withDays++;
+    let a=Math.floor((f.t-winStart)/DAY), b=a+d; a=Math.max(a,0); b=Math.min(b,winDays);
+    for(let i=a;i<b;i++)covered[i]=1; });
+  let cov=0; for(let i=0;i<winDays;i++)cov+=covered[i];
+  let gaps=0, run=0, started=false;
+  for(let i=0;i<winDays;i++){ if(covered[i]){started=true;run=0;} else if(started){run++; if(run===8)gaps++;} }
+  return {pdc:Math.round(cov/winDays*100), winDays, gaps, estUsed, recentFills:recent.length};
+}
+function medAdherence(){
+  const out=[];
+  rxAdherenceList().forEach(c=>{ const r=classPDC(c.rx); if(!r)return;
+    let worseningLab=null;
+    for(const m of c.labs){ const v=labVelocity(m); if(v&&v.worsening){worseningLab=v;break;} }
+    out.push(Object.assign({label:c.label,labs:c.labs},r,{worseningLab}));
+  });
+  return out.sort((a,b)=>a.pdc-b.pdc);
+}
+function adherenceCardHtml(){
+  const A=medAdherence(); if(!A.length)return '';
+  const rows=A.map(a=>{
+    const col=a.pdc>=80?'var(--ok)':a.pdc>=50?'var(--warn)':'var(--err)';
+    const winTxt=a.winDays>=360?'一年':('近 '+Math.round(a.winDays/30)+' 個月');
+    let line=`<b>${esc(a.label)}</b>：${winTxt}服藥涵蓋率 <b style="color:${col};">${a.pdc}%</b>`;
+    line+= a.pdc>=80?`（規律 👍${a.gaps?`，${a.gaps} 段中斷`:''}）`:`（未達 80%${a.gaps?`、${a.gaps} 段中斷`:''}）`;
+    if(a.estUsed)line+='<span class="hint">（部分給藥天數缺漏，為估計值）</span>';
+    if(a.pdc<80 && a.worseningLab){ const lm=LAB_META[a.worseningLab.metric];
+      line+=`<div style="margin-top:3px;color:var(--err);">⚠️ 同時 ${esc(lm.label)} 正在${a.worseningLab.slope>0?'上升':'下降'}中——規律服藥可能有助改善，建議與醫師討論。</div>`; }
+    return `<div style="border-left:3px solid ${col};padding:6px 10px;margin:6px 0;background:var(--g100);border-radius:6px;font-size:.84rem;line-height:1.55;">${line}</div>`;
+  }).join('');
+  return `<div class="card"><div class="ct">💊 用藥依從性 <span class="hint">依健保領藥紀錄估算</span></div>`+
+    `<div class="hint" style="margin-bottom:6px;line-height:1.6;">以你的<b>領藥日期與給藥天數</b>估算慢性病藥物的「服藥涵蓋率（PDC）」，<b>≥80%</b> 一般視為規律。僅供自我管理參考；用藥調整請與醫師討論，<b>切勿自行停藥</b>。</div>`+
+    rows+'</div>';
+}
 function recordLabEntry(fields,source){
   const values={};
   Object.keys(LAB_META).forEach(k=>{const n=toNum(fields[k]); if(n!==null) values[k]=n;});
@@ -5234,7 +5289,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-trajectory';
+const APP_VERSION='2026.07.30-adherence';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
