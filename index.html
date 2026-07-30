@@ -1434,7 +1434,7 @@ function load(){
   return s;
 }
 function defaults(){
-  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], reminders:[], mhx:{}, goals:{sbp:130,ldl:100,hba1c:7}, qa:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true,fontScale:1.5,autoBackup:false}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], dx:[], reminders:[], mhx:{}, goals:{sbp:130,ldl:100,hba1c:7}, qa:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true,fontScale:1.5,autoBackup:false}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));scheduleAutoBackup();}
 // 自動備份到 Google Drive：開啟且已設 Client ID 時，資料變更後自動（安靜）上傳；授權過一次後不再跳窗
@@ -1638,6 +1638,7 @@ function renderLocalAnalysis(){
   h+=trajectoryCardHtml();   // 🔮 健康走向預測（免金鑰、依檢驗趨勢推估）
   h+=adherenceCardHtml();    // 💊 用藥依從性（依健保領藥紀錄估算 PDC）
   h+=careGapCardHtml();       // 🩺 照護缺口提醒（該做未做）
+  h+=dxCardHtml();            // 🩺 健保就醫診斷（病史，ICD）
   if(!hasKey){
     h+='<div class="card" style="background:#f0f9ff;border:1px solid #bae6fd;"><div style="font-size:.85rem;line-height:1.75;">🔑 <b>想要 AI 白話深入解讀？</b><br>上方「本機綜合分析」<b>不需金鑰、已完整</b>。若想讓 AI 再用白話幫你解讀、還能對話問答，到「⚙️ 設定」填入 Gemini 或 OpenAI 金鑰，即可解鎖下方 AI 功能（金鑰只存在你手機、不外傳）。</div><div class="row-btn" style="margin-top:8px;"><button class="btn bg" onclick="go(\'settings\')">前往設定填金鑰</button></div></div>';
   }
@@ -3689,11 +3690,13 @@ function detectConditions(){
   const num=v=>(v!=null&&!isNaN(+v))?+v:null;
   const hba1c=lv('hba1c'), glu=lv('glucose'), egfr=lv('egfr'), cr=lv('cr'), ldl=lv('ldl'), chol=lv('chol');
   const sbp=lv('sbp')!=null?lv('sbp'):num(p.sbp), dbp=lv('dbp')!=null?lv('dbp'):num(p.dbp);
-  const dm=(cls.dm>0)||(hba1c!=null&&hba1c>=6.5)||(glu!=null&&glu>=126);
-  const htn=(cls.bp>0)||(sbp!=null&&sbp>=140)||(dbp!=null&&dbp>=90);
-  const ckd=(egfr!=null&&egfr<60)||(cr!=null&&cr>=1.3);
+  const dxCodes=(state.dx||[]).map(d=>String(d.code||'').toUpperCase());
+  const hasDx=re=>dxCodes.some(c=>re.test(c));   // 健保確診（ICD）為地面真相，優先於推斷
+  const dm=(cls.dm>0)||(hba1c!=null&&hba1c>=6.5)||(glu!=null&&glu>=126)||hasDx(/^E1[0-4]/);
+  const htn=(cls.bp>0)||(sbp!=null&&sbp>=140)||(dbp!=null&&dbp>=90)||hasDx(/^I1[0-5]/);
+  const ckd=(egfr!=null&&egfr<60)||(cr!=null&&cr>=1.3)||hasDx(/^N18/);
   const statin=(cls.statin>0);
-  const dyslip=statin||(ldl!=null&&ldl>=160)||(chol!=null&&chol>=240);
+  const dyslip=statin||(ldl!=null&&ldl>=160)||(chol!=null&&chol>=240)||hasDx(/^E78/);
   return {dm,htn,ckd,statin,dyslip,age:num(p.age),sex:p.sex||null,smoker:(p.smoke==='current')};
 }
 function careLabGaps(){
@@ -4805,6 +4808,58 @@ function ingestSurgeries(surs,source){
     if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{}); }
   return added;
 }
+/* 健保就醫紀錄的 ICD 診斷（門診／住院）：一列可含多組「ICD 碼＋中文診斷名」配對。
+   ICD-10 碼＝英文字母＋2 數字＋（可選）數字/字母；藥品碼（AC…）、處置碼（07001C）不符此樣式。*/
+function parseBankDiagnoses(bd){
+  const out=[]; const ICD=/^[A-TV-Z]\d{2}[A-Z0-9]{0,4}$/;
+  const sufOf=k=>{const m=String(k).match(/\.(\d+)$/);return m?+m[1]:0;};
+  const badName=/業務組|醫院|診所|衛生所|藥局|醫事|中心$|門診|住院|健保|聲明|無資料/;
+  Object.keys(bd).filter(k=>/^r\d+$/.test(k)).forEach(sec=>{
+    const rows=bd[sec]; if(!Array.isArray(rows))return;
+    rows.forEach(row=>{
+      if(!row||typeof row!=='object')return;
+      const flds=Object.keys(row).filter(k=>typeof row[k]==='string'&&String(row[k]).trim()!=='')
+        .map(k=>({suf:sufOf(k),v:String(row[k]).trim()})).sort((a,b)=>a.suf-b.suf);
+      const date=bankVisitDate(row,sec), hosp=(row[sec+'.4']||'').toString().trim();
+      const seen=new Set();
+      for(let i=0;i<flds.length;i++){ const code=flds[i].v; if(!ICD.test(code))continue;
+        const nm=(i+1<flds.length)?flds[i+1].v:'';
+        if(!/[一-鿿]/.test(nm)||nm.length<2||nm.length>40||badName.test(nm))continue;
+        if(seen.has(code))continue; seen.add(code);
+        out.push({date,hospital:hosp,code,name:nm,source:'nhi'});
+      }
+    });
+  });
+  return out;
+}
+function ingestDiagnoses(list,source){
+  if(!list||!list.length)return 0;
+  state.dx=state.dx||[];
+  const sig=d=>((d.date||'').slice(0,10)+'|'+(d.code||'')+'|'+(d.name||''));
+  const seen=new Set(state.dx.map(sig));
+  let added=0;
+  list.forEach(d=>{ const k=sig(d); if(seen.has(k))return; seen.add(k);
+    let iso=null; if(d.date){const dt=new Date(d.date);if(!isNaN(dt))iso=dt.toISOString();}
+    state.dx.push({id:'dx_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),
+      date:iso||d.date||null,code:d.code,name:d.name,hospital:d.hospital||'',source:source||'nhi'});
+    added++; });
+  if(added){ if(state.dx.length>4000)state.dx=state.dx.slice(-4000); save();
+    if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{}); }
+  return added;
+}
+function dxSummary(){
+  const g={};
+  (state.dx||[]).forEach(d=>{ const key=(d.code||'')+'|'+(d.name||''); const t=d.date?new Date(d.date).getTime():0;
+    const e=g[key]||(g[key]={code:d.code,name:d.name,count:0,last:0}); e.count++; if(t>e.last)e.last=t; });
+  return Object.values(g).sort((a,b)=>b.last-a.last);
+}
+function dxCardHtml(){
+  const S=dxSummary(); if(!S.length)return '';
+  const rows=S.slice(0,12).map(d=>`<div style="padding:4px 10px;margin:4px 0;background:var(--g100);border-radius:6px;font-size:.82rem;line-height:1.5;"><b>${esc(d.name)}</b> <span class="hint">${esc(d.code)}${d.count>1?'・'+d.count+' 次':''}${d.last?'・最近 '+new Date(d.last).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'}):''}</span></div>`).join('');
+  return `<div class="card"><div class="ct">🩺 健保就醫診斷（病史） <span class="hint">${S.length} 項</span></div>`+
+    `<div class="hint" style="margin-bottom:6px;line-height:1.6;">由健保就醫紀錄的 ICD 診斷整理，供回顧與就醫參考。以醫師與健保紀錄為準；同一疾病可能因不同院所編碼略有差異。</div>`+
+    rows+(S.length>12?`<div class="hint" style="margin-top:4px;">…等共 ${S.length} 項</div>`:'')+'</div>';
+}
 function renderSurgeries(){
   const surs=(state.surgeries||[]).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
   const empty=document.getElementById('surEmpty'),content=document.getElementById('surContent');
@@ -5379,7 +5434,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-datecheck';
+const APP_VERSION='2026.07.30-diagnoses';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -5858,13 +5913,13 @@ async function handleImport(e,kind){
   }
   try{
     const entries=await extractTextEntries(f);   // 自動解壓縮（.zip/.gz），回傳多個文字檔
-    const fields={};const notes=[];const records=[];const meds=[];const surs=[];const reps=[];
+    const fields={};const notes=[];const records=[];const meds=[];const surs=[];const reps=[];const dxs=[];
     let ok=0,failed=0,firstJson=null,firstText=null;
     entries.forEach(({name,text})=>{
       try{
         if(kind==='nhi'){ if(firstText===null)firstText=text; if(firstJson===null){try{firstJson=jsonParseLenient(text);}catch(e){}} }
         let parsed;
-        if(kind==='nhi'){ parsed=parseNHI(text); try{const j=jsonParseLenient(text);parseMeds(j).forEach(m=>meds.push(m));const bd=nhiBankData(j);if(bd){parseBankSurgeries(bd).forEach(s=>surs.push(s));parseBankReports(bd).forEach(x=>reps.push(x));}}catch(e){} }
+        if(kind==='nhi'){ parsed=parseNHI(text); try{const j=jsonParseLenient(text);parseMeds(j).forEach(m=>meds.push(m));const bd=nhiBankData(j);if(bd){parseBankSurgeries(bd).forEach(s=>surs.push(s));parseBankReports(bd).forEach(x=>reps.push(x));parseBankDiagnoses(bd).forEach(d=>dxs.push(d));}}catch(e){} }
         else if(kind==='wearable')parsed=parseWearable(text,name);
         else parsed=parseAppFile(text,name);
         if(parsed&&parsed.fields){Object.assign(fields,parsed.fields);ok++;}
@@ -5876,11 +5931,13 @@ async function handleImport(e,kind){
     if(records.length)state.labs=(state.labs||[]).filter(e=>e.source!=='nhi');
     if(surs.length)state.surgeries=(state.surgeries||[]).filter(e=>e.source!=='nhi');
     if(reps.length)state.reports=(state.reports||[]).filter(e=>e.source!=='nhi');
+    if(dxs.length)state.dx=(state.dx||[]).filter(e=>e.source!=='nhi');
     const addedRec=records.length?ingestLabRecords(records,'nhi'):0;
     const addedMed=meds.length?ingestMeds(meds,'nhi'):0;
     const addedSur=surs.length?ingestSurgeries(surs,'nhi'):0;
     const addedRpt=reps.length?ingestReports(reps,'nhi'):0;
-    if(!Object.keys(fields).length && !addedRec && !addedMed && !addedSur && !addedRpt){
+    const addedDx=dxs.length?ingestDiagnoses(dxs,'nhi'):0;
+    if(!Object.keys(fields).length && !addedRec && !addedMed && !addedSur && !addedRpt && !addedDx){
       let debug=null,debugTitle='';
       if(firstJson){debug=jsonOutlineText(firstJson);debugTitle='🔧 檔案結構（僅欄位名稱與截短樣本，可安全分享）';}
       else if(firstText){debug=firstText.replace(/[\u0000-\u001F]/g,'·').slice(0,800);debugTitle='🔧 檔案內容前 800 字（無法解析為 JSON，請看實際格式；分享前可自行遮蔽敏感值）';}
@@ -5897,6 +5954,7 @@ async function handleImport(e,kind){
     if(addedMed)notes.unshift('💊 已將 '+addedMed+' 筆用藥紀錄加入「用藥紀錄」');
     if(addedSur)notes.unshift('🔧 已將 '+addedSur+' 筆手術／處置加入「手術紀錄」');
     if(addedRpt)notes.unshift('🩻 已將 '+addedRpt+' 筆影像／病理報告加入「影像病理」（可 AI 翻譯）');
+    if(addedDx)notes.unshift('🩺 已將 '+addedDx+' 筆就醫診斷（ICD）整理為「病史」，並用於照護缺口判斷');
     pendingImport={kind,fields,notes};
     renderImportResult();go('connect');
     const bits=[]; if(addedRec)bits.push(addedRec+' 筆檢驗'); if(addedMed)bits.push(addedMed+' 筆用藥'); if(addedSur)bits.push(addedSur+' 筆手術'); if(addedRpt)bits.push(addedRpt+' 筆影像病理');
@@ -6257,14 +6315,15 @@ async function handleTextImport(kind){
       if(kind==='nhi'){
         if(parsed&&parsed.records&&parsed.records.length)state.labs=(state.labs||[]).filter(e=>e.source!=='nhi');
         const addedRec=(parsed&&parsed.records&&parsed.records.length)?ingestLabRecords(parsed.records,'nhi'):0;
-        let addedMed=0,addedSur=0,addedRpt=0; try{ const j=jsonParseLenient(text); addedMed=ingestMeds(parseMeds(j),'nhi'); const bd=nhiBankData(j); if(bd){const bs=parseBankSurgeries(bd),br=parseBankReports(bd); if(bs.length)state.surgeries=(state.surgeries||[]).filter(e=>e.source!=='nhi'); if(br.length)state.reports=(state.reports||[]).filter(e=>e.source!=='nhi'); addedSur=ingestSurgeries(bs,'nhi');addedRpt=ingestReports(br,'nhi');} }catch(e){}
+        let addedMed=0,addedSur=0,addedRpt=0,addedDx=0; try{ const j=jsonParseLenient(text); addedMed=ingestMeds(parseMeds(j),'nhi'); const bd=nhiBankData(j); if(bd){const bs=parseBankSurgeries(bd),br=parseBankReports(bd),bx=parseBankDiagnoses(bd); if(bs.length)state.surgeries=(state.surgeries||[]).filter(e=>e.source!=='nhi'); if(br.length)state.reports=(state.reports||[]).filter(e=>e.source!=='nhi'); if(bx.length)state.dx=(state.dx||[]).filter(e=>e.source!=='nhi'); addedSur=ingestSurgeries(bs,'nhi');addedRpt=ingestReports(br,'nhi');addedDx=ingestDiagnoses(bx,'nhi');} }catch(e){}
         if(addedRec){notes=notes||[];notes.unshift('✅ 已將 '+addedRec+' 筆檢驗紀錄加入檢驗數據庫');}
         if(addedMed){notes=notes||[];notes.unshift('💊 已將 '+addedMed+' 筆用藥紀錄加入「用藥紀錄」');}
         if(addedSur){notes=notes||[];notes.unshift('🔧 已將 '+addedSur+' 筆手術／處置加入「手術紀錄」');}
         if(addedRpt){notes=notes||[];notes.unshift('🩻 已將 '+addedRpt+' 筆影像／病理報告加入「影像病理」');}
-        if((addedRec||addedMed||addedSur||addedRpt)&&!fields){
+        if(addedDx){notes=notes||[];notes.unshift('🩺 已將 '+addedDx+' 筆就醫診斷（ICD）整理為「病史」');}
+        if((addedRec||addedMed||addedSur||addedRpt||addedDx)&&!fields){
           pendingImport={kind:cfg.out,fields:{},notes};renderImportResult();go('connect');
-          setSt('✅ 已匯入');toast('✅ 已匯入'+(addedRec?' '+addedRec+' 筆檢驗':'')+(addedMed?' '+addedMed+' 筆用藥':'')+(addedSur?' '+addedSur+' 筆手術':'')+(addedRpt?' '+addedRpt+' 筆影像病理':''));return;
+          setSt('✅ 已匯入');toast('✅ 已匯入'+(addedRec?' '+addedRec+' 筆檢驗':'')+(addedMed?' '+addedMed+' 筆用藥':'')+(addedSur?' '+addedSur+' 筆手術':'')+(addedRpt?' '+addedRpt+' 筆影像病理':'')+(addedDx?' '+addedDx+' 筆診斷':''));return;
         }
       }
     }catch(e){}
