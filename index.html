@@ -1373,9 +1373,11 @@ service cloud.firestore {
     <div class="hint" style="margin-bottom:10px;">所有資料儲存於本機瀏覽器 localStorage。</div>
     <div class="row-btn">
       <button class="btn bg" onclick="exportData()">📤 匯出檔案 (JSON)</button>
+      <button class="btn bg" onclick="exportAllCsvZip()">📦 匯出全部 CSV (ZIP)</button>
       <button class="btn bg" onclick="document.getElementById('importFile').click()">📥 匯入檔案</button>
       <button class="btn bd" onclick="resetAll()">🗑️ 清除全部資料</button>
     </div>
+    <div class="hint" style="margin-top:6px;line-height:1.6;">📦 <b>匯出全部 CSV</b>：把檢驗／用藥／手術／影像／病史／篩檢六類各存成一個 CSV，打包成單一 ZIP。JSON 則為完整備份（可還原）。</div>
     <input type="file" id="importFile" accept=".json" style="display:none;" onchange="importData(event)">
   </div>
   <div class="card">
@@ -5157,6 +5159,36 @@ function exportScreen(){
   csvDownload('lifespan-screenings-'+todayKey()+'.csv',['date','test','label','result','raw','hospital','source'],
     scr.map(s=>[s.date?new Date(s.date).toISOString():'',s.test||'',s.label||'',s.result||'',s.raw||'',s.hospital||'',s.source||'']));
 }
+// 一鍵把六類紀錄各自轉成 CSV，打包成單一 ZIP 下載
+function csvText(head,rows){
+  const esc=x=>/[",\n]/.test(String(x))?'"'+String(x).replace(/"/g,'""')+'"':x;
+  return '﻿'+[head.join(','),...rows.map(r=>r.map(esc).join(','))].join('\n');
+}
+function exportAllCsvZip(){
+  if(typeof fflate==='undefined'||!fflate.zipSync||!fflate.strToU8){ toast('打包元件未載入，請連網重整後再試'); return; }
+  const files={}, enc=s=>fflate.strToU8(s);
+  const labs=state.labs||[];
+  if(labs.length){ const cols=LAB_ORDER.filter(k=>labs.some(e=>e.values&&e.values[k]!=null));
+    files['labs.csv']=enc(csvText(['date','source',...cols],labs.map(e=>[new Date(e.date).toISOString(),e.source||'',...cols.map(k=>(e.values&&e.values[k]!=null)?e.values[k]:'')]))); }
+  const meds=state.meds||[];
+  if(meds.length)files['meds.csv']=enc(csvText(['date','name','dose','route','days','qty','source','kind','prescriber'],meds.map(m=>[m.date?new Date(m.date).toISOString():'',m.name||'',m.dose||'',m.route||'',m.days!=null?m.days:'',m.qty||'',m.source||'',m.kind||'',m.prescriber||''])));
+  const surs=state.surgeries||[];
+  if(surs.length)files['surgeries.csv']=enc(csvText(['date','name','dx','hospital','source'],surs.map(s=>[s.date?new Date(s.date).toISOString():'',s.name||'',s.dx||'',s.hospital||'',s.source||''])));
+  const reps=state.reports||[];
+  if(reps.length)files['reports.csv']=enc(csvText(['date','name','hospital','findings','findingsZh','source'],reps.map(r=>[r.date?new Date(r.date).toISOString():'',r.name||'',r.hospital||'',r.findings||'',r.findingsZh||'',r.source||''])));
+  const dxs=state.dx||[];
+  if(dxs.length)files['diagnoses.csv']=enc(csvText(['date','code','name','hospital','source'],dxs.map(d=>[d.date?new Date(d.date).toISOString():'',d.code||'',d.name||'',d.hospital||'',d.source||''])));
+  const scr=state.screen||[];
+  if(scr.length)files['screenings.csv']=enc(csvText(['date','test','label','result','raw','hospital','source'],scr.map(s=>[s.date?new Date(s.date).toISOString():'',s.test||'',s.label||'',s.result||'',s.raw||'',s.hospital||'',s.source||''])));
+  const n=Object.keys(files).length;
+  if(!n){ toast('目前沒有可匯出的紀錄'); return; }
+  try{
+    const zipped=fflate.zipSync(files,{level:6});
+    const blob=new Blob([zipped],{type:'application/zip'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='lifespan-all-csv-'+todayKey()+'.zip';a.click();
+    toast('📦 已打包 '+n+' 個 CSV 下載');
+  }catch(e){ toast('打包失敗：'+e.message); }
+}
 
 /* ============ 影像病理報告（英文報告＋AI 翻譯） ============ */
 function ingestReports(reps,source){
@@ -5657,7 +5689,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-export-all';
+const APP_VERSION='2026.07.30-export-zip';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
