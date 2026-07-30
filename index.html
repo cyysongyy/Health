@@ -2945,12 +2945,18 @@ function buildDoctorSheet(){
   if(bmi)basic.push('BMI '+bmi);
   if(v('sbp')||p.sbp)basic.push('血壓 '+(v('sbp')||p.sbp)+'/'+(v('dbp')||p.dbp||'?'));
   if(basic.length)sec.push({title:'基本資料',items:[basic.join('・')]});
+  // 重要病史（健保就醫診斷 ICD）
+  const dxItems=(typeof dxSummary==='function'?dxSummary():[]).slice(0,15).map(d=>d.name+(d.code?'（'+d.code+'）':''));
+  if(dxItems.length)sec.push({title:'重要病史（健保就醫診斷）',items:dxItems});
   // 目前用藥
   const meds=[...new Set(recentMeds(120).map(m=>m.name).filter(isRealDrug))];
   if(meds.length)sec.push({title:'目前用藥（近 4 個月，'+meds.length+' 種）',items:meds.slice(0,40)});
   // 近期異常檢驗
   const abn=LAB_ORDER.filter(k=>L[k]!=null&&labFlag(k,L[k].v)!=='ok').map(k=>LAB_META[k].label+' '+L[k].v+LAB_META[k].unit+(labDateStr(L[k])?'（'+labDateStr(L[k])+'）':''));
   if(abn.length)sec.push({title:'近期異常檢驗（'+abn.length+' 項）',items:abn});
+  // 篩檢紀錄
+  const fdoc=(typeof latestScreen==='function')?latestScreen('fobt'):null;
+  if(fdoc&&fdoc.date)sec.push({title:'篩檢紀錄',items:['糞便潛血 '+new Date(fdoc.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})+'：'+(fdoc.result==='pos'?'陽性':fdoc.result==='neg'?'陰性':'—')]});
   // 用藥交互作用
   const ix=(typeof medInteractions==='function'?medInteractions():[]).filter(x=>x.sev!=='low').map(x=>x.pairs[0][0].split(/[ （(]/)[0]+' × '+x.pairs[0][1].split(/[ （(]/)[0]+'（'+x.why+'）');
   if(ix.length)sec.push({title:'可能需注意的併用組合',items:ix});
@@ -2966,6 +2972,7 @@ function buildDoctorSheet(){
   if(cls.dm&&v('hba1c')!=null&&v('hba1c')>=7)Q.push('我的糖化血色素還沒達標，控糖方案要調整嗎？');
   if(meds.some(n=>/omeprazole|esomeprazole|lansoprazole|pantoprazole|耐適恩/i.test(n)))Q.push('我長期在吃胃藥，還需要繼續嗎？有沒有替代或可停的時機？');
   if(abn.some(a=>/eGFR|肌酸酐|尿素氮/.test(a)))Q.push('我的腎功能數值，需要進一步檢查或調整用藥嗎？');
+  if(fdoc&&fdoc.result==='pos')Q.push('我的糞便潛血是陽性，需要安排大腸鏡進一步檢查嗎？');
   (state.reports||[]).forEach(r=>{ if(IMG_FLAG_RX.test((r.findings||'')+(r.findingsZh||'')))Q.push('影像／病理報告「'+r.name+'」提到的發現需要追蹤嗎？'); });
   if(!Q.length)Q.push('依我目前的檢驗與用藥，有沒有需要特別注意或調整的地方？');
   sec.push({title:'建議可以問醫師的問題',items:[...new Set(Q)]});
@@ -3091,6 +3098,12 @@ function buildHealthContext(){
   // 手術
   const surs=(state.surgeries||[]).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)).slice(0,10).map(s=>s.name+(s.date?'（'+new Date(s.date).getFullYear()+'）':''));
   if(surs.length)P.push('【手術／處置史】'+surs.join('、'));
+  // 健保就醫診斷（病史，ICD）
+  const dxL=(typeof dxSummary==='function'?dxSummary():[]).slice(0,20).map(d=>d.name+(d.code?'('+d.code+')':'')+(d.last?'，最近'+new Date(d.last).getFullYear():''));
+  if(dxL.length)P.push('【健保就醫診斷（病史）】'+dxL.join('、'));
+  // 篩檢紀錄
+  const fscr=(typeof latestScreen==='function')?latestScreen('fobt'):null;
+  if(fscr&&fscr.date)P.push('【篩檢】糞便潛血 '+new Date(fscr.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})+'：'+(fscr.result==='pos'?'陽性':fscr.result==='neg'?'陰性':'—'));
   // 個人目標
   const goals=state.goals||{}, gtxt=Object.keys(goals).filter(k=>goals[k]!=null).map(k=>{const g=GOAL_DEFS.find(x=>x.k===k),c=goalCurrent(k);return g?g.label+' 目前'+(c==null?'無資料':c)+' / 目標'+(g.dir==='below'?'≤':'≥')+goals[k]:'';}).filter(Boolean).join('、');
   if(gtxt)P.push('【個人目標】'+gtxt);
@@ -5484,7 +5497,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-screening';
+const APP_VERSION='2026.07.30-context-dx';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
