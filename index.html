@@ -148,6 +148,10 @@ td.num{font-variant-numeric:tabular-nums;font-weight:600;}
 .guide{margin:4px 0 6px;border:1px solid var(--g200);border-radius:10px;background:var(--g50);}
 .guide>summary{cursor:pointer;list-style:none;padding:10px 12px;font-size:.8rem;font-weight:700;color:var(--pri);user-select:none;}
 .guide>summary::-webkit-details-marker{display:none;}
+details.card>summary{list-style:none;}
+details.card>summary::-webkit-details-marker{display:none;}
+details.capd[open]>summary .capd-hint::after{content:'收合 ▴';}
+details.capd>summary .capd-hint::after{content:'點開 ▾';}
 .guide[open]>summary{border-bottom:1px solid var(--g200);}
 .guide-body{padding:10px 14px 12px;}
 .guide-note{font-size:.76rem;color:var(--g600);line-height:1.6;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:10px;}
@@ -3676,9 +3680,15 @@ function trajectoryCardHtml(){
     return `<div style="border-left:3px solid ${col};padding:6px 10px;margin:6px 0;background:var(--g100);border-radius:6px;font-size:.84rem;line-height:1.5;">`+
       `<b>${esc(lab)}</b> ${v.cur}${unit}｜${rate}${tail}</div>`;
   }).join('');
-  return `<div class="card"><div class="ct">🔮 健康走向預測 <span class="hint">依你的檢驗趨勢推估</span></div>`+
-    `<div class="hint" style="margin-bottom:6px;line-height:1.6;">用你歷次檢驗做直線推估「若照目前速度會往哪走、多久跨過風險門檻」。<b>僅供參考、非預測診斷</b>；資料點越多越準確。</div>`+
-    rows+'</div>';
+  return collapCard('🔮 健康走向預測',T.length,'依檢驗趨勢推估',
+    `<div class="hint" style="margin-bottom:6px;line-height:1.6;">用你歷次檢驗做直線推估「若照目前速度會往哪走、多久跨過風險門檻」。<b>僅供參考、非預測診斷</b>；資料點越多越準確。</div>`+rows);
+}
+// 可折疊分析卡：標題（含筆數）預設收合，點開才顯示完整內容
+function collapCard(title,count,sub,bodyHtml){
+  return `<details class="card capd"><summary style="cursor:pointer;font-weight:800;font-size:1.02rem;display:flex;align-items:center;gap:8px;list-style:none;">`+
+    `<span>${title}${count!=null?`（${count}）`:''}</span>${sub?`<span class="hint" style="font-weight:400;">${sub}</span>`:''}`+
+    `<span class="hint capd-hint" style="margin-left:auto;font-weight:400;white-space:nowrap;"></span></summary>`+
+    `<div style="margin-top:10px;">${bodyHtml}</div></details>`;
 }
 /* 用藥依從性（PDC 服藥涵蓋率）：健保領藥紀錄含「領藥日期＋給藥天數」，
    可估算慢性病藥物近一年的覆蓋比例，並與相關檢驗趨勢交叉。純本機、免金鑰。 */
@@ -3730,9 +3740,8 @@ function adherenceCardHtml(){
       line+=`<div style="margin-top:3px;color:var(--err);">⚠️ 同時 ${esc(lm.label)} 正在${a.worseningLab.slope>0?'上升':'下降'}中——規律服藥可能有助改善，建議與醫師討論。</div>`; }
     return `<div style="border-left:3px solid ${col};padding:6px 10px;margin:6px 0;background:var(--g100);border-radius:6px;font-size:.84rem;line-height:1.55;">${line}</div>`;
   }).join('');
-  return `<div class="card"><div class="ct">💊 用藥依從性 <span class="hint">依健保領藥紀錄估算</span></div>`+
-    `<div class="hint" style="margin-bottom:6px;line-height:1.6;">以你的<b>領藥日期與給藥天數</b>估算慢性病藥物的「服藥涵蓋率（PDC）」，<b>≥80%</b> 一般視為規律。僅供自我管理參考；用藥調整請與醫師討論，<b>切勿自行停藥</b>。</div>`+
-    rows+'</div>';
+  return collapCard('💊 用藥依從性',A.length,'依健保領藥紀錄估算',
+    `<div class="hint" style="margin-bottom:6px;line-height:1.6;">以你的<b>領藥日期與給藥天數</b>估算慢性病藥物的「服藥涵蓋率（PDC）」，<b>≥80%</b> 一般視為規律。僅供自我管理參考；用藥調整請與醫師討論，<b>切勿自行停藥</b>。</div>`+rows);
 }
 /* 照護缺口（該做未做）：依你的狀況（檢驗＋用藥＋基本資料）推斷慢性病與族群，
    對照指引建議的追蹤間隔，標出「逾期未驗」的檢驗與「建議篩檢」。衛教參考、非診斷。*/
@@ -3805,8 +3814,7 @@ function fmtAgo(days){ return days>=365?('約 '+(Math.round(days/365*10)/10)+' �
 function careGapCardHtml(){
   const gaps=careLabGaps(), screens=careScreenings();
   if(!gaps.length&&!screens.length)return '';
-  let h=`<div class="card"><div class="ct">🩺 照護缺口提醒 <span class="hint">該做未做</span></div>`+
-    `<div class="hint" style="margin-bottom:6px;line-height:1.6;">依你的檢驗與用藥推斷的慢性病／族群，對照建議追蹤間隔。<b>衛教參考、非診斷</b>；實際項目與頻率請以醫師及國健署規定為準。</div>`;
+  let h=`<div class="hint" style="margin-bottom:6px;line-height:1.6;">依你的檢驗與用藥推斷的慢性病／族群，對照建議追蹤間隔。<b>衛教參考、非診斷</b>；實際項目與頻率請以醫師及國健署規定為準。</div>`;
   if(gaps.length){
     h+='<div style="font-weight:700;font-size:.86rem;margin:6px 0 2px;">🧪 檢驗追蹤</div>';
     h+=gaps.slice(0,6).map(g=>{
@@ -3821,7 +3829,7 @@ function careGapCardHtml(){
     h+=screens.map(s=>{ const st=s.flag==='alert'?'background:#fef2f2;border:1px solid #fecaca;':s.flag==='done'?'background:#f0fdf4;border:1px solid #bbf7d0;':'background:#f0f9ff;border:1px solid #bae6fd;';
       return `<div style="padding:5px 10px;margin:4px 0;${st}border-radius:6px;font-size:.82rem;line-height:1.5;"><b>${esc(s.label)}</b>：${s.detail}</div>`; }).join('');
   }
-  return h+'</div>';
+  return collapCard('🩺 照護缺口提醒',gaps.length+screens.length,'該做未做',h);
 }
 function recordLabEntry(fields,source){
   const values={};
@@ -4958,9 +4966,9 @@ function dxSummary(){
 function dxCardHtml(){
   const S=dxSummary(); if(!S.length)return '';
   const rows=S.slice(0,12).map(d=>`<div style="padding:4px 10px;margin:4px 0;background:var(--g100);border-radius:6px;font-size:.82rem;line-height:1.5;"><b>${esc(d.name)}</b> <span class="hint">${esc(d.code)}${d.count>1?'・'+d.count+' 次':''}${d.last?'・最近 '+new Date(d.last).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'}):''}</span></div>`).join('');
-  return `<div class="card"><div class="ct">🩺 健保就醫診斷（病史） <span class="hint">${S.length} 項</span></div>`+
+  return collapCard('🩺 健保就醫診斷（病史）',S.length,'ICD 病史',
     `<div class="hint" style="margin-bottom:6px;line-height:1.6;">由健保就醫紀錄的 ICD 診斷整理，供回顧與就醫參考。以醫師與健保紀錄為準；同一疾病可能因不同院所編碼略有差異。</div>`+
-    rows+(S.length>12?`<div class="hint" style="margin-top:4px;">…等共 ${S.length} 項</div>`:'')+'</div>';
+    rows+(S.length>12?`<div class="hint" style="margin-top:4px;">…等共 ${S.length} 項</div>`:''));
 }
 function renderSurgeries(){
   const surs=(state.surgeries||[]).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
@@ -5690,7 +5698,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-split-rename';
+const APP_VERSION='2026.07.30-collapse-analysis';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
