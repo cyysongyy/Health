@@ -328,8 +328,9 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 </div>
 <div class="nav" id="navMenu">
   <div class="nt active" data-sec="dash">🏠 總覽</div>
+  <div class="nt" data-sec="eval">📊 數據與評分</div>
   <div class="nt" data-sec="records">🗂️ 醫藥紀錄</div>
-  <div class="nt" data-sec="analysis">🧠 健康分析</div>
+  <div class="nt" data-sec="analysis">🧠 解讀與行動</div>
   <div class="nt" data-sec="daily">📅 日常</div>
   <div class="nt" data-sec="foot">🦶 足部訓練</div>
   <div class="nt" data-sec="settings">⚙️ 設定</div>
@@ -401,7 +402,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== ASSESSMENT ========== -->
 <div class="sec" id="sec-assess">
-  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('analysis')">‹ 健康分析</button></div>
+  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('eval')">‹ 數據與評分</button></div>
   <div class="disc">⚠️ <b>免責聲明：</b>本系統為健康自我管理與衛教用途，所有預測皆為基於公開流行病學研究的統計估算，<b>不能取代醫療診斷</b>。如有健康疑慮，請諮詢合格醫師。</div>
 
   <div class="card">
@@ -542,7 +543,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== RISK ========== -->
 <div class="sec" id="sec-risk">
-  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('analysis')">‹ 健康分析</button></div>
+  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('eval')">‹ 數據與評分</button></div>
   <div id="riskEmpty" class="card empty">
     <div class="em">🔬</div>
     <div>尚無評估資料，請先完成 <a class="link" onclick="go('assess')">健康評估</a>。</div>
@@ -588,14 +589,14 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== MEDICAL-GRADE SCORES ========== -->
 <div class="sec" id="sec-medscore">
-  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('analysis')">‹ 健康分析</button></div>
+  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('eval')">‹ 數據與評分</button></div>
   <div class="disc" style="border-left:3px solid var(--pri);">🩺 <b>醫療級評估：</b>採用國際實證、臨床實際使用的風險模型（ASCVD Pooled Cohort Equations、FINDRISC、CKD-EPI 2021、FIB-4、脂肪肝指數、代謝症候群準則、TyG 胰島素阻抗指數、血脂比值/非-HDL-C、AHA Life’s Essential 8 心血管健康總分、CHA₂DS₂-VASc 中風風險、HAS-BLED 出血風險、OSTA 骨鬆風險、NAFLD 肝纖維化分數、APRI、相對體脂 RFM、估計平均血糖 eAG、白蛋白校正血鈣），依你的個人資料與最新檢驗值精算。<b>仍為衛教與自我管理參考、非醫療診斷</b>；模型多源自歐美族群，套用於台灣人可能高估或低估，實際判讀請以醫師為準。</div>
   <div id="medscoreBody"></div>
 </div>
 
 <!-- ========== SMART ALERTS ========== -->
 <div class="sec" id="sec-advisor">
-  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('analysis')">‹ 健康分析</button></div>
+  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('analysis')">‹ 解讀與行動</button></div>
   <div id="advisorBody"></div>
 </div>
 
@@ -623,7 +624,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 </div>
 
 <div class="sec" id="sec-smart">
-  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('analysis')">‹ 健康分析</button></div>
+  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('eval')">‹ 數據與評分</button></div>
   <div id="smartEmpty" class="card empty">
     <div class="em">🚨</div>
     <div>尚無評估資料，請先完成 <a class="link" onclick="go('assess')">健康評估</a>。<br>存多次「紀錄點」後，系統可分析趨勢並預測未來走向。</div>
@@ -798,7 +799,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== ADVICE ========== -->
 <div class="sec" id="sec-advice">
-  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('analysis')">‹ 健康分析</button></div>
+  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('analysis')">‹ 解讀與行動</button></div>
   <div id="adviceEmpty" class="card empty">
     <div class="em">💡</div>
     <div>尚無評估資料，請先完成 <a class="link" onclick="go('assess')">健康評估</a>。</div>
@@ -819,7 +820,7 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== INTEGRATED REPORT ========== -->
 <div class="sec" id="sec-report">
-  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('analysis')">‹ 健康分析</button></div>
+  <div class="row-btn" style="margin-bottom:8px;"><button class="btn bg" style="font-size:.8rem;" onclick="go('analysis')">‹ 解讀與行動</button></div>
   <div class="disc">📋 <b>綜合健康報告：</b>整合你的健康評估、檢驗數據庫、風險、每日習慣與趨勢，交叉分析後給出重點與最佳行動建議。所有分析在本機完成；AI 綜合解讀為選填。</div>
   <div id="reportEmpty" class="card empty">
     <div class="em">📋</div>
@@ -847,22 +848,23 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 </div>
 
 <!-- ========== 醫藥紀錄（分類入口） ========== -->
-<!-- ========== 評估中心（Hub）========== -->
+<!-- ========== 數據與評分（Hub）========== -->
 <div class="sec" id="sec-eval">
   <div class="card">
-    <div class="ct">📝 評估中心</div>
-    <div class="hint" style="margin-bottom:4px;">用你的資料計算健康分數與風險——<b>不需 AI、不需金鑰</b>，全程在本機完成。</div>
+    <div class="ct">📊 數據與評分 <span class="hint">第 1 步</span></div>
+    <div class="hint" style="margin-bottom:4px;line-height:1.7;">輸入你的資料，算出健康分數、生理年齡與風險——<b>不需 AI、不需金鑰</b>，全程本機完成。<br>➡️ 評分後到「<b>🧠 解讀與行動</b>」看整合解讀與建議。</div>
   </div>
   <div id="evalHub"></div>
 </div>
 
-<!-- ========== 健康分析（合併評估＋分析的單一中心）========== -->
+<!-- ========== 解讀與行動（Hub）========== -->
 <div class="sec" id="sec-analysis">
   <div class="card">
-    <div class="ct">🧠 健康分析</div>
-    <div class="hint" style="margin-bottom:4px;">從<b>輸入數據</b>、<b>風險評分</b>到<b>整合解讀與行動</b>一站完成。<b>本機分析免金鑰</b>隨時可用；<b>AI 深入解讀</b>（需 API 金鑰）為加值層。</div>
+    <div class="ct">🧠 解讀與行動 <span class="hint">第 2 步</span></div>
+    <div class="hint" style="margin-bottom:4px;line-height:1.7;">把「<b>📊 數據與評分</b>」與匯入紀錄<b>整合成重點、建議與行動</b>。<b>本機分析免金鑰</b>隨時可用；<b>AI 深入解讀</b>（需 API 金鑰）為加值層。</div>
   </div>
   <div id="localAnalysis"></div>
+  <div class="hint" style="margin:14px 4px 6px;font-weight:700;color:var(--g600);">🤖 AI 深入分析（下列功能可用 AI 加值）</div>
   <div id="analysisHub"></div>
 </div>
 
@@ -1657,7 +1659,7 @@ function renderLocalAnalysis(){
     if(r.risks){h+=`<div style="font-size:.82rem;margin-bottom:2px;">風險：心血管 <b>${LEVEL_TXT[r.risks.cvd.level]}</b>・糖尿病 <b>${LEVEL_TXT[r.risks.dm.level]}</b>・代謝症候群 <b>${r.risks.mets.count}/5</b> 項</div>`;
       if(Object.keys(L).length)h+='<div class="hint" style="margin-bottom:8px;">🔗 已自動納入最新檢驗值（LDL／HbA1c／三酸甘油酯／eGFR…）精算</div>';}
   }else{
-    h+='<div class="hint" style="margin-bottom:8px;">尚未做健康評估。到下方「📝 健康評估」完成評估，可加入健康分、生理年齡與風險預測。</div>';
+    h+='<div class="hint" style="margin-bottom:8px;">尚未做健康評估。到「📊 數據與評分 → 📝 健康評估」完成評估，可加入健康分、生理年齡與風險預測。</div>';
   }
   const chips=[];
   if(crit.length)chips.push(`<span style="color:#b91c1c;font-weight:700;">🚨 嚴重 ${crit.length}</span>`);
@@ -1681,38 +1683,14 @@ function renderLocalAnalysis(){
   }
   el.innerHTML=h;
 }
-// 分組卡片：groups=[{heading, items:[{sec,icon,title,sub,tag}]}]
-function hubGroupCards(elId,groups){
-  const el=document.getElementById(elId); if(!el)return;
-  el.innerHTML=groups.map(g=>
-    `<div class="hint" style="margin:16px 4px 6px;font-weight:700;color:var(--g600);">${g.heading}</div>`+
-    g.items.map(it=>`<div class="card" style="cursor:pointer;display:flex;align-items:center;gap:12px;" onclick="go('${it.sec}')">
-      <div style="font-size:1.9rem;line-height:1;">${it.icon}</div>
-      <div style="flex:1;min-width:0;"><div style="font-weight:800;font-size:1.02rem;">${it.title} ${it.tag||''}</div><div class="hint" style="margin-top:2px;">${it.sub}</div></div>
-      <div style="color:var(--g400);font-size:1.4rem;">›</div></div>`).join('')
-  ).join('');
-}
 function renderAnalysisHub(){
   renderLocalAnalysis();
-  const done=state.result?'<span class="hint" style="color:var(--ok);">已評估</span>':'<span class="hint" style="color:var(--warn);">尚未評估</span>';
   const hasKey=!!(state.settings&&(state.settings.gemini||state.settings.openai));
   const aiTag=hasKey?'<span class="hint" style="color:var(--ok);">AI 已啟用</span>':'<span class="hint" style="color:var(--g500);">需金鑰</span>';
-  hubGroupCards('analysisHub',[
-    {heading:'📝 輸入與評分（免金鑰）',items:[
-      {sec:'assess',icon:'📝',title:'健康評估',sub:'填入基本數據，算出健康分數與生理年齡',tag:done}
-    ]},
-    {heading:'🔬 風險模型（免金鑰）',items:[
-      {sec:'risk',icon:'🔬',title:'風險預測',sub:'心血管、糖尿病、代謝症候群…（公式計算）'},
-      {sec:'medscore',icon:'🩺',title:'醫療級評估',sub:'ASCVD、FIB-4、CKD-EPI 等實證量表'},
-      {sec:'smart',icon:'🚨',title:'智慧預警',sub:'依你的數據自動偵測警訊＋最佳方案模擬'}
-    ]},
-    {heading:'📋 整合與解讀',items:[
-      {sec:'report',icon:'📋',title:'綜合報告',sub:'整合檢驗／風險／趨勢的重點報告（本機＋AI）'},
-      {sec:'advice',icon:'💡',title:'建議 & AI',sub:'個人化健康建議',tag:aiTag}
-    ]},
-    {heading:'🧭 行動與追蹤',items:[
-      {sec:'advisor',icon:'🧭',title:'健康顧問',sub:'目標追蹤與行動計畫'}
-    ]}
+  hubCards('analysisHub',[
+    {sec:'report',icon:'📋',title:'綜合報告',sub:'整合檢驗／風險／趨勢的重點報告（本機＋AI）'},
+    {sec:'advice',icon:'💡',title:'建議 & AI',sub:'個人化健康建議',tag:aiTag},
+    {sec:'advisor',icon:'🧭',title:'健康顧問',sub:'目標追蹤與行動計畫'}
   ]);
 }
 function renderDailyHub(){
@@ -2905,9 +2883,9 @@ function maybeConsentGate(){
 /* ============ 首次使用導覽（Onboarding Tour）============ */
 const ONBOARD_STEPS=[
   {icon:'🫀', title:'歡迎使用 LifeSpan 健康預測', desc:'把你的健康資料集中管理：算出<b>生理年齡、預期壽命與慢性病風險</b>，並給出可執行的改善建議。<b>資料只存在你的裝置</b>，隱私自主。'},
-  {icon:'📝', title:'從「健康評估」開始', desc:'在「<b>🧠 健康分析 → 📝 健康評估</b>」輸入身高體重、血壓、血糖與生活習慣，立即算出健康分數、生理年齡與風險。定期「<b>存為紀錄點</b>」即可追蹤趨勢。'},
+  {icon:'📊', title:'從「數據與評分」開始', desc:'在「<b>📊 數據與評分 → 📝 健康評估</b>」輸入身高體重、血壓、血糖與生活習慣，立即算出健康分數、生理年齡與風險。定期「<b>存為紀錄點</b>」即可追蹤趨勢。'},
   {icon:'🗂️', title:'匯入你的檢驗與用藥', desc:'在「<b>🗂️ 醫藥紀錄</b>」可匯入健保健康存摺的檢驗／用藥，或用相機辨識檢驗報告；數據會自動整理成時序，供分析引用。'},
-  {icon:'🧠', title:'綜合分析（免金鑰也能用）', desc:'「<b>🧠 綜合分析</b>」提供<b>免金鑰的本地分析</b>（風險、趨勢、代謝症候群…）；若你填入自己的 AI 金鑰，還能取得 <b>AI 個人化解讀</b>與行動計畫。'},
+  {icon:'🧠', title:'解讀與行動（免金鑰也能用）', desc:'算完到「<b>🧠 解讀與行動</b>」看整合解讀：<b>免金鑰的本地分析</b>（風險、趨勢、走向預測、依從性、照護缺口…）；若你填入自己的 AI 金鑰，還能取得 <b>AI 個人化解讀</b>與行動計畫。'},
   {icon:'🦶', title:'足部訓練與健康問答', desc:'「<b>🦶 足部訓練</b>」有垂足復健與暖身導引；「<b>💬 健康Q&AI</b>」可就你的個人資料問任何健康問題（衛教參考，非醫療診斷）。'},
   {icon:'💾', title:'別忘了備份', desc:'在「<b>⚙️ 設定 → 備份與還原</b>」一鍵把資料存到<b>你自己的雲端</b>，或用「<b>🔒 加密備份</b>」加上密碼。換手機、清快取都不怕丟。'}
 ];
@@ -5712,7 +5690,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-merge-analysis';
+const APP_VERSION='2026.07.30-split-rename';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
