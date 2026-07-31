@@ -1637,13 +1637,13 @@ function hubCards(elId,items){
 function renderRecords(){
   const n=a=>Array.isArray(a)?a.length:0;
   hubCards('recordsHub',[
+    {sec:'connect',icon:'🔗',title:'匯入串接',sub:'健保健康存摺、穿戴裝置、報告辨識'},
     {sec:'labs',icon:'🧪',title:'檢驗數據庫',sub:'血壓、血糖、血脂、肝腎功能、血球…',tag:`<span class="hint">${n(state.labs)} 筆</span>`},
     {sec:'meds',icon:'💊',title:'用藥紀錄',sub:'用藥清單、統計、交互作用提醒',tag:`<span class="hint">${n(state.meds)} 筆</span>`},
     {sec:'surgery',icon:'🔧',title:'手術紀錄',sub:'手術／處置史',tag:`<span class="hint">${n(state.surgeries)} 筆</span>`},
     {sec:'dx',icon:'🩺',title:'病史／篩檢',sub:'健保就醫診斷（ICD）與糞便潛血等篩檢',tag:`<span class="hint">${n(state.dx)+n(state.screen)} 筆</span>`},
     {sec:'reports',icon:'🩻',title:'影像病理',sub:'超音波／X光／內視鏡／病理（可 AI 翻譯）',tag:`<span class="hint">${n(state.reports)} 筆</span>`},
-    {sec:'trend',icon:'📈',title:'趨勢追蹤',sub:'血壓、體重、檢驗值等跨時間變化'},
-    {sec:'connect',icon:'🔗',title:'匯入串接',sub:'健保健康存摺、穿戴裝置、報告辨識'}
+    {sec:'trend',icon:'📈',title:'趨勢追蹤',sub:'血壓、體重、檢驗值等跨時間變化'}
   ]);
 }
 function renderEvalHub(){
@@ -5710,7 +5710,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-hdl-ref';
+const APP_VERSION='2026.07.30-connect-top';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
