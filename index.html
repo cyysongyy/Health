@@ -3652,10 +3652,13 @@ function labVelocity(metric){
   const t0=new Date(s[0].date).getTime();
   const pts=s.map(p=>({x:(new Date(p.date).getTime()-t0)/(365.25*864e5), y:+p.value})); // x 以「年」為單位
   const span=pts[pts.length-1].x; if(span<0.25)return null;          // 跨度 < 3 個月，斜率不可靠
-  const n=pts.length; let sx=0,sy=0,sxx=0,sxy=0;
-  pts.forEach(p=>{sx+=p.x;sy+=p.y;sxx+=p.x*p.x;sxy+=p.x*p.y;});
+  const n=pts.length; let sx=0,sy=0,sxx=0,sxy=0,syy=0;
+  pts.forEach(p=>{sx+=p.x;sy+=p.y;sxx+=p.x*p.x;sxy+=p.x*p.y;syy+=p.y*p.y;});
   const denom=(n*sxx-sx*sx); if(!denom)return null;
   const slope=(n*sxy-sx*sy)/denom;                                   // 每年變化量
+  // R²（決定係數）：線性趨勢能解釋多少變異；越接近 1 越是真趨勢，接近 0 則是雜訊/來回震盪
+  const denomY=(n*syy-sy*sy);
+  const r2=denomY>0?Math.max(0,Math.min(1,(n*sxy-sx*sy)*(n*sxy-sx*sy)/(denom*denomY))):0;
   const cur=+s[s.length-1].value;
   const worseUp=(good==='down');                                     // down 好 → 上升為惡化
   const worsening=(worseUp&&slope>0)||(!worseUp&&slope<0);
@@ -3666,7 +3669,7 @@ function labVelocity(metric){
   }
   let years=null;
   if(worsening&&target!=null&&Math.abs(slope)>1e-9){ years=(target-cur)/slope; if(years<0)years=null; }
-  return {metric,n,span,slope:Math.round(slope*100)/100,cur,worsening,target,years};
+  return {metric,n,span,slope:Math.round(slope*100)/100,r2:Math.round(r2*100)/100,cur,worsening,target,years};
 }
 function fmtHorizon(y){ return y<1?('約 '+Math.max(1,Math.round(y*12))+' 個月後'):('約 '+(Math.round(y*10)/10)+' 年後'); }
 function buildTrajectories(){
@@ -3689,7 +3692,8 @@ function worseningMetrics(){
   const out=[];
   Object.keys(LAB_GOOD).forEach(m=>{ if(!LAB_META[m])return;
     const v=labVelocity(m); if(!v||!v.worsening)return;
-    if(Math.abs(v.slope) < Math.abs(v.cur)*0.015) return;   // 年變化 < 1.5%＝持平/雜訊，非真正趨勢
+    if(v.r2 < 0.5) return;                                   // 線性趨勢解釋度不足＝來回震盪/雜訊，非真趨勢
+    if(Math.abs(v.slope) < Math.abs(v.cur)*0.015) return;   // 年變化 < 1.5%＝持平，非真正趨勢
     const soon=(v.years!=null&&v.years<=10);                 // 10 年內會跨過下一風險門檻
     if(!(soon || v.target==null)) return;                   // 否則（仍在安全帶內緩慢移動）不需留意
     out.push({m,years:v.years==null?1e9:v.years});
@@ -5729,7 +5733,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-ldl-goal';
+const APP_VERSION='2026.07.30-trend-fit';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
