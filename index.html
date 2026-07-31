@@ -1476,6 +1476,11 @@ function load(){
         if(removed>0){ s._vitalsPurged=removed; try{localStorage.setItem(LS_KEY,JSON.stringify(s));}catch(e){} }
       }
     }
+    // LDL 目標由舊預設 100 → 130（與檢驗正常參考 ≤129 一致；僅更新仍為舊預設者）
+    if(localStorage.getItem('ls_fix_ldlgoal_v1')!=='1'){
+      localStorage.setItem('ls_fix_ldlgoal_v1','1');
+      if(s&&s.goals&&s.goals.ldl===100){ s.goals.ldl=130; try{localStorage.setItem(LS_KEY,JSON.stringify(s));}catch(e){} }
+    }
   }catch(e){}
   if(s&&!Array.isArray(s.reminders))s.reminders=[];
   if(s&&s.settings&&s.settings.fontScale==null)s.settings.fontScale=1.5;
@@ -1486,7 +1491,7 @@ function load(){
   return s;
 }
 function defaults(){
-  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], dx:[], screen:[], reminders:[], mhx:{}, goals:{sbp:130,ldl:100,hba1c:7}, qa:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true,fontScale:1.5,autoBackup:false}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], dx:[], screen:[], reminders:[], mhx:{}, goals:{sbp:130,ldl:130,hba1c:7}, qa:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true,fontScale:1.5,autoBackup:false}, dietVal:3, stressVal:3};
 }
 function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));scheduleAutoBackup();}
 // 自動備份到 Google Drive：開啟且已設 Client ID 時，資料變更後自動（安靜）上傳；授權過一次後不再跳窗
@@ -3062,7 +3067,7 @@ function copyDocSheet(){
 const GOAL_DEFS=[
   {k:'sbp',label:'收縮壓',unit:'mmHg',dir:'below',def:130},
   {k:'dbp',label:'舒張壓',unit:'mmHg',dir:'below',def:80},
-  {k:'ldl',label:'LDL 膽固醇',unit:'mg/dL',dir:'below',def:100},
+  {k:'ldl',label:'LDL 膽固醇',unit:'mg/dL',dir:'below',def:130},
   {k:'hba1c',label:'糖化血色素',unit:'%',dir:'below',def:7},
   {k:'glucose',label:'空腹血糖',unit:'mg/dL',dir:'below',def:100},
   {k:'tg',label:'三酸甘油酯',unit:'mg/dL',dir:'below',def:150},
@@ -5724,7 +5729,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-worse-trend';
+const APP_VERSION='2026.07.30-ldl-goal';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
