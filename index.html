@@ -345,6 +345,17 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== DASHBOARD ========== -->
 <div class="sec active" id="sec-dash">
+  <div id="installBanner" class="card" style="display:none;background:linear-gradient(135deg,#0d9488,#0ea5e9);color:#fff;border:none;">
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div style="font-size:2rem;line-height:1;">📲</div>
+      <div style="flex:1;min-width:180px;">
+        <div style="font-weight:800;font-size:1.02rem;">安裝單機版到手機</div>
+        <div style="font-size:.82rem;opacity:.95;line-height:1.5;margin-top:2px;">像 App 一樣有圖示、<b>可離線使用</b>、<b>資料存在你手機裡</b>。</div>
+      </div>
+      <button class="btn" style="background:#fff;color:#0d9488;font-weight:800;white-space:nowrap;" onclick="installStandalone()">📲 安裝</button>
+      <button class="btn" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.6);padding:6px 10px;" onclick="dismissInstallBanner()" title="不再顯示">✕</button>
+    </div>
+  </div>
   <div id="dashAdvisor"></div>
   <div id="dashRemindDue"></div>
   <div id="dashReminders"></div>
@@ -1395,7 +1406,7 @@ service cloud.firestore {
       </ul>
     </div>
     <div class="row-btn" style="margin-top:10px;">
-      <button class="btn bp" id="pwaInstallBtn" onclick="pwaInstall()" style="display:none;">📲 安裝到主畫面</button>
+      <button class="btn bp" id="pwaInstallBtn" onclick="installStandalone()">📲 安裝單機版到主畫面</button>
     </div>
     <div class="hint" id="pwaStatus" style="margin-top:8px;">離線快取狀態檢查中…</div>
   </div>
@@ -1974,6 +1985,7 @@ function barColor(v){return v>=75?'#10b981':v>=55?'#0d9488':v>=40?'#f59e0b':'#ef
 
 function renderDash(){
   const r=state.result;
+  maybeShowInstallBanner(); // 📲 安裝單機版橫幅（未安裝且未關閉時顯示）
   renderDashAdvisor(); // 健康顧問精簡入口
   renderRemindDue();   // 今日／逾期的個人提醒（用藥、回診、復健、檢驗追蹤）
   renderReminders();   // 主動提醒／紅旗待辦（即使沒完成評估、只要有檢驗也顯示）
@@ -5698,7 +5710,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-collapse-analysis';
+const APP_VERSION='2026.07.30-install-standalone';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -5860,6 +5872,7 @@ function setupPWA(){
     deferredInstallPrompt=null;
     const btn=document.getElementById('pwaInstallBtn');
     if(btn)btn.style.display='none';
+    const bn=document.getElementById('installBanner'); if(bn)bn.style.display='none';
     pwaSetStatus('🎉 已安裝到主畫面，可離線開啟。');
     toast('🎉 已安裝到主畫面');
   });
@@ -5871,11 +5884,56 @@ function setupPWA(){
   }
 }
 function pwaSetStatus(t){ const el=document.getElementById('pwaStatus'); if(el)el.textContent=t; }
-function pwaInstall(){
-  if(!deferredInstallPrompt){ toast('請用瀏覽器選單的「安裝／加到主畫面」'); return; }
-  deferredInstallPrompt.prompt();
-  deferredInstallPrompt.userChoice.finally(()=>{ deferredInstallPrompt=null;
-    const btn=document.getElementById('pwaInstallBtn'); if(btn)btn.style.display='none'; });
+function pwaInstall(){ installStandalone(); }
+// 已在「單機版」（安裝到主畫面）中執行？
+function isStandalone(){
+  try{ return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true; }catch(e){ return false; }
+}
+// 一鍵安裝單機版：Android/Chrome 直接叫安裝視窗；iPhone／其他 → 顯示步驟引導
+function installStandalone(){
+  if(isStandalone()){ toast('✅ 你已在單機版（主畫面 App）中使用'); return; }
+  if(deferredInstallPrompt){
+    deferredInstallPrompt.prompt();
+    deferredInstallPrompt.userChoice.finally(()=>{ deferredInstallPrompt=null;
+      const btn=document.getElementById('pwaInstallBtn'); if(btn)btn.style.display='none'; });
+    return;
+  }
+  const ua=navigator.userAgent||'';
+  const isIOS=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  showInstallGuide(isIOS?'ios':(/Android/i.test(ua)?'android':'desktop'));
+}
+function showInstallGuide(kind){
+  let m=document.getElementById('installModal');
+  if(!m){m=document.createElement('div');m.id='installModal';m.className='modal-overlay';document.body.appendChild(m);}
+  const steps=kind==='ios'
+    ? `<ol style="padding-left:1.2em;line-height:2;margin:.3em 0;">
+        <li>點畫面下方（或右上）的<b>「分享」鈕 <span style="font-size:1.1em;">⬆️</span></b>（方框加上箭頭的圖示）。</li>
+        <li>往下滑，選<b>「加入主畫面」</b>。</li>
+        <li>右上按<b>「新增」</b>。</li>
+       </ol>
+       <div class="hint" style="line-height:1.7;">完成後主畫面會出現 <b>🫀 LifeSpan</b> 圖示，點它就像 App 一樣開啟——<b>可離線、資料留在你手機裡</b>。</div>`
+    : kind==='android'
+    ? `<ol style="padding-left:1.2em;line-height:2;margin:.3em 0;">
+        <li>點瀏覽器<b>右上角選單「⋮」</b>。</li>
+        <li>選<b>「安裝應用程式」或「加到主畫面」</b>。</li>
+        <li>按<b>「安裝／新增」</b>。</li>
+       </ol>
+       <div class="hint" style="line-height:1.7;">完成後主畫面會出現 App 圖示，<b>可離線、資料留在你手機裡</b>。</div>`
+    : `<div style="line-height:1.8;">在電腦版 Chrome／Edge：網址列右側會有<b>「安裝」圖示</b>，或選單 →「安裝 LifeSpan…」。安裝後如同桌面 App，可離線使用。</div>`;
+  m.innerHTML=`<div class="modal-box">
+    <div class="ct">📲 安裝單機版到手機</div>
+    <div class="hint" style="margin:2px 0 10px;line-height:1.7;">把 LifeSpan 變成手機上的獨立 App：<b>可離線使用</b>、<b>資料只存在你的手機</b>。免帳號、免安裝商店。</div>
+    ${steps}
+    <div class="row-btn" style="margin-top:14px;"><button class="btn bp" onclick="closeInstallGuide()">知道了</button></div>
+  </div>`;
+  m.style.display='flex';
+}
+function closeInstallGuide(){ const m=document.getElementById('installModal'); if(m){m.style.display='none';m.innerHTML='';} }
+function dismissInstallBanner(){ try{localStorage.setItem('ls_installDismiss','1');}catch(e){} const b=document.getElementById('installBanner'); if(b)b.style.display='none'; }
+function maybeShowInstallBanner(){
+  const b=document.getElementById('installBanner'); if(!b)return;
+  let dismissed=false; try{dismissed=localStorage.getItem('ls_installDismiss')==='1';}catch(e){}
+  b.style.display=(!isStandalone()&&!dismissed)?'block':'none';
 }
 /* 雲端同步預設隱藏（其他使用者一律本機）；擁有者以 ?cloud=1、已存旗標、或連點版本 5 下解鎖 */
 function cloudUnlocked(){
