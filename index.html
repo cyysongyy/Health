@@ -1348,9 +1348,12 @@ service cloud.firestore {
     <div class="hint" style="margin-bottom:10px;">設定後可使用「AI 健康顧問」。Key 僅存於您的瀏覽器，直接呼叫 API，不經第三方伺服器。</div>
     <div class="fg"><label class="fl">Google Gemini API Key</label><input class="fi" id="set-gemini" type="password" placeholder="AIzaSy… 或 AQ.Ab8R…"></div>
     <div class="fg"><label class="fl">OpenAI API Key</label><input class="fi" id="set-openai" type="password" placeholder="sk-…"></div>
+    <div class="fg"><label class="fl">NVIDIA API Key <span class="hint">（build.nvidia.com）</span></label><input class="fi" id="set-nvidia" type="password" placeholder="nvapi-…"></div>
+    <div class="fg"><label class="fl">NVIDIA 模型 <span class="hint">（選填，預設 llama-3.1-70b）</span></label><input class="fi" id="set-nvidia-model" placeholder="meta/llama-3.1-70b-instruct"></div>
     <div class="fg"><label class="fl">優先引擎</label>
-      <select class="fs" id="set-engine"><option value="auto">自動</option><option value="gemini">Gemini</option><option value="openai">OpenAI</option></select></div>
-    <a class="link" href="https://aistudio.google.com/apikey" target="_blank" style="font-size:.78rem;">→ 免費取得 Gemini API Key</a>
+      <select class="fs" id="set-engine"><option value="auto">自動</option><option value="gemini">Gemini</option><option value="openai">OpenAI</option><option value="nvidia">NVIDIA</option></select></div>
+    <a class="link" href="https://aistudio.google.com/apikey" target="_blank" style="font-size:.78rem;">→ 免費取得 Gemini API Key</a><br>
+    <a class="link" href="https://build.nvidia.com/" target="_blank" style="font-size:.78rem;">→ 免費取得 NVIDIA API Key（build.nvidia.com）</a>
     <div class="row-btn" style="margin-top:12px;"><button class="btn bp" onclick="saveSettings()">💾 儲存設定</button></div>
   </div>
   <div class="card">
@@ -1669,7 +1672,7 @@ function renderLocalAnalysis(){
   const crit=alerts.filter(x=>x.lvl==='crit');
   const abn=LAB_ORDER.filter(k=>L[k]!=null&&labFlag(k,L[k].v)!=='ok');
   let ix=[]; try{ix=medInteractions();}catch(_){ix=[];}
-  const hasKey=!!(state.settings&&(state.settings.gemini||state.settings.openai));
+  const hasKey=aiHasKey();
   let h='<div class="card" style="border-left:4px solid var(--pri);">';
   h+='<div class="ct">🧮 本機綜合分析 <span class="hint">免金鑰・即時計算</span></div>';
   if(r){
@@ -1705,7 +1708,7 @@ function renderLocalAnalysis(){
 }
 function renderAnalysisHub(){
   renderLocalAnalysis();
-  const hasKey=!!(state.settings&&(state.settings.gemini||state.settings.openai));
+  const hasKey=aiHasKey();
   const aiTag=hasKey?'<span class="hint" style="color:var(--ok);">AI 已啟用</span>':'<span class="hint" style="color:var(--g500);">需金鑰</span>';
   hubCards('analysisHub',[
     {sec:'report',icon:'📋',title:'綜合報告',sub:'整合檢驗／風險／趨勢的重點報告（本機＋AI）'},
@@ -2990,7 +2993,7 @@ function renderAdvisor(){
   const st=advisorStatus(), acts=advisorActions();
   const col={0:'var(--err)',1:'var(--warn)',2:'var(--acc)'}, bg={0:'#fef2f2',1:'#fffbeb',2:'#f0f9ff'}, tag={0:'儘速處理',1:'需注意',2:'可加強'};
   const top=acts.slice(0,8);
-  const aiBtn=(state.settings&&(state.settings.gemini||state.settings.openai))?'<button class="btn bg" onclick="go(\'advice\')">🤖 AI 深度解讀</button>':'';
+  const aiBtn=aiHasKey()?'<button class="btn bg" onclick="go(\'advice\')">🤖 AI 深度解讀</button>':'';
   el.innerHTML=
     `<div class="card" style="border-left:4px solid ${st.color};"><div class="ct">🧭 你的健康顧問</div>`+
     `<div style="font-size:1.02rem;font-weight:800;line-height:1.5;">${st.emoji} ${esc(st.text)}</div>`+
@@ -3123,9 +3126,7 @@ function saveGoals(){
 async function aiRunPrompt(prompt){
   const s=state.settings;
   const useGemini = s.engine==='gemini' || (s.engine!=='openai'&&s.gemini);
-  if(useGemini&&s.gemini)return callGemini(s.gemini,prompt);
-  if(s.openai)return callOpenAI(s.openai,prompt);
-  if(s.gemini)return callGemini(s.gemini,prompt);
+  return callLLM(prompt);
   throw new Error('未設定 API Key');
 }
 function buildHealthContext(){
@@ -3186,7 +3187,7 @@ function buildHealthContext(){
 }
 async function advisorAI(){
   const s=state.settings;
-  if(!s.gemini&&!s.openai){toast('請先到「設定」填入 Gemini／OpenAI API Key');go('settings');return;}
+  if(!aiHasKey(s)){toast('請先到「設定」填入 AI API Key（Gemini／OpenAI／NVIDIA）');go('settings');return;}
   const out=document.getElementById('advisorAI'); if(!out)return;
   out.style.display='block'; out.textContent='🤖 AI 正在整合你的檢驗、用藥與風險，擬定個人化行動計畫…';
   const prompt=`你是專業、親切又務實的個人健康顧問。以下是使用者（去識別化）的整合健康資料：\n\n${buildHealthContext()}\n\n請用「繁體中文」、溫暖鼓勵但務實的口吻，讓長輩也看得懂，提供：\n1) 一份「三個月行動計畫」，分成【立即做】【這個月】【持續追蹤】三段\n2) 每項為什麼重要、預期好處\n3) 針對飲食、運動、用藥順從性、以及需要追蹤的檢查給具體建議\n4) 一段鼓勵的話\n請務必明確標註「此為衛教參考、非醫療診斷，數值異常或不適請就醫」。控制在 700 字內，多用條列與小標。`;
@@ -3197,7 +3198,7 @@ async function advisorAI(){
 function renderQA(){
   renderQALog();
   const note=document.getElementById('qaKeyNote');
-  if(note)note.style.display=(state.settings.gemini||state.settings.openai)?'none':'block';
+  if(note)note.style.display=aiHasKey()?'none':'block';
 }
 function qaTimeStr(ts){ try{ return new Date(ts).toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Taipei'}); }catch(e){ return ''; } }
 function renderQALog(){
@@ -3211,7 +3212,7 @@ function renderQALog(){
 }
 async function askHealthQA(){
   const s=state.settings;
-  if(!s.gemini&&!s.openai){toast('請先到「設定」填入 Gemini／OpenAI API Key');go('settings');return;}
+  if(!aiHasKey(s)){toast('請先到「設定」填入 AI API Key（Gemini／OpenAI／NVIDIA）');go('settings');return;}
   const inp=document.getElementById('qaInput'); if(!inp)return;
   const q=(inp.value||'').trim(); if(!q){toast('請先輸入問題');return;}
   inp.value='';
@@ -3452,13 +3453,13 @@ function buildDigestText(){
 }
 async function aiReport(){
   const s=state.settings;
-  if(!s.gemini&&!s.openai){toast('請先到「設定」填入 API Key');go('settings');return;}
+  if(!aiHasKey(s)){toast('請先到「設定」填入 API Key');go('settings');return;}
   const btn=document.getElementById('aiReportBtn');btn.disabled=true;btn.textContent='思考中…';
   const out=document.getElementById('repAiOut');out.style.display='block';out.textContent='AI 正在整合你的所有資料…';
   const prompt=`你是一位整合型健康顧問。以下是使用者在健康 App 內的完整資料。請「整合」各面向（評估、檢驗、用藥、風險、習慣、趨勢），彼此連結後給出：\n1) 整體健康總評：最需優先關注的 2-3 件事，並說明數據之間的關聯（例如血糖×體重、血脂×心血管、腎功能×血壓，以及「用藥×檢驗是否達標」如服降血脂藥但 LDL 仍偏高）。\n2) 依優先順序、本週可執行的行動計畫。\n3) 需要就醫或進一步檢查的「紅旗」提醒。\n資料如下：\n${buildDigestText()}\n請用繁體中文、條理清楚、同理不恐嚇，控制在 550 字內。若提到用藥，一律提醒「請與醫師／藥師討論，勿自行停藥或調整劑量」。務必註明此為衛教參考、非醫療診斷；危急或明顯異常請就醫。`;
   try{
     let text;const useGemini=s.engine==='gemini'||(s.engine!=='openai'&&s.gemini);
-    if(useGemini&&s.gemini)text=await callGemini(s.gemini,prompt);else if(s.openai)text=await callOpenAI(s.openai,prompt);else text=await callGemini(s.gemini,prompt);
+    text=await callLLM(prompt);
     out.textContent=text;state._lastReport=text;
   }catch(e){out.textContent='⚠️ AI 呼叫失敗：'+e.message+'\n請確認 API Key／額度，或網路是否可連到 AI 服務。';}
   btn.disabled=false;btn.textContent='✨ 產生 AI 綜合解讀';
@@ -3473,17 +3474,14 @@ async function askAI(){
   const s=state.settings, r=state.result, p=state.profile;
   if(!r){toast('請先完成健康評估');return;}
   const key = s.engine==='openai'?s.openai : s.engine==='gemini'?s.gemini : (s.gemini||s.openai);
-  if(!s.gemini&&!s.openai){toast('請先到「設定」填入 API Key');go('settings');return;}
+  if(!aiHasKey(s)){toast('請先到「設定」填入 API Key');go('settings');return;}
   const btn=document.getElementById('aiBtn');btn.disabled=true;btn.textContent='思考中…';
   const out=document.getElementById('aiOut');out.style.display='block';out.textContent='AI 正在分析您的健康摘要…';
   const summary=`性別:${p.sex==='male'?'男':'女'} 年齡:${p.age} BMI:${r.bmi?r.bmi.toFixed(1):'NA'} 腰高比:${r.whtr?r.whtr.toFixed(2):'NA'} 血壓:${p.sbp||'NA'}/${p.dbp||'NA'} 靜止心率:${p.hr||'NA'} 空腹血糖:${p.glucose||'NA'} 吸菸:${p.smoke} 每週運動:${p.exercise||0}分 睡眠:${p.sleep||'NA'}時 飲食品質:${p.diet}/5 壓力:${p.stress}/5 綜合健康分:${r.score} 生理年齡:${r.bio} 預期壽命估:${r.life}`;
   const prompt=`你是專業且親切的健康管理顧問。以下是使用者的健康摘要（去識別化）：\n${summary}\n\n請用繁體中文提供：1) 最需優先改善的 3 個重點與具體可執行做法 2) 一週可實踐的行動計畫 3) 鼓勵語。請以衛教口吻，明確提醒此為參考建議、非醫療診斷，如有異常數值應就醫。控制在 400 字內，使用條列。`;
   try{
     let text;
-    const useGemini = s.engine==='gemini' || (s.engine==='auto'&&s.gemini);
-    if(useGemini && s.gemini){ text=await callGemini(s.gemini,prompt); }
-    else if(s.openai){ text=await callOpenAI(s.openai,prompt); }
-    else { text=await callGemini(s.gemini,prompt); }
+    text=await callLLM(prompt);
     out.textContent=text;
   }catch(e){ out.textContent='⚠️ AI 呼叫失敗：'+e.message+'\n請確認 API Key 是否正確、額度是否足夠。'; }
   btn.disabled=false;btn.textContent='✨ 產生 AI 健康建議';
@@ -3503,6 +3501,36 @@ async function callOpenAI(key,prompt){
   if(!res.ok)throw new Error('HTTP '+res.status);
   const d=await res.json();
   return d.choices?.[0]?.message?.content||'（無回應內容）';
+}
+// NVIDIA NIM（build.nvidia.com）：OpenAI 相容端點，金鑰為 nvapi-…；模型可於設定覆寫
+async function callNvidia(key,prompt){
+  const model=(state.settings&&state.settings.nvidiaModel)||'meta/llama-3.1-70b-instruct';
+  const res=await fetch('https://integrate.api.nvidia.com/v1/chat/completions',{method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+    body:JSON.stringify({model,messages:[{role:'user',content:prompt}],temperature:0.4,max_tokens:1600})});
+  if(!res.ok)throw new Error('HTTP '+res.status+'（請確認 NVIDIA 金鑰與模型名稱）');
+  const d=await res.json();
+  return d.choices?.[0]?.message?.content||'（無回應內容）';
+}
+// 是否已設定任一 AI 金鑰
+function aiHasKey(s){ s=s||state.settings||{}; return !!(s.gemini||s.openai||s.nvidia); }
+// 依 engine 與可用金鑰挑選供應商：指定 engine 優先；auto 依序 gemini→openai→nvidia
+function aiPick(s){
+  s=s||state.settings||{};
+  if(s.engine==='gemini'&&s.gemini)return{p:'gemini',k:s.gemini};
+  if(s.engine==='openai'&&s.openai)return{p:'openai',k:s.openai};
+  if(s.engine==='nvidia'&&s.nvidia)return{p:'nvidia',k:s.nvidia};
+  if(s.gemini)return{p:'gemini',k:s.gemini};
+  if(s.openai)return{p:'openai',k:s.openai};
+  if(s.nvidia)return{p:'nvidia',k:s.nvidia};
+  return null;
+}
+// 統一文字 AI 呼叫：自動挑供應商並呼叫對應端點
+async function callLLM(prompt){
+  const e=aiPick(state.settings); if(!e)throw new Error('未設定 API Key');
+  if(e.p==='gemini')return callGemini(e.k,prompt);
+  if(e.p==='nvidia')return callNvidia(e.k,prompt);
+  return callOpenAI(e.k,prompt);
 }
 
 /* ============ 趨勢 ============ */
@@ -5290,13 +5318,13 @@ function renderReports(){
 }
 async function translateReport(id){
   const s=state.settings;
-  if(!s.gemini&&!s.openai){toast('翻譯需 AI 金鑰，請先到「設定」填入');go('settings');return;}
+  if(!aiHasKey(s)){toast('翻譯需 AI 金鑰，請先到「設定」填入');go('settings');return;}
   const rep=(state.reports||[]).find(r=>r.id===id); if(!rep||!rep.findings)return;
   toast('翻譯中…（約 3–8 秒）');
   const prompt='你是專業醫學翻譯。請將以下影像／病理／檢查報告的英文內容，翻譯成通順、忠實的繁體中文，保留重要專有名詞（必要時中英並陳），不要臆測未寫的內容。最後另起一行以「白話摘要：」用一兩句話向病人淺白說明重點。只輸出翻譯內容，不要多餘前言。\n\n報告內容：\n'+rep.findings;
   try{
     const useGemini=s.engine==='gemini'||(s.engine!=='openai'&&s.gemini);
-    const text=(useGemini&&s.gemini)?await callGemini(s.gemini,prompt):(s.openai?await callOpenAI(s.openai,prompt):await callGemini(s.gemini,prompt));
+    const text=await callLLM(prompt);
     rep.findingsZh=(text||'').trim(); save();
     if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
     renderReports(); toast('✅ 已翻譯');
@@ -5304,7 +5332,7 @@ async function translateReport(id){
 }
 async function translateAllReports(){
   const s=state.settings;
-  if(!s.gemini&&!s.openai){toast('翻譯需 AI 金鑰，請先到「設定」填入');go('settings');return;}
+  if(!aiHasKey(s)){toast('翻譯需 AI 金鑰，請先到「設定」填入');go('settings');return;}
   const pend=(state.reports||[]).filter(r=>r.findings&&!r.findingsZh);
   if(!pend.length){toast('沒有待翻譯的報告');return;}
   toast('開始翻譯 '+pend.length+' 筆…');
@@ -5313,7 +5341,7 @@ async function translateAllReports(){
     try{
       const prompt='你是專業醫學翻譯。請將以下影像／病理／檢查報告的英文內容，翻譯成通順、忠實的繁體中文，保留重要專有名詞（必要時中英並陳）。最後另起一行以「白話摘要：」用一兩句話向病人淺白說明重點。只輸出翻譯內容。\n\n報告內容：\n'+rep.findings;
       const useGemini=s.engine==='gemini'||(s.engine!=='openai'&&s.gemini);
-      const text=(useGemini&&s.gemini)?await callGemini(s.gemini,prompt):(s.openai?await callOpenAI(s.openai,prompt):await callGemini(s.gemini,prompt));
+      const text=await callLLM(prompt);
       rep.findingsZh=(text||'').trim(); done++;
       save(); renderReports();
     }catch(e){ toast('第 '+(done+1)+' 筆翻譯失敗：'+e.message); break; }
@@ -5430,7 +5458,7 @@ function drawHabitChart(){
 
 /* ============ 設定 & 資料 ============ */
 function refreshAiBadge(){
-  const s=state.settings;const on=s.gemini||s.openai;
+  const s=state.settings;const on=aiHasKey(s);
   const b=document.getElementById('aiBadge');
   b.className='api-badge '+(on?'api-on':'api-off');
   b.textContent=on?'AI 已啟用':'AI 未設定';
@@ -5438,6 +5466,8 @@ function refreshAiBadge(){
 function saveSettings(){
   state.settings.gemini=document.getElementById('set-gemini').value.trim();
   state.settings.openai=document.getElementById('set-openai').value.trim();
+  const nv=document.getElementById('set-nvidia'); if(nv)state.settings.nvidia=nv.value.trim();
+  const nvm=document.getElementById('set-nvidia-model'); if(nvm)state.settings.nvidiaModel=nvm.value.trim();
   state.settings.engine=document.getElementById('set-engine').value;
   state.settings.gas=document.getElementById('set-gas').value.trim();
   state.settings.autosync=document.getElementById('set-autosync').checked;
@@ -5743,7 +5773,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-reactive-labs';
+const APP_VERSION='2026.07.30-ai-nvidia';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -5849,6 +5879,8 @@ function init(){
   fillProfile(state.profile);
   document.getElementById('set-gemini').value=state.settings.gemini||'';
   document.getElementById('set-openai').value=state.settings.openai||'';
+  const nvEl=document.getElementById('set-nvidia'); if(nvEl)nvEl.value=state.settings.nvidia||'';
+  const nvmEl=document.getElementById('set-nvidia-model'); if(nvmEl)nvmEl.value=state.settings.nvidiaModel||'';
   document.getElementById('set-engine').value=state.settings.engine||'auto';
   document.getElementById('set-gas').value=state.settings.gas||'';
   document.getElementById('set-autosync').checked=!!state.settings.autosync;
@@ -6658,9 +6690,7 @@ async function textExtract(text){
   const s=state.settings;
   const useGemini=s.engine==='gemini'||(s.engine!=='openai'&&s.gemini);
   const prompt=buildExtractPrompt()+'\n\n---報告內容---\n'+text;
-  if(useGemini&&s.gemini)return callGemini(s.gemini,prompt);
-  if(s.openai)return callOpenAI(s.openai,prompt);
-  return callGemini(s.gemini,prompt);
+  return callLLM(prompt);
 }
 const TEXT_CFG={report:{ta:'reportText',st:'reportTextStatus',out:'text'},nhi:{ta:'nhiText',st:'nhiTextStatus',out:'nhi'}};
 async function handleTextImport(kind){
@@ -6703,7 +6733,7 @@ async function handleTextImport(kind){
   }
   // 2) 否則交給 AI 辨識自由文字
   if(!fields){
-    if(!state.settings.gemini&&!state.settings.openai){setSt('⚠️ 自由文字辨識需 AI 金鑰（或改貼 JSON 格式）','var(--err)');return;}
+    if(!aiHasKey()){setSt('⚠️ 自由文字辨識需 AI 金鑰（或改貼 JSON 格式）','var(--err)');return;}
     setSt('🔍 AI 辨識文字中…（約 3–10 秒）');
     try{
       const raw=await textExtract(text);
@@ -7268,7 +7298,7 @@ function selectAllSim(on){
 async function aiInterpretAlerts(){
   const s=state.settings,r=state.result,p=state.profile;
   if(!r){toast('請先完成健康評估');return;}
-  if(!s.gemini&&!s.openai){toast('請先到「設定」填入 API Key');go('settings');return;}
+  if(!aiHasKey(s)){toast('請先到「設定」填入 API Key');go('settings');return;}
   const alerts=analyzeAlerts(p,r,state.history);
   const btn=document.getElementById('aiAlertBtn');btn.disabled=true;btn.textContent='思考中…';
   const out=document.getElementById('aiAlertOut');out.style.display='block';out.textContent='AI 正在解讀你的健康警示…';
@@ -7278,9 +7308,7 @@ async function aiInterpretAlerts(){
   try{
     let text;
     const useGemini=s.engine==='gemini'||(s.engine==='auto'&&s.gemini);
-    if(useGemini&&s.gemini)text=await callGemini(s.gemini,prompt);
-    else if(s.openai)text=await callOpenAI(s.openai,prompt);
-    else text=await callGemini(s.gemini,prompt);
+    text=await callLLM(prompt);
     out.textContent=text;
   }catch(e){out.textContent='⚠️ AI 呼叫失敗：'+e.message;}
   btn.disabled=false;btn.textContent='✨ AI 解讀今日警示';
