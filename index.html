@@ -2174,7 +2174,7 @@ function buildReminders(){
   LAB_ORDER.forEach(k=>{if(L[k]==null)return;if(labFlag(k,L[k].v)==='crit'){const d=labDateStr(L[k]);push('crit','🚨',`${LAB_META[k].label} ${L[k].v}${LAB_META[k].unit} 為嚴重異常${d?`（檢驗日 ${d}）`:''}，建議儘速就醫。`);}});
   const highs=LAB_ORDER.filter(k=>L[k]!=null&&labFlag(k,L[k].v)==='high');
   if(highs.length)push('warn','⚠️',`有 ${highs.length} 項檢驗偏高：${highs.slice(0,5).map(k=>LAB_META[k].label+(labDateStr(L[k])?` ${L[k].v}（${labDateStr(L[k])}）`:'')).join('、')}${highs.length>5?'…':''}，建議追蹤。`);
-  const worse=LAB_ORDER.filter(m=>{const st=labStats(m);return st&&st.n>=2&&st.dir==='worse';});
+  const worse=worseningMetrics();
   if(worse.length)push('warn','📈',`惡化趨勢：${worse.map(k=>LAB_META[k].label).join('、')}，需留意。`);
   if(r){if(r.risks.cvd.level==='vhigh')push('warn','❤️','心血管風險評為極高，建議諮詢醫師並積極改善可修正因子。');if(r.risks.dm.level==='vhigh')push('warn','🩸','糖尿病風險評為極高，建議檢查糖化血色素並控糖。');}
   const dates=[];(state.labs||[]).forEach(e=>dates.push(new Date(e.date).getTime()));(state.history||[]).forEach(s=>dates.push(new Date(s.date).getTime()));
@@ -2757,7 +2757,7 @@ function buildHealthAlerts(){
   LAB_ORDER.forEach(k=>{if(L[k]==null)return;if(labFlag(k,L[k].v)==='crit'){const d=labDateStr(L[k]);push('crit','🚨',LAB_META[k].label+' 嚴重異常'+(d?'（'+d+'）':''),`最新 ${L[k].v}${LAB_META[k].unit}${d?'（檢驗日 '+d+'）':''}，已達嚴重範圍。`,'儘速就醫或回診，攜帶此數據給醫師；請勿自行處理。');}});
   const highs=LAB_ORDER.filter(k=>L[k]!=null&&labFlag(k,L[k].v)==='high');
   if(highs.length)push(highs.length>=3?'crit':'warn','⚠️',highs.length+' 項檢驗過高',highs.slice(0,6).map(k=>LAB_META[k].label+' '+L[k].v+(labDateStr(L[k])?'（'+labDateStr(L[k])+'）':'')).join('、')+(highs.length>6?'…':''),'安排回診追蹤；針對偏高項目調整飲食與運動，必要時與醫師討論用藥。');
-  const worse=LAB_ORDER.filter(m=>{const st=labStats(m);return st&&st.n>=2&&st.dir==='worse';});
+  const worse=worseningMetrics();
   if(worse.length)push('warn','📈','惡化趨勢 '+worse.length+' 項',worse.map(k=>LAB_META[k].label).join('、')+' 較先前變差。','檢視近 1–3 個月生活型態改變，並固定週期複檢觀察走向。');
   if(r&&r.risks){if(r.risks.cvd&&r.risks.cvd.level==='vhigh')push('warn','❤️','心血管風險極高','綜合評估屬極高風險族群。','積極控制血壓／血脂／血糖並戒菸，與醫師討論預防策略。');
         if(r.risks.dm&&r.risks.dm.level==='vhigh')push('warn','🩸','糖尿病風險極高','綜合評估屬極高風險族群。','檢查糖化血色素、減重與規律運動，必要時就醫。');}
@@ -3364,7 +3364,7 @@ function crossInsights(L,r,p){
   if(hb&&hb<12)add('🩸','血紅素偏低（貧血傾向），建議查明原因（缺鐵、失血、慢性病等），必要時就醫。');
   if(tsh&&(tsh<0.4||tsh>4))add('🦋','甲狀腺功能指標（TSH）異常，可能影響代謝、心率與體重，建議內分泌科追蹤。');
   if((k&&(k<3||k>6))||(na&&(na<125||na>155)))add('⚠️','電解質（鉀／鈉）明顯異常，可能影響心臟與神經，建議儘速就醫確認。',1);
-  const worse=LAB_ORDER.filter(m=>{const st=labStats(m);return st&&st.n>=2&&st.dir==='worse';});
+  const worse=worseningMetrics();
   if(worse.length)add('📈','以下項目呈惡化趨勢，需留意：'+worse.map(m=>LAB_META[m].label).join('、')+'。建議檢視近期生活型態並持續追蹤。');
   // 用藥 × 檢驗交叉：治療是否達標
   const cls=medClasses(120);
@@ -3676,6 +3676,20 @@ function buildTrajectories(){
     return ay-by;
   });
   return out;
+}
+/* 有意義的「惡化趨勢」項目：以 labVelocity（最小平方斜率、≥3 點）判定惡化，年變化需
+   ≥ 當前值 1.5%（濾掉持平/雜訊），且依斜率「10 年內會跨過下一風險門檻」或「已超出所有
+   門檻」才列入——取代舊的「最早 vs 最新」兩點粗略比較，避免把仍正常或持平的項目誤報。*/
+function worseningMetrics(){
+  const out=[];
+  Object.keys(LAB_GOOD).forEach(m=>{ if(!LAB_META[m])return;
+    const v=labVelocity(m); if(!v||!v.worsening)return;
+    if(Math.abs(v.slope) < Math.abs(v.cur)*0.015) return;   // 年變化 < 1.5%＝持平/雜訊，非真正趨勢
+    const soon=(v.years!=null&&v.years<=10);                 // 10 年內會跨過下一風險門檻
+    if(!(soon || v.target==null)) return;                   // 否則（仍在安全帶內緩慢移動）不需留意
+    out.push({m,years:v.years==null?1e9:v.years});
+  });
+  return out.sort((x,y)=>x.years-y.years).map(o=>o.m);   // 最快跨線者排前
 }
 function trajectoryCardHtml(){
   const T=buildTrajectories(); if(!T.length)return '';
@@ -5710,7 +5724,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-connect-top';
+const APP_VERSION='2026.07.30-worse-trend';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
