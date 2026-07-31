@@ -1349,7 +1349,12 @@ service cloud.firestore {
     <div class="fg"><label class="fl">Google Gemini API Key</label><input class="fi" id="set-gemini" type="password" placeholder="AIzaSy… 或 AQ.Ab8R…"></div>
     <div class="fg"><label class="fl">OpenAI API Key</label><input class="fi" id="set-openai" type="password" placeholder="sk-…"></div>
     <div class="fg"><label class="fl">NVIDIA API Key <span class="hint">（build.nvidia.com）</span></label><input class="fi" id="set-nvidia" type="password" placeholder="nvapi-…"></div>
-    <div class="fg"><label class="fl">NVIDIA 模型 <span class="hint">（選填，預設 llama-3.1-70b）</span></label><input class="fi" id="set-nvidia-model" placeholder="meta/llama-3.1-70b-instruct"></div>
+    <div class="fg"><label class="fl">NVIDIA 模型 <span class="hint">（留空＝自動偵測）</span></label><input class="fi" id="set-nvidia-model" placeholder="留空即自動偵測，或 meta/llama-3.1-70b-instruct"></div>
+    <div class="row-btn" style="margin:-4px 0 6px;gap:8px;flex-wrap:wrap;">
+      <button class="btn bg" style="font-size:.78rem;padding:5px 12px;" onclick="nvidiaDetectModels()">🔍 偵測可用模型</button>
+      <span class="hint" id="nvModelStatus" style="align-self:center;"></span>
+    </div>
+    <select class="fs" id="nvModelPick" style="display:none;margin-bottom:8px;" onchange="if(this.value)document.getElementById('set-nvidia-model').value=this.value;"></select>
     <div class="fg"><label class="fl">優先引擎</label>
       <select class="fs" id="set-engine"><option value="auto">自動</option><option value="gemini">Gemini</option><option value="openai">OpenAI</option><option value="nvidia">NVIDIA</option></select></div>
     <a class="link" href="https://aistudio.google.com/apikey" target="_blank" style="font-size:.78rem;">→ 免費取得 Gemini API Key</a><br>
@@ -3502,15 +3507,47 @@ async function callOpenAI(key,prompt){
   const d=await res.json();
   return d.choices?.[0]?.message?.content||'（無回應內容）';
 }
-// NVIDIA NIM（build.nvidia.com）：OpenAI 相容端點，金鑰為 nvapi-…；模型可於設定覆寫
+// NVIDIA NIM（build.nvidia.com）：OpenAI 相容端點，金鑰為 nvapi-…；模型可設定覆寫或自動偵測
+let _nvModelCache='';
+function nvChatModels(ids){ return (ids||[]).filter(Boolean).filter(id=>!/embed|rerank|reward|guard|retriev|ocr|paddle|vila|clip|nemoretriever/i.test(id)); }
+function nvPreferred(list){ return list.find(id=>/llama-3\.[13].*70b.*instruct/i.test(id))||list.find(id=>/70b.*instruct/i.test(id))||list.find(id=>/instruct/i.test(id))||list[0]||''; }
+async function nvidiaFetchModels(key){
+  const res=await fetch('https://integrate.api.nvidia.com/v1/models',{headers:{'Authorization':'Bearer '+key}});
+  if(!res.ok)throw new Error('HTTP '+res.status);
+  const d=await res.json();
+  return (d.data||[]).map(m=>m.id).filter(Boolean);
+}
+// 未指定模型時自動偵測一個可用的對話模型（結果快取，失敗則用預設）
+async function nvidiaAutoModel(key){
+  if(_nvModelCache)return _nvModelCache;
+  try{ const pref=nvPreferred(nvChatModels(await nvidiaFetchModels(key)).sort()); if(pref){_nvModelCache=pref;return pref;} }catch(e){}
+  return 'meta/llama-3.1-70b-instruct';
+}
 async function callNvidia(key,prompt){
-  const model=(state.settings&&state.settings.nvidiaModel)||'meta/llama-3.1-70b-instruct';
+  let model=((state.settings&&state.settings.nvidiaModel)||'').trim();
+  if(!model)model=await nvidiaAutoModel(key);   // 自動偵測可用模型
   const res=await fetch('https://integrate.api.nvidia.com/v1/chat/completions',{method:'POST',
     headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
     body:JSON.stringify({model,messages:[{role:'user',content:prompt}],temperature:0.4,max_tokens:1600})});
   if(!res.ok)throw new Error('HTTP '+res.status+'（請確認 NVIDIA 金鑰與模型名稱）');
   const d=await res.json();
   return d.choices?.[0]?.message?.content||'（無回應內容）';
+}
+// 「偵測可用模型」按鈕：抓取清單、填入下拉選單、欄位空則自動帶入合理預設
+async function nvidiaDetectModels(){
+  const key=(document.getElementById('set-nvidia').value||(state.settings&&state.settings.nvidia)||'').trim();
+  const st=document.getElementById('nvModelStatus');
+  if(!key){ if(st)st.textContent='請先填入 NVIDIA API Key'; return; }
+  if(st)st.textContent='偵測中…';
+  try{
+    const list=nvChatModels(await nvidiaFetchModels(key)).sort();
+    const sel=document.getElementById('nvModelPick');
+    sel.innerHTML='<option value="">— 選擇模型 —</option>'+list.map(id=>`<option value="${esc(id)}">${esc(id)}</option>`).join('');
+    sel.style.display='';
+    const cur=document.getElementById('set-nvidia-model');
+    if(!cur.value){ const pref=nvPreferred(list); if(pref){cur.value=pref;sel.value=pref;_nvModelCache=pref;} }
+    if(st)st.textContent='找到 '+list.length+' 個可用模型，可於下拉選單挑選';
+  }catch(e){ if(st)st.textContent='偵測失敗：'+e.message+'（請確認金鑰是否正確）'; }
 }
 // 是否已設定任一 AI 金鑰
 function aiHasKey(s){ s=s||state.settings||{}; return !!(s.gemini||s.openai||s.nvidia); }
@@ -5773,7 +5810,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-ai-nvidia';
+const APP_VERSION='2026.07.30-nvidia-automodel';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
