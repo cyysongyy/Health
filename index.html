@@ -2168,8 +2168,20 @@ function autoSyncFromLabs(){
 function refreshCurrentView(){
   const active=document.querySelector('.sec.active'); if(!active) return;
   const id=active.id.replace('sec-','');
-  if(id==='dash')renderDash(); else if(id==='risk')renderRisk(); else if(id==='report')renderReport();
-  else if(id==='advice')renderAdvice(); else if(id==='smart')renderSmart();
+  const R={dash:renderDash,eval:renderEvalHub,risk:renderRisk,medscore:renderMedScore,smart:renderSmart,
+    analysis:renderAnalysisHub,report:renderReport,advice:renderAdvice,advisor:renderAdvisor,
+    records:renderRecords,labs:renderLabs,trend:renderTrend,dx:renderDx,qa:renderQA};
+  if(R[id]){ try{ R[id](); }catch(e){} }
+}
+/* 單一事實來源：任何檢驗新增／修改／刪除 → 重算評估、風險、走向、依從性、照護缺口、
+   警示與提醒，並重繪目前畫面。所有檢驗異動點統一呼叫此函式，確保全系統連動更新。*/
+function onLabsChanged(){
+  try{ autoSyncFromLabs(); }catch(e){}   // 依最新檢驗重算 profile/result（單一事實來源）
+  try{ save(); }catch(e){}               // 確保存檔（即使 base 欄位未變，仍保存本次檢驗異動）
+  try{ refreshCurrentView(); }catch(e){} // 重繪目前所在區段（含本機綜合分析、報告、趨勢…）
+  // 儀表板的顧問／提醒／紅旗待辦皆源自檢驗，離開頁面前也先同步好
+  try{ if(document.getElementById('sec-dash')){ renderDashAdvisor(); renderRemindDue(); renderReminders(); } }catch(e){}
+  if(state.settings&&state.settings.autosync&&typeof fbUser!=='undefined'&&fbUser){ try{ fbSyncNow().catch(()=>{}); }catch(e){} }
 }
 /* ---- 主動提醒 / 紅旗待辦 ---- */
 function labDateStr(x){ return x&&x.date?new Date(x.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'}):''; }
@@ -3874,9 +3886,7 @@ function recordLabEntry(fields,source){
   state.labs.push({id:'lab_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),
     date:new Date().toISOString(), source:source||'app', values});
   if(state.labs.length>1000)state.labs.shift();
-  save();
-  autoSyncFromLabs();   // 新檢驗值 → 自動更新評估/風險/報告
-  if(document.getElementById('sec-labs').classList.contains('active'))renderLabs();
+  onLabsChanged();   // 新檢驗值 → 全系統連動更新（評估／風險／走向／依從性／照護缺口／警示／畫面）
   return true;
 }
 function labSeries(metric){
@@ -4190,7 +4200,7 @@ function labDelete(id){
   if(!confirm('確定刪除這一筆檢驗紀錄？此動作無法復原。'))return;
   state.labs=(state.labs||[]).filter(e=>e.id!==id);
   if(labSingleId===id)labSingleId=null;
-  labSyncMaybe();autoSyncFromLabs();renderLabs();toast('已刪除該筆');
+  onLabsChanged();renderLabs();toast('已刪除該筆');
 }
 function labEditCurrent(){ if(labSingleId)openLabEditor(labSingleId); else toast('請先選擇一筆'); }
 function labDeleteCurrent(){ if(labSingleId)labDelete(labSingleId); else toast('請先選擇一筆'); }
@@ -4229,8 +4239,8 @@ function saveLabEditor(id){
     state.labs.push({id:'lab_'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),date,source:'manual',values});
     if(state.labs.length>1000)state.labs.shift();
   }
-  labSyncMaybe();const synced=autoSyncFromLabs();closeLabEditor();renderLabs();
-  toast((id?'✅ 已更新該筆':'✅ 已新增一筆')+(synced?'，並更新健康評估':''));
+  onLabsChanged();closeLabEditor();renderLabs();
+  toast((id?'✅ 已更新該筆':'✅ 已新增一筆')+'，已連動更新分析');
 }
 
 /* ============ 用藥紀錄（健保健康存摺整合） ============ */
@@ -5733,7 +5743,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-trend-fit';
+const APP_VERSION='2026.07.30-reactive-labs';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -6854,7 +6864,7 @@ function ingestLabRecords(records,source){
     state.labs.push(rec);
     added++;
   });
-  if(added){if(state.labs.length>2000)state.labs=state.labs.slice(-2000);save();autoSyncFromLabs();}
+  if(added){if(state.labs.length>2000)state.labs=state.labs.slice(-2000);onLabsChanged();}
   return added;
 }
 // 扁平 JSON 常見鍵對應
