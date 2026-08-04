@@ -4319,7 +4319,8 @@ function nhiBankData(data){
 }
 // 檢驗名稱（中／英）→ LAB_META key（specific 先於 general）
 const LAB_NAME_MAP=[
-  [/糖化血色素|糖化血紅素|hba1c|a1c/i,'hba1c'],
+  // 糖化血色素（HbA1c）— 必須最先比對，且涵蓋各種寫法，避免被下方「血色素/Hb」誤收
+  [/糖化血[色紅]素|糖化血色素|hb[-\s]?a1c|\bhba1c\b|glyc\w*\s*h[ae]?moglobin|glycated|\ba1c\b|a1c/i,'hba1c'],
   [/低密度脂蛋白|ldl/i,'ldl'],
   [/高密度脂蛋白|hdl/i,'hdl'],
   [/三酸甘油(酯|脂)|甘油三(酯|脂)|triglyceride/i,'tg'],
@@ -4359,7 +4360,7 @@ const LAB_NAME_MAP=[
   [/basophil|嗜鹼(性)?球/i,'baso'],
   [/白血球|leukocyte|\bwbc\b/i,'wbc'],
   [/紅血球|erythrocyte|\brbc\b/i,'rbc'],
-  [/血色素|血紅素|hemoglobin|haemoglobin|\bhgb\b/i,'hb'],
+  [/(?:血色素|血紅素|hemoglobin|haemoglobin|\bhgb\b)(?![^]*a1c)/i,'hb'],
   [/血球容積|血比容|hematocrit|\bhct\b/i,'hct'],
   [/血小板|platelet/i,'plt'],
   [/甲狀腺刺激素|thyroid\s*stimulating|\btsh\b/i,'tsh'],
@@ -5810,7 +5811,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-nvidia-automodel';
+const APP_VERSION='2026.07.30-hba1c-guard';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
