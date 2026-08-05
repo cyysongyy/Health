@@ -5338,13 +5338,13 @@ function renderReports(){
   document.getElementById('rptSummary').innerHTML=
     `共 <b>${reps.length}</b> 筆影像／病理報告。`+(untrans?`　<span class="pill mod">${untrans} 筆可翻譯</span>`:'');
   const bar=document.getElementById('rptBar');
-  bar.innerHTML=untrans?`<button class="btn bp" style="padding:6px 13px;font-size:.78rem;" onclick="translateAllReports()">🌐 一鍵翻譯全部（${untrans} 筆）</button>`:'';
+  bar.innerHTML=untrans?`<button class="btn bp" style="padding:6px 13px;font-size:.78rem;" onclick="translateAllReportsLocal()">🌐 內建翻譯全部（免金鑰・${untrans} 筆）</button>`+(aiHasKey(state.settings)?` <button class="btn bg" style="padding:6px 13px;font-size:.78rem;" onclick="translateAllReports()">✨ AI 翻譯全部</button>`:''):'';
   const t=document.getElementById('rptList');
   t.innerHTML=reps.map(r=>{
     const d=r.date?new Date(r.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'}):'—';
     const en=r.findings?`<div style="font-size:.76rem;color:var(--g600);margin-top:5px;white-space:pre-wrap;word-break:break-word;"><b>原文：</b>${esc(r.findings)}</div>`:'';
     const zh=r.findingsZh?`<div style="font-size:.8rem;color:var(--g900);margin-top:6px;white-space:pre-wrap;word-break:break-word;background:var(--pril);border-radius:8px;padding:8px;"><b>🌐 中文：</b>${esc(r.findingsZh)}</div>`:'';
-    const tbtn=r.findings&&!r.findingsZh?`<button class="btn bg" style="padding:4px 10px;font-size:.72rem;" onclick="translateReport('${r.id}')">🌐 翻譯成中文</button>`:'';
+    const tbtn=r.findings&&!r.findingsZh?`<button class="btn bp" style="padding:4px 10px;font-size:.72rem;" onclick="translateReportLocal('${r.id}')">🌐 內建翻譯（免金鑰）</button>`+(aiHasKey(state.settings)?` <button class="btn bg" style="padding:4px 10px;font-size:.72rem;" onclick="translateReport('${r.id}')">✨ AI 翻譯</button>`:''):'';
     return `<div class="card" style="margin-bottom:10px;">
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
         <div><b>${esc(r.name)}</b><div class="hint">${d}${r.hospital?'　'+esc(r.hospital):''}</div></div>
@@ -5386,6 +5386,99 @@ async function translateAllReports(){
   }
   if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
   toast('✅ 已翻譯 '+done+'/'+pend.length+' 筆');
+}
+/* ===== 內建醫學報告翻譯（離線、免金鑰、詞庫式；影像／病理報告常用語彙）===== */
+const BND='[^.,;:–—\\-。！\\n]';   // 片語擷取邊界：遇到句讀/破折號即停
+const MED_STRUCT=[
+  [new RegExp('\\bno abnormalit(?:y|ies)\\s+(?:of|in|seen in|involving)\\s+(?:the\\s+)?('+BND+'+)','gi'),'，$1無異常'],
+  [new RegExp('\\bno evidence of\\s+('+BND+'+)','gi'),'，無$1跡象'],
+  [new RegExp('\\bno significant\\s+('+BND+'+)','gi'),'，無明顯$1'],
+  [new RegExp('\\bthere (?:is|are)(?:\\s+some|\\s+a|\\s+an|\\s+several)?\\s+(.+?)\\s+in\\s+(?:the\\s+)?('+BND+'+)','gi'),'$2可見$1'],
+  [new RegExp('\\bin favou?r of\\s+('+BND+'+)','gi'),'，傾向為$1'],
+  [new RegExp('\\bconsistent with\\s+('+BND+'+)','gi'),'，與$1相符'],
+  [new RegExp('\\b(?:suggestive of|suspicious for|concerning for)\\s+('+BND+'+)','gi'),'，疑似$1'],
+  [new RegExp('\\bcompatible with\\s+('+BND+'+)','gi'),'，符合$1'],
+  [/\brule out\b|\br\/o\b/gi,'待排除'],
+  [/\bstatus post\b|\bs\/p\b/gi,'術後'],
+  [/\bwithin normal limits\b|\bunremarkable\b|\bgrossly normal\b|\bnormal study\b/gi,'在正常範圍內'],
+  [/\bfollow[-\s]?up\b/gi,'追蹤'],
+  [/\bno\b/gi,'無'],
+];
+const MED_TERMS=[
+  // 多字片語（先）
+  [/interstitial infiltrat(?:ion|e|es)/gi,'間質浸潤'],[/thoracic aorta/gi,'胸主動脈'],[/hilar region/gi,'肺門區'],
+  [/bony structure/gi,'骨骼結構'],[/pleural effusion/gi,'肋膜積水'],[/pleural thickening/gi,'肋膜增厚'],
+  [/pulmonary edema/gi,'肺水腫'],[/ground[-\s]?glass/gi,'毛玻璃樣'],[/fatty liver|hepatic steatosis/gi,'脂肪肝'],
+  [/lymph node/gi,'淋巴結'],[/lymphadenopathy|adenopathy/gi,'淋巴結腫大'],[/soft tissue/gi,'軟組織'],
+  [/costophrenic angle/gi,'肋膈角'],[/bile duct/gi,'膽管'],[/common bile duct/gi,'總膽管'],
+  [/urinary bladder/gi,'膀胱'],[/renal cyst/gi,'腎囊腫'],[/hepatic cyst/gi,'肝囊腫'],
+  [/degenerative change/gi,'退化性變化'],[/old infarct/gi,'陳舊性梗塞'],[/no acute/gi,'無急性'],
+  // 解剖
+  [/\bchest\b/gi,'胸部'],[/\blungs?\b/gi,'肺'],[/\bhilum\b|\bhilar\b/gi,'肺門'],[/\bmediastin(?:um|al)\b/gi,'縱膈腔'],
+  [/\bpleura(?:l)?\b/gi,'肋膜'],[/\bdiaphragm\b/gi,'橫膈'],[/\btrachea\b/gi,'氣管'],[/\bbronch(?:us|ial|i)\b/gi,'支氣管'],
+  [/\baorta\b|\baortic\b/gi,'主動脈'],[/\bheart\b|\bcardiac\b/gi,'心臟'],[/\bthoracic\b/gi,'胸部'],
+  [/\bribs?\b/gi,'肋骨'],[/\bspine\b|\bvertebra(?:e|l)?\b/gi,'脊椎'],[/\babdomen\b|\babdominal\b/gi,'腹部'],
+  [/\bliver\b|\bhepatic\b/gi,'肝臟'],[/\bgallbladder\b/gi,'膽囊'],[/\bkidneys?\b|\brenal\b/gi,'腎臟'],
+  [/\bspleen\b|\bsplenic\b/gi,'脾臟'],[/\bpancreas\b|\bpancreatic\b/gi,'胰臟'],[/\bbladder\b/gi,'膀胱'],
+  [/\bprostate\b/gi,'攝護腺'],[/\buterus\b|\buterine\b/gi,'子宮'],[/\bovar(?:y|ies|ian)\b/gi,'卵巢'],
+  [/\bthyroid\b/gi,'甲狀腺'],[/\bbreast\b/gi,'乳房'],[/\bbrain\b|\bcerebral\b/gi,'腦'],[/\bcolon\b/gi,'大腸'],
+  [/\bbowel\b|\bintestin(?:e|al)\b/gi,'腸'],[/\bstomach\b|\bgastric\b/gi,'胃'],[/\bregion\b|\bzone\b/gi,'區'],
+  [/\blobe\b/gi,'葉'],[/\bapex\b|\bapical\b/gi,'肺尖'],[/\bbase\b|\bbasal\b/gi,'肺底'],[/\bbones?\b|\bbony\b|\bosseous\b/gi,'骨骼'],
+  // 發現
+  [/\binfiltrat(?:ion|e|es)\b/gi,'浸潤'],[/\binterstitial\b/gi,'間質'],[/\bconsolidation\b/gi,'實變'],
+  [/\bopacit(?:y|ies)\b/gi,'陰影'],[/\bnodule?s?\b/gi,'結節'],[/\bmass(?:es)?\b/gi,'腫塊'],[/\blesions?\b/gi,'病灶'],
+  [/\btumou?rs?\b/gi,'腫瘤'],[/\bcysts?\b|\bcystic\b/gi,'囊腫'],[/\bcalcificat(?:ion|ed)\b|\bcalcified\b/gi,'鈣化'],
+  [/\beffusions?\b/gi,'積液'],[/\bedema\b|\boedema\b/gi,'水腫'],[/\bpneumonia\b|\bpneumonic\b/gi,'肺炎'],
+  [/\batelectasis\b/gi,'肺塌陷'],[/\bfibrosis\b|\bfibrotic\b/gi,'纖維化'],[/\bemphysema\b/gi,'肺氣腫'],
+  [/\bcardiomegaly\b/gi,'心臟肥大'],[/\benlarge(?:d|ment)\b/gi,'腫大'],[/\bdilat(?:ation|ed|e)\b/gi,'擴張'],
+  [/\bstenosis\b/gi,'狹窄'],[/\bobstruction\b/gi,'阻塞'],[/\bthickening\b/gi,'增厚'],[/\bh[ae]morrhage\b/gi,'出血'],
+  [/\binfarct(?:ion)?\b/gi,'梗塞'],[/\bfractures?\b/gi,'骨折'],[/\bdegenerative\b/gi,'退化性'],[/\barthritis\b/gi,'關節炎'],
+  [/\bscoliosis\b/gi,'脊椎側彎'],[/\bhernia(?:tion)?\b/gi,'疝氣'],[/\bstones?\b|\bcalcul(?:us|i)\b/gi,'結石'],
+  [/\bpolyps?\b/gi,'息肉'],[/\binflammation\b|\binflammatory\b/gi,'發炎'],[/\binfection\b/gi,'感染'],
+  [/\babscess\b/gi,'膿瘍'],[/\bascites\b/gi,'腹水'],[/\bcirrhosis\b/gi,'肝硬化'],[/\bhydronephrosis\b/gi,'水腎'],
+  [/\bpneumothorax\b/gi,'氣胸'],[/\bbenign\b/gi,'良性'],[/\bmalignan(?:t|cy)\b/gi,'惡性'],[/\bmetasta(?:sis|tic|ses)\b/gi,'轉移'],
+  // 描述詞
+  [/\bmild(?:ly)?\b/gi,'輕度'],[/\bmoderate(?:ly)?\b/gi,'中度'],[/\bsevere(?:ly)?\b/gi,'重度'],[/\bminimal\b/gi,'極輕微'],
+  [/\bslight(?:ly)?\b|\bsome\b/gi,'些微'],[/\bdiffuse(?:ly)?\b/gi,'瀰漫性'],[/\bfocal\b/gi,'局部'],[/\bpatchy\b/gi,'斑塊狀'],
+  [/\bscattered\b/gi,'散在'],[/\bprominent\b/gi,'明顯'],[/\bincreased?\b/gi,'增加'],[/\bdecreased?\b/gi,'減少'],
+  [/\bnormal\b/gi,'正常'],[/\babnormal(?:ity)?\b/gi,'異常'],[/\bunchanged\b/gi,'無變化'],[/\bstable\b/gi,'穩定'],
+  [/\bimproved?\b/gi,'改善'],[/\bprogress(?:ion|ed)?\b/gi,'進展'],[/\bchronic\b/gi,'慢性'],[/\bacute\b/gi,'急性'],
+  [/\bold\b/gi,'陳舊'],[/\bsuspicious\b/gi,'可疑'],[/\botherwise\b/gi,'其餘'],[/\bnegative\b/gi,'陰性'],[/\bpositive\b/gi,'陽性'],
+  [/\bpresent\b/gi,'存在'],[/\bseen\b|\bnoted\b|\bvisualized\b|\bidentified\b/gi,'可見'],[/\bagain\b|\bredemonstrated\b/gi,'再次'],
+  [/\bleft\b/gi,'左'],[/\bright\b/gi,'右'],[/\bbilateral\b/gi,'雙側'],[/\bupper\b/gi,'上'],[/\blower\b|\binferior\b/gi,'下'],
+  [/\bmiddle\b\b|\bmid\b/gi,'中'],[/\bsuperior\b/gi,'上'],
+  // 報告用語
+  [/\bimpression\b/gi,'影像診斷'],[/\bfindings?\b/gi,'發現'],[/\bcomparison\b/gi,'比較'],[/\bhistory\b/gi,'病史'],
+  [/\bconclusion\b/gi,'結論'],[/\brecommendation\b/gi,'建議'],[/\bcorrelat(?:ion|e)\b/gi,'對照'],[/\bclinical(?:ly)?\b/gi,'臨床'],
+  [/\bexaminations?\b|\bexams?\b|\bstud(?:y|ies)\b/gi,'檢查'],[/\bx-?ray\b/gi,'X光'],[/\bct\b/gi,'電腦斷層'],
+  [/\bultrasound\b|\bsonograph(?:y|ic)\b|\becho\b/gi,'超音波'],[/\bmri\b/gi,'磁振造影'],
+];
+function localMedTranslate(text){
+  if(!text)return '';
+  let t=' '+String(text).replace(/\r/g,' ').replace(/：/g,':')+' ';
+  MED_STRUCT.forEach(([rx,rep])=>{ t=t.replace(rx,rep); });   // 先翻句型（以原始標點為邊界）
+  MED_TERMS.forEach(([rx,rep])=>{ t=t.replace(rx,rep); });    // 再翻詞彙
+  // 標點整理：破折號條列→換行、英文標點→中文
+  t=t.replace(/\s*[–—]\s*/g,'\n・').replace(/\s*,\s*/g,'，').replace(/\s*;\s*/g,'；').replace(/:\s*/g,'：').replace(/\.(?=\s|$|\n)/g,'。');
+  t=t.replace(/，{2,}/g,'，').replace(/。{2,}/g,'。').replace(/，(?=[。\n])/g,'').replace(/([・\n：。])\s*，/g,'$1');
+  // 收斂空白：中文字（或中文標點）之間去空白，英文之間保留
+  for(let i=0;i<3;i++)t=t.replace(/([一-鿿：，。、（）；])\s+([一-鿿：，。、（）；])/g,'$1$2');
+  t=t.replace(/[ \t]{2,}/g,' ').replace(/\n[・\s]*\n/g,'\n').replace(/^[。\s・、，]+/,'').trim();
+  return t;
+}
+function translateReportLocal(id){
+  const rep=(state.reports||[]).find(r=>r.id===id); if(!rep||!rep.findings){toast('無原文可翻譯');return;}
+  const zh=localMedTranslate(rep.findings);
+  rep.findingsZh='〔內建詞庫翻譯，僅供理解參考；專有名詞可能保留英文，正式判讀請以醫師為準〕\n'+zh;
+  rep.zhLocal=true; save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  renderReports(); toast('🌐 已用內建翻譯（免金鑰）');
+}
+function translateAllReportsLocal(){
+  const pend=(state.reports||[]).filter(r=>r.findings&&!r.findingsZh);
+  if(!pend.length){toast('沒有待翻譯的報告');return;}
+  pend.forEach(rep=>{ rep.findingsZh='〔內建詞庫翻譯，僅供理解參考〕\n'+localMedTranslate(rep.findings); rep.zhLocal=true; });
+  save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  renderReports(); toast('🌐 已用內建翻譯 '+pend.length+' 筆（免金鑰）');
 }
 function openRptEditor(id){
   const editing=id?((state.reports||[]).find(r=>r.id===id)):null;
@@ -5811,7 +5904,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-hba1c-guard';
+const APP_VERSION='2026.07.30-local-translate';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
