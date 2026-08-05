@@ -3241,23 +3241,28 @@ function exportQA(){
   setTimeout(()=>URL.revokeObjectURL(a.href),3000); toast('📤 已匯出問答紀錄');
 }
 /* ============ Google Drive 備份／同步（重用日曆 OAuth 的 Client ID，drive.file 非機敏權限） ============ */
-let gdriveToken=null, gdriveTC=null;
+let gdriveToken=null, gdriveTC=null, gdriveTokenExp=0;
 const GDRIVE_FILE='lifespan-health-backup.json';
 // 全 App 共用的預設 OAuth Client ID（公開值、非機敏）。擁有者於此填入一次後，
 // 所有使用者不必自行設定，即可一鍵備份到「自己的」Google Drive。留空＝退回「下載備份檔」。
 const DEFAULT_GCAL_CLIENT_ID='';
 function effectiveClientId(){ return ((state.settings&&state.settings.gcalClientId||'').trim())||DEFAULT_GCAL_CLIENT_ID; }
 function gdriveState(msg){ const el=document.getElementById('gdriveState'); if(el)el.innerHTML=msg; }
-function gdriveAuth(){
+function gdriveAuth(silent){
   return new Promise((res,rej)=>{
+    // 已有未過期的 token 就直接重用，不再觸發 Google 授權畫面（保留 60 秒緩衝）
+    if(gdriveToken && Date.now() < gdriveTokenExp-60000){ res(); return; }
     const cid=effectiveClientId();
-    if(!cid){ toast('請先到「📆 Google 日曆連結」貼上 OAuth Client ID'); rej(new Error('尚未設定 Client ID，請先在上方「Google 日曆連結」貼上。')); return; }
+    if(!cid){ if(!silent)toast('請先到「📆 Google 日曆連結」貼上 OAuth Client ID'); rej(new Error('尚未設定 Client ID，請先在上方「Google 日曆連結」貼上。')); return; }
     if(!navigator.onLine){ rej(new Error('目前離線；離線請改用「資料管理 → 匯出 JSON」')); return; }
     loadGsi().then(()=>{
       try{
         gdriveTC=google.accounts.oauth2.initTokenClient({ client_id:cid, scope:'https://www.googleapis.com/auth/drive.file',
-          callback:(r)=>{ if(r&&r.error){ rej(new Error('授權失敗：'+r.error)); return; } gdriveToken=r.access_token; res(); } });
-        gdriveTC.requestAccessToken({prompt:''});
+          callback:(r)=>{ if(r&&r.error){ rej(new Error('授權失敗：'+r.error)); return; }
+            gdriveToken=r.access_token; gdriveTokenExp=Date.now()+((+r.expires_in||3600)*1000); res(); } });
+        // 安靜（自動）備份用 prompt:'none'：僅在既有 Google 登入狀態下靜默續期，
+        // 無有效工作階段時直接靜默失敗（不彈窗），改由使用者手動按備份時才顯示授權畫面。
+        gdriveTC.requestAccessToken({prompt: silent ? 'none' : ''});
       }catch(e){ rej(e); }
     }).catch(rej);
   });
@@ -3270,7 +3275,7 @@ async function gdriveFind(){
 async function gdriveBackup(silent){
   if(!silent)gdriveState('⏳ 連線中…（若跳 Google 授權，點繼續／允許）');
   _backupInProgress=true;
-  try{ await gdriveAuth(); }catch(e){ if(!silent)gdriveState('❌ '+(e.message||e)); _backupInProgress=false; if(silent)throw e; return; }
+  try{ await gdriveAuth(silent); }catch(e){ if(!silent)gdriveState('❌ '+(e.message||e)); _backupInProgress=false; if(silent)throw e; return; }
   if(!silent)gdriveState('⏳ 備份中…');
   try{
     const payload={app:'LifeSpan',schemaVersion:SCHEMA_VERSION,exportedAt:new Date().toISOString(),data:state};
@@ -5904,7 +5909,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.07.30-local-translate';
+const APP_VERSION='2026.08.05-gdrive-silent-auth';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
