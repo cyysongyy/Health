@@ -530,10 +530,49 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   <div class="card">
     <div class="ct">⌚ 穿戴裝置 / 健康 App</div>
     <div class="hint" style="line-height:1.6;margin-bottom:10px;">
-      支援 Apple 健康「匯出所有健康資料」(export.xml) 與 Google Fit 匯出 (JSON)。自動彙整：每日步數 → 每週運動量、靜止心率、睡眠時數。
+      支援 Apple 健康「匯出所有健康資料」(export.zip／export.xml，可直接上傳整包 zip) 與 Google Fit 匯出 (JSON)。自動彙整：每日步數 → 每週運動量、靜止心率、睡眠時數。
     </div>
     <button class="btn bp" onclick="document.getElementById('fileWear').click()">📥 上傳穿戴裝置匯出檔</button>
     <input type="file" id="fileWear" accept=".xml,.json,.zip,.gz" style="display:none;" onchange="handleImport(event,'wearable')">
+    <div class="hint" style="margin-top:8px;line-height:1.55;">💡 上傳 Apple 健康的匯出檔會依<b>原始日期</b>建立體重／血壓／血糖／靜止心率的歷史紀錄，直接進趨勢分析。</div>
+  </div>
+
+  <div class="card">
+    <div class="ct">📲 iPhone 健康主動同步（捷徑）</div>
+    <div class="hint" style="line-height:1.6;margin-bottom:10px;">
+      網頁無法直接讀 Apple 健康（iOS 限制）。用 iOS <b>「捷徑」</b>讀取當日 <b>體重／血壓／心率／血糖</b>，一鍵（或設每天早上自動）同步進來，免匯出整包檔案——這是最接近「主動串聯」的方式。
+    </div>
+    <div class="row-btn">
+      <button class="btn bp" onclick="pasteHealthSync()">📲 從捷徑貼上健康數據</button>
+    </div>
+    <details class="guide"><summary>✍️ 或手動貼上文字</summary>
+      <div class="guide-body">
+        <div class="hint" style="margin-bottom:6px;">格式：<code>weight:70.5; sbp:120; dbp:80; hr:62; glucose:95; date:2026-08-08</code><br>用分號或換行分隔；<code>date</code> 可省略（預設今天）；血壓也可寫 <code>bp:120/80</code>。</div>
+        <textarea class="fi" id="hsText" rows="3" placeholder="weight:70.5; sbp:120; dbp:80; hr:62; glucose:95"></textarea>
+        <div class="row-btn" style="margin-top:8px;"><button class="btn bp" onclick="applyHealthSync(document.getElementById('hsText').value,false)">📥 解析並同步</button></div>
+      </div>
+    </details>
+    <details class="guide"><summary>📖 如何建立 iPhone 捷徑（含每天自動同步）</summary>
+      <div class="guide-body" style="line-height:1.7;font-size:.82rem;">
+        <div style="margin-bottom:8px;">你的 App 網址（捷徑「打開 URL」用）：<br><code id="hsBaseUrl">（開啟後顯示）</code>
+          <button class="btn bg" style="padding:4px 10px;font-size:.72rem;margin-top:6px;" onclick="copyHsUrl()">📋 複製網址</button></div>
+        <b>A. 建立捷徑</b>
+        <ol style="padding-left:1.2em;margin:.3em 0;">
+          <li>開「捷徑」App →「＋」新增捷徑。</li>
+          <li>加入動作 <b>「尋找健康樣本」</b>：類型選「體重」→ 排序依「開始日期／遞減」→ 限制 1 筆 → 取其「數值」。重複加入 <b>收縮壓、舒張壓、心率、血糖</b>各一組（心率可選「靜止心率」）。</li>
+          <li>加入 <b>「文字」</b>動作，內容打：<br><code>weight:〔體重〕; sbp:〔收縮壓〕; dbp:〔舒張壓〕; hr:〔心率〕; glucose:〔血糖〕; date:〔目前日期〕</code><br>（〔 〕處插入上面各步驟的變數；日期用「目前日期」並把格式設為 <code>yyyy-MM-dd</code>）。</li>
+          <li>加入 <b>「URL 編碼」</b>動作，編碼上一步的文字。</li>
+          <li>加入 <b>「打開 URL」</b>動作，網址填：<code>〔你的 App 網址〕〔URL編碼結果〕</code>（把上方複製的網址接在前面）。</li>
+          <li>執行一次測試——會自動打開本 App 並跳出「已同步」。</li>
+        </ol>
+        <b>B. 設定每天自動</b>
+        <ol style="padding-left:1.2em;margin:.3em 0;">
+          <li>捷徑 App 下方「自動化」→「＋」→「建立個人自動化」→「特定時間」→ 設早上（如 08:00）。</li>
+          <li>動作選「執行捷徑」→ 選剛才那個捷徑 → <b>關閉「執行前先詢問」</b>，即可每天自動同步。</li>
+        </ol>
+        <div class="hint" style="margin-top:6px;">※ 部分 iOS 版本的自動化仍會顯示一次通知橫幅，點一下即完成，屬正常。</div>
+      </div>
+    </details>
   </div>
 
   <div class="card">
@@ -5909,7 +5948,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.05-gdrive-silent-auth';
+const APP_VERSION='2026.08.08-iphone-health-sync';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -6035,6 +6074,8 @@ function init(){
   renderDash();
   applyFontScale();
   applyI18n();
+  const hb=document.getElementById('hsBaseUrl'); if(hb)hb.textContent=location.origin+location.pathname+'#hs=';
+  checkHealthSyncURL();   // 捷徑主動同步：處理 #hs= 網址參數
   if(state._nhiPurged){const n=state._nhiPurged;delete state._nhiPurged;save();setTimeout(()=>{toast('已清除 '+n+' 筆舊的健保檢驗，請到「匯入串接」重新匯入一次');},400);}
   if(state._vitalsPurged){const n=state._vitalsPurged;delete state._vitalsPurged;save();setTimeout(()=>{toast('已將 '+n+' 筆「健康評估數值」移出檢驗庫（仍保留於趨勢紀錄）');},800);}
   if(maybeConsentGate()){ /* 首次使用：先取得同意 → 導覽 → 每日健康警戒 */ }
@@ -6431,12 +6472,12 @@ async function handleImport(e,kind){
     try{
       toast('讀取 Apple 健康檔中…（大檔約需 10–30 秒）');
       const res=await streamAppleHealthZip(f);
-      if(res && Object.keys(res.fields).length){ pendingImport={kind,fields:res.fields,notes:res.notes}; renderImportResult(); go('connect'); toast('✅ 已從 Apple 健康讀取，請確認並帶入'); return; }
+      if(res && Object.keys(res.fields).length){ pendingImport={kind,fields:res.fields,notes:res.notes,dated:res.dated}; renderImportResult(); go('connect'); toast('✅ 已從 Apple 健康讀取，請確認並帶入'); return; }
     }catch(err){ /* 非 Apple 健康 zip 或串流失敗 → 走一般流程 */ }
   }
   try{
     const entries=await extractTextEntries(f);   // 自動解壓縮（.zip/.gz），回傳多個文字檔
-    const fields={};const notes=[];const records=[];const meds=[];const surs=[];const reps=[];const dxs=[];const scrs=[];
+    const fields={};const notes=[];const records=[];const meds=[];const surs=[];const reps=[];const dxs=[];const scrs=[];const datedAll=[];
     let ok=0,failed=0,firstJson=null,firstText=null;
     entries.forEach(({name,text})=>{
       try{
@@ -6447,6 +6488,7 @@ async function handleImport(e,kind){
         else parsed=parseAppFile(text,name);
         if(parsed&&parsed.fields){Object.assign(fields,parsed.fields);ok++;}
         if(parsed&&parsed.records)parsed.records.forEach(r=>records.push(r));
+        if(parsed&&parsed.dated)parsed.dated.forEach(r=>datedAll.push(r));
         (parsed&&parsed.notes||[]).forEach(n=>notes.push(n));
       }catch(err){ failed++; /* 該檔無法解析 */ }
     });
@@ -6489,6 +6531,7 @@ async function handleImport(e,kind){
     if(addedDx)summary.push({icon:'🩺',label:'診斷',n:addedDx});
     if(addedScr)summary.push({icon:'🔎',label:'篩檢',n:addedScr});
     pendingImport={kind,fields,notes,summary};
+    if(datedAll.length)pendingImport.dated=datedAll;
     renderImportResult();go('connect');
     const bits=summary.map(s=>s.n+' 筆'+s.label);
     toast(bits.length?('✅ 已匯入 '+bits.join('、')):'✅ 解析完成');
@@ -7033,6 +7076,64 @@ function ingestLabRecords(records,source){
   if(added){if(state.labs.length>2000)state.labs=state.labs.slice(-2000);onLabsChanged();}
   return added;
 }
+/* ============ iPhone 捷徑主動同步（Apple 健康 → 帶日期檢驗紀錄） ============ */
+// 網頁無法直接讀 HealthKit；改由 iOS「捷徑」把當日數值組成文字，經 #hs= 網址或剪貼簿餵入。
+const HS_ALIAS={
+  weight:['weight','bodymass','wt','體重','kg'], height:['height','ht','身高'], waist:['waist','腰圍'],
+  sbp:['sbp','systolic','bpsys','收縮壓'], dbp:['dbp','diastolic','bpdia','舒張壓'],
+  hr:['hr','heartrate','pulse','restingheartrate','resting','bpm','心率','脈搏'],
+  glucose:['glucose','bloodglucose','glu','sugar','血糖'], hba1c:['hba1c','a1c','糖化血色素','糖化血紅素']
+};
+function hsCanon(k){ const n=String(k).trim().toLowerCase().replace(/[\s_\-]/g,''); if(LAB_META[n]&&HS_ALIAS[n])return n; for(const c in HS_ALIAS){ if(c===n)return c; if(HS_ALIAS[c].some(a=>a.replace(/[\s_\-]/g,'')===n))return c; } return null; }
+function parseSyncDate(v){ v=String(v||'').trim(); if(!v)return null; if(/^\d{4}-\d{2}-\d{2}T/.test(v))return v;
+  const m=v.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/); if(m)return m[1]+'-'+String(m[2]).padStart(2,'0')+'-'+String(m[3]).padStart(2,'0')+'T12:00:00';
+  const d=new Date(v); return isNaN(d)?null:d.toISOString(); }
+// 解析 "weight:70.5; sbp:120; dbp:80; hr:62; glucose:95; date:2026-08-08"（分號／逗號／換行分隔），或 JSON 物件，或 bp:120/80
+function parseHealthSync(text){
+  const values={}; let date=null; const raw=String(text||'').trim(); const pairs=[];
+  let obj=null; if(/^\{[\s\S]*\}$/.test(raw)){ try{obj=JSON.parse(raw);}catch(e){} }
+  if(obj)Object.keys(obj).forEach(k=>pairs.push([k,obj[k]]));
+  else raw.split(/[;\n\r,]+/).forEach(seg=>{ const i=seg.search(/[:=]/); if(i>0)pairs.push([seg.slice(0,i),seg.slice(i+1)]); });
+  pairs.forEach(([k,v])=>{
+    const kk=String(k).trim().toLowerCase().replace(/[\s_\-]/g,'');
+    if(/^(date|day|d|日期|測量日|量測日|時間)$/.test(kk)){ const dd=parseSyncDate(v); if(dd)date=dd; return; }
+    if(kk==='bp'){ const mm=String(v).match(/(\d+(?:\.\d+)?)\D+(\d+(?:\.\d+)?)/); if(mm){values.sbp=+mm[1];values.dbp=+mm[2];} return; }
+    const c=hsCanon(k); if(!c)return; const num=parseFloat(String(v).replace(/[^\d.\-]/g,'')); if(!isNaN(num))values[c]=num;
+  });
+  return {date:date||new Date().toISOString(), values};
+}
+function ingestHealthSync(text,source){
+  const {date,values}=parseHealthSync(text); const keys=Object.keys(values);
+  if(!keys.length)return {added:0,keys,date,values};
+  const added=ingestLabRecords([{date,values}], source||'wearable');
+  return {added,keys,date,values};
+}
+function applyHealthSync(text,silent){
+  if(!text||!String(text).trim()){ if(!silent)toast('沒有內容可解析'); return 0; }
+  let r; try{ r=ingestHealthSync(text,'wearable'); }catch(e){ if(!silent)toast('無法解析健康數據'); return 0; }
+  if(!r.keys.length){ if(!silent)toast('沒有讀到可用數值（體重／血壓／心率／血糖…）'); return 0; }
+  const labels=r.keys.map(k=>(FIELD_LABEL[k]||k)+' '+r.values[k]).join('、');
+  toast(r.added?('📲 已同步：'+labels+'（'+String(r.date).slice(0,10)+'）'):('📲 此筆已存在，未重複（'+labels+'）'));
+  const t=document.getElementById('hsText'); if(t)t.value='';
+  return r.added;
+}
+async function pasteHealthSync(){
+  try{ if(navigator.clipboard&&navigator.clipboard.readText){ const t=await navigator.clipboard.readText(); if(t&&t.trim()){ applyHealthSync(t,false); return; } } }catch(e){}
+  const el=document.getElementById('hsText'); if(el){ const g=el.closest('details'); if(g)g.open=true; el.focus(); toast('請把捷徑複製的文字貼到下方欄位，再按「解析並同步」'); }
+}
+// 開機檢查網址 #hs= 或 ?hs= （捷徑「打開 URL」餵入）
+function checkHealthSyncURL(){
+  try{
+    const src=(location.hash||'')+'&'+(location.search||''); const m=src.match(/[#?&]hs=([^&#\s]+)/);
+    if(!m)return; let payload=''; try{payload=decodeURIComponent(m[1]);}catch(e){payload=m[1];}
+    if(/^[A-Za-z0-9+/=_\-]+$/.test(payload)&&!/[:=;]/.test(payload)){ try{const b=atob(payload.replace(/-/g,'+').replace(/_/g,'/')); if(/[:=;{]/.test(b))payload=b;}catch(e){} }
+    try{ history.replaceState(null,'',location.pathname); }catch(e){}   // 清網址，避免重整重複匯入
+    setTimeout(()=>applyHealthSync(payload,false),500);
+  }catch(e){}
+}
+function copyHsUrl(){
+  const base=location.origin+location.pathname+'#hs='; try{ navigator.clipboard.writeText(base); toast('已複製 App 網址（捷徑「打開 URL」用）'); }catch(e){ toast(base); }
+}
 // 扁平 JSON 常見鍵對應
 function mapFlat(o,fields){
   const alias={sbp:['sbp','systolic','收縮壓'],dbp:['dbp','diastolic','舒張壓'],
@@ -7042,21 +7143,23 @@ function mapFlat(o,fields){
   Object.keys(alias).forEach(k=>{alias[k].forEach(a=>{if(o[a]!==undefined)pushField(fields,k,o[a]);});});
 }
 // Apple 健康 <Record> 增量掃描器：可分段 feed（串流用），只保留彙總，省記憶體
-function AHScanner(){ this.latest={}; this.exMin=0; this.exDays={}; this.stepTot=0; this.stepDays={}; this.hrRest=[]; this.hrAll=[]; this.asleep={s:0,d:{}}; this.inbed={s:0,d:{}}; this.carry=''; this.n=0; }
+function AHScanner(){ this.latest={}; this.exMin=0; this.exDays={}; this.stepTot=0; this.stepDays={}; this.hrRest=[]; this.hrAll=[]; this.asleep={s:0,d:{}}; this.inbed={s:0,d:{}}; this.carry=''; this.n=0; this.series={}; }
 AHScanner.prototype._set=function(k,v,d){ if(v==null||isNaN(v))return; if(!this.latest[k]||String(d)>String(this.latest[k].d))this.latest[k]={v,d}; };
+// 每日序列：每個項目每天只留「當天最後一筆」，供建立帶日期的歷史檢驗紀錄（趨勢引擎用）
+AHScanner.prototype._day=function(k,v,day,d){ if(v==null||isNaN(v)||!day)return; const s=this.series[k]||(this.series[k]={}); if(!s[day]||String(d)>String(s[day].d))s[day]={v,d}; };
 AHScanner.prototype._rec=function(A){
   const t=A.type; if(!t)return; this.n++; const val=parseFloat(A.value), sd=A.startDate||'', day=sd.slice(0,10), u=A.unit||'';
   if(t.includes('StepCount')){ if(!isNaN(val)){this.stepTot+=val;this.stepDays[day]=1;} }
   else if(t.includes('AppleExerciseTime')||t.includes('AppleMoveTime')){ if(!isNaN(val)){this.exMin+=val;this.exDays[day]=1;} }
-  else if(t.includes('RestingHeartRate')){ if(!isNaN(val))this.hrRest.push(val); }
+  else if(t.includes('RestingHeartRate')){ if(!isNaN(val)){this.hrRest.push(val);this._day('hr',val,day,sd);} }
   else if(t.includes('HeartRate')&&!/Variab|Recovery|Walking/.test(t)){ if(!isNaN(val)&&this.hrAll.length<8000)this.hrAll.push(val); }
   else if(t.includes('SleepAnalysis')){ const s=new Date(sd),e=new Date(A.endDate); if(!isNaN(s)&&!isNaN(e)){const dur=(e-s)/1000; if(dur>0&&dur<16*3600){ const v=A.value||''; if(/Asleep/.test(v)){this.asleep.s+=dur;this.asleep.d[day]=1;} else if(/InBed/.test(v)){this.inbed.s+=dur;this.inbed.d[day]=1;} }} }
   else if(t.includes('BodyMassIndex')){}
-  else if(t.includes('BodyMass')){ this._set('weight',val,sd); }
+  else if(t.includes('BodyMass')){ this._set('weight',val,sd); this._day('weight',val,day,sd); }
   else if(t.includes('Height')){ let h=val; if(u==='m'||(h>0&&h<3))h*=100; this._set('height',h,sd); }
-  else if(t.includes('BloodPressureSystolic')){ this._set('sbp',val,sd); }
-  else if(t.includes('BloodPressureDiastolic')){ this._set('dbp',val,sd); }
-  else if(t.includes('BloodGlucose')){ let g=val; if(/mmol/i.test(u)||(g>0&&g<30))g*=18; this._set('glucose',Math.round(g),sd); }
+  else if(t.includes('BloodPressureSystolic')){ this._set('sbp',val,sd); this._day('sbp',val,day,sd); }
+  else if(t.includes('BloodPressureDiastolic')){ this._set('dbp',val,sd); this._day('dbp',val,day,sd); }
+  else if(t.includes('BloodGlucose')){ let g=val; if(/mmol/i.test(u)||(g>0&&g<30))g*=18; g=Math.round(g); this._set('glucose',g,sd); this._day('glucose',g,day,sd); }
   else if(t.includes('WaistCircumference')){ let w=val; if(u==='m'||(w>0&&w<3))w*=100; this._set('waist',Math.round(w),sd); }
 };
 AHScanner.prototype.feed=function(str){
@@ -7078,8 +7181,14 @@ AHScanner.prototype.result=function(){
   const useSleep = this.asleep.s>0?this.asleep:(this.inbed.s>0?this.inbed:null);
   if(useSleep){ const n=Math.max(1,Object.keys(useSleep.d).length); fields.sleep=Math.round(useSleep.s/3600/n*10)/10; notes.push('平均睡眠 '+fields.sleep+' 小時/日'+(this.asleep.s>0?'':'（依躺床時間估計）')); }
   if(!Object.keys(fields).length)notes.push('讀到 Apple 健康檔，但未擷取到可對應的項目（步數／心率／體重／血壓／睡眠…）。');
+  // 每日序列 → 帶日期的歷史檢驗紀錄（讓體重／血壓／血糖／靜止心率流進趨勢引擎）
+  const byDay={};
+  Object.keys(this.series).forEach(k=>{ Object.keys(this.series[k]).forEach(day=>{ (byDay[day]||(byDay[day]={}))[k]=Math.round(this.series[k][day].v*10)/10; }); });
+  let dated=Object.keys(byDay).sort().map(day=>({date:day+'T12:00:00',values:byDay[day]}));
+  if(dated.length>800)dated=dated.slice(-800);   // 記憶體／儲存上限保護：最多保留最近 800 天
+  if(dated.length)notes.push('可另建 '+dated.length+' 天的歷史紀錄（體重／血壓／血糖／靜止心率）供趨勢分析');
   notes.unshift('來源：Apple 健康匯出（掃描 '+this.n+' 筆紀錄）');
-  return {fields,notes};
+  return {fields,notes,dated};
 };
 // 穿戴裝置：Apple 健康 export.xml / 匯出.xml，或 Google Fit JSON
 function parseWearable(txt,name){
@@ -7171,7 +7280,9 @@ function applyImportAndSave(){
   const fields=pendingImport?pendingImport.fields:{};
   const kind=pendingImport?pendingImport.kind:'app';
   const blob=pendingImport&&pendingImport.blob, blobKind=pendingImport&&pendingImport.blobKind;
-  recordLabEntry(fields,kind);   // 辨識出的數值一律收進檢驗數據庫（含 LDL／TG／HbA1c）
+  const dated=pendingImport&&pendingImport.dated;
+  if(dated&&dated.length){ const added=ingestLabRecords(dated,'wearable'); toast(added?('✅ 已依原始日期加入 '+added+' 筆檢驗紀錄'):'（歷史紀錄先前已匯入）'); }
+  else recordLabEntry(fields,kind);   // 辨識出的數值一律收進檢驗數據庫（含 LDL／TG／HbA1c）
   const p=readProfile();
   if(!p.age||!p.height||!p.weight){
     save();go('labs');
