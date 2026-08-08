@@ -757,6 +757,11 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <div class="cw tall"><canvas id="trendChart"></canvas></div>
     </div>
   </div>
+  <div class="card" id="walkTrendCard" style="display:none;">
+    <div class="ct">🚶 走路里程趨勢 <span class="hint">每日（自復健系統）</span></div>
+    <div class="cw tall"><canvas id="walkTrendChart"></canvas></div>
+    <div class="hint" id="walkTrendSub" style="margin-top:8px;"></div>
+  </div>
   <div class="card" id="trendTableCard" style="display:none;">
     <div class="ct">📋 歷史紀錄</div>
     <div style="overflow-x:auto;">
@@ -3548,6 +3553,7 @@ function renderTrend(){
     const b=document.createElement('div');b.className='seg-btn'+(m.k===curTrend?' on':'');
     b.textContent=m.label;b.onclick=()=>{curTrend=m.k;renderTrend();};seg.appendChild(b);
   });
+  renderWalkTrend();   // 走路里程趨勢（獨立於健康紀錄點）
   const h=state.history;
   const has=h.length>0;
   document.getElementById('trendEmpty').style.display=has?'none':'block';
@@ -3577,6 +3583,34 @@ function renderTrend(){
   t.innerHTML=html;
 }
 function clearHistory(){ if(confirm('確定清除所有趨勢紀錄？')){state.history=[];save();renderTrend();toast('已清除紀錄');} }
+function renderWalkTrend(){
+  const card=document.getElementById('walkTrendCard'); if(!card)return;
+  const walks=state.walks||[];
+  if(!walks.length){ card.style.display='none'; return; }
+  card.style.display='block';
+  if(typeof chartReady==='function'&&!chartReady())return;
+  // 每日彙總（同一天多筆相加）
+  const byDay={};
+  walks.forEach(w=>{const d=new Date(w.date).toISOString().slice(0,10); const o=byDay[d]||(byDay[d]={km:0,min:0}); o.km+=(+w.km||0); o.min+=(+w.minutes||0);});
+  const days=Object.keys(byDay).sort().slice(-60);
+  const labels=days.map(d=>new Date(d+'T00:00').toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei',month:'numeric',day:'numeric'}));
+  const km=days.map(d=>Math.round(byDay[d].km*100)/100);
+  const mins=days.map(d=>byDay[d].min);
+  if(charts.walkTrend)charts.walkTrend.destroy();
+  charts.walkTrend=new Chart(document.getElementById('walkTrendChart'),{
+    type:'line',
+    data:{labels,datasets:[
+      {label:'每日里程 (km)',data:km,borderColor:'#7c3aed',backgroundColor:'#7c3aed22',fill:true,tension:.3,pointRadius:3,yAxisID:'km',spanGaps:true},
+      {label:'每日分鐘',data:mins,borderColor:'#0d9488',backgroundColor:'transparent',borderDash:[4,3],fill:false,tension:.3,pointRadius:0,yAxisID:'min',spanGaps:true}
+    ]},
+    options:{plugins:{legend:{labels:{font:{size:11}}}},scales:{
+      km:{position:'left',beginAtZero:true,title:{display:true,text:'km',font:{size:10}}},
+      min:{position:'right',beginAtZero:true,grid:{drawOnChartArea:false},title:{display:true,text:'分鐘',font:{size:10}}}}}
+  });
+  const s=(typeof walkStats==='function')?walkStats():null;
+  const sub=document.getElementById('walkTrendSub');
+  if(sub&&s)sub.innerHTML='近 7 天 '+s.week.km.toFixed(1)+' 公里、'+s.week.minutes+' 分鐘、'+s.week.sessions+' 次；🔥 連續 '+s.streak+' 天。';
+}
 
 /* ============ 檢驗數據庫 ============ */
 const LAB_META={
@@ -5868,7 +5902,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.08-walk-db';
+const APP_VERSION='2026.08.08-walk-trend';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -6756,6 +6790,7 @@ function ingestWalk(d){
   save();
   try{renderWalkSummary();}catch(e){}
   try{if(document.getElementById('sec-foot').classList.contains('active'))renderFootAssess();}catch(e){}
+  try{if(document.getElementById('sec-trend').classList.contains('active'))renderWalkTrend();}catch(e){}
   return 1;
 }
 function ingestVitals(d){
