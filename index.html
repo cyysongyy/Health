@@ -1141,8 +1141,15 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== FOOT TRAINING ========== -->
 <div class="sec" id="sec-foot">
+  <div class="card" id="rehabCard" style="padding:0;overflow:hidden;">
+    <div style="padding:14px 14px 8px;">
+      <div class="ct" style="margin-bottom:4px;">🏋️ 復健訓練系統 <span class="hint">Rehab R5</span></div>
+      <div class="hint" style="line-height:1.6;">訓練計時、每日回報（疼痛／血壓）與統計圖表。需連網載入；資料儲存於此訓練系統中。<a class="link" href="https://cyysongyy.github.io/rehab/" target="_blank" rel="noopener">在新分頁全螢幕開啟 ↗</a></div>
+    </div>
+    <iframe id="rehabFrame" title="復健訓練系統 Rehab" data-src="https://cyysongyy.github.io/rehab/" style="width:100%;height:80vh;border:0;display:block;background:#f1f5f9;" loading="lazy" allow="fullscreen; clipboard-write" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"></iframe>
+  </div>
   <div class="card" id="footPhotoCard">
-    <div class="ct">📷 垂足外觀 AI 評估 <span class="hint">（輔助參考，非診斷）</span></div>
+    <div class="ct">📷 腳掌姿勢 AI 分析 <span class="hint">（輔助參考，非診斷）</span></div>
     <div class="hint" style="line-height:1.75;margin-bottom:10px;">拍 1～4 張照片讓 AI 從<b>外觀</b>綜合你的病史與資料判斷、給建議：<br>
       ① 放鬆坐/躺，鏡頭正對<b>雙腳腳尖</b>（比較兩側下垂角度）<br>
       ② 盡力把患側腳尖<b>往上勾（背屈）</b>的樣子<br>
@@ -1151,18 +1158,11 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       💡 光線充足、腿腳入鏡、去除鞋襪效果最好。分析僅供參考，<b>不能取代醫師與物理治療師</b>。</div>
     <input type="file" id="footPhotoInput" accept="image/*" capture="environment" multiple style="display:none;" onchange="analyzeFootPhoto(event)">
     <div class="row-btn">
-      <button class="btn bp" onclick="document.getElementById('footPhotoInput').click()">📷 拍照 / 選照片評估</button>
+      <button class="btn bp" onclick="document.getElementById('footPhotoInput').click()">📷 拍照 / 選照片分析</button>
     </div>
     <div class="hint" id="footPhotoStatus" style="margin-top:8px;"></div>
     <div id="footPhotoResult" style="margin-top:10px;"></div>
     <div id="footAssessHist" style="margin-top:12px;"></div>
-  </div>
-  <div class="card" id="rehabCard" style="padding:0;overflow:hidden;">
-    <div style="padding:14px 14px 8px;">
-      <div class="ct" style="margin-bottom:4px;">🏋️ 復健訓練系統 <span class="hint">Rehab R5</span></div>
-      <div class="hint" style="line-height:1.6;">訓練計時、每日回報（疼痛／血壓）與統計圖表。需連網載入；資料儲存於此訓練系統中。<a class="link" href="https://cyysongyy.github.io/rehab/" target="_blank" rel="noopener">在新分頁全螢幕開啟 ↗</a></div>
-    </div>
-    <iframe id="rehabFrame" title="復健訓練系統 Rehab" data-src="https://cyysongyy.github.io/rehab/" style="width:100%;height:80vh;border:0;display:block;background:#f1f5f9;" loading="lazy" allow="fullscreen; clipboard-write" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"></iframe>
   </div>
 </div>
 
@@ -5859,7 +5859,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.08-rehab-embed2';
+const APP_VERSION='2026.08.08-rehab-top';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
