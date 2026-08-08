@@ -1148,6 +1148,10 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
     </div>
     <iframe id="rehabFrame" title="復健訓練系統 Rehab" data-src="https://cyysongyy.github.io/rehab/" style="width:100%;height:80vh;border:0;display:block;background:#f1f5f9;" loading="lazy" allow="fullscreen; clipboard-write" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"></iframe>
   </div>
+  <div class="card" id="walkCard">
+    <div class="ct">🚶 走路訓練紀錄 <span class="hint">（自動同步自上方系統）</span></div>
+    <div id="walkSummary"></div>
+  </div>
   <div class="card" id="footPhotoCard">
     <div class="ct">📷 腳掌姿勢 AI 分析 <span class="hint">（輔助參考，非診斷）</span></div>
     <div class="hint" style="line-height:1.75;margin-bottom:10px;">拍 1～4 張照片讓 AI 從<b>外觀</b>綜合你的病史與資料判斷、給建議：<br>
@@ -1574,7 +1578,7 @@ function go(sec){
   if(sec==='risk')renderRisk();
   if(sec==='medscore')renderMedScore();
   if(sec==='advice')renderAdvice();
-  if(sec==='foot'){renderFootAssess();loadRehabFrame();}
+  if(sec==='foot'){renderFootAssess();loadRehabFrame();pullWalkLog();renderWalkSummary();}
   if(sec==='connect')renderImportResult();
   if(sec==='smart')renderSmart();
   if(sec==='advisor')renderAdvisor();
@@ -3135,6 +3139,9 @@ function buildHealthContext(){
   // 個人目標
   const goals=state.goals||{}, gtxt=Object.keys(goals).filter(k=>goals[k]!=null).map(k=>{const g=GOAL_DEFS.find(x=>x.k===k),c=goalCurrent(k);return g?g.label+' 目前'+(c==null?'無資料':c)+' / 目標'+(g.dir==='below'?'≤':'≥')+goals[k]:'';}).filter(Boolean).join('、');
   if(gtxt)P.push('【個人目標】'+gtxt);
+  // 走路訓練（來自復健系統）
+  try{ const wk=walkStats(); if(wk.total&&wk.week.km>0)P.push('【走路訓練（近 7 天）】共 '+wk.week.km.toFixed(1)+' 公里、'+wk.week.minutes+' 分鐘、'+wk.week.sessions+' 次；今日 '+wk.today.km.toFixed(2)+' 公里；連續 '+wk.streak+' 天。'); }catch(e){}
+  if(state.checkins&&state.checkins.length){ const c=state.checkins[state.checkins.length-1]; if(c&&(c.pain!=null||c.energy!=null))P.push('【每日回報（復健系統）】最近一次 疼痛 '+(c.pain!=null?c.pain:'—')+'/10、精力 '+(c.energy!=null?c.energy:'—')+'/10。'); }
   // 系統重點
   const alerts=[...new Set(buildHealthAlerts().filter(a=>a.lvl!=='info').map(a=>a.title))].slice(0,10);
   if(alerts.length)P.push('【系統交叉比對的重點】'+alerts.join('；'));
@@ -5255,6 +5262,8 @@ function exportAllCsvZip(){
   if(dxs.length)files['diagnoses.csv']=enc(csvText(['date','code','name','hospital','source'],dxs.map(d=>[d.date?new Date(d.date).toISOString():'',d.code||'',d.name||'',d.hospital||'',d.source||''])));
   const scr=state.screen||[];
   if(scr.length)files['screenings.csv']=enc(csvText(['date','test','label','result','raw','hospital','source'],scr.map(s=>[s.date?new Date(s.date).toISOString():'',s.test||'',s.label||'',s.result||'',s.raw||'',s.hospital||'',s.source||''])));
+  const walks=state.walks||[];
+  if(walks.length)files['walks.csv']=enc(csvText(['date','steps','km','minutes','bpm','mode','source'],walks.map(w=>[w.date?new Date(w.date).toISOString():'',w.steps||'',w.km||'',w.minutes||'',w.bpm||'',w.mode||'',w.source||''])));
   const n=Object.keys(files).length;
   if(!n){ toast('目前沒有可匯出的紀錄'); return; }
   try{
@@ -5859,7 +5868,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.08-rehab-top';
+const APP_VERSION='2026.08.08-walk-db';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -5987,6 +5996,9 @@ function init(){
   applyI18n();
   const hb=document.getElementById('hsBaseUrl'); if(hb)hb.textContent=location.origin+location.pathname+'#hs=';
   checkHealthSyncURL();   // 捷徑主動同步：處理 #hs= 網址參數
+  window.addEventListener('message',onRehabMessage);   // 接收內嵌 rehab 走路訓練橋接
+  pullWalkLog();          // 補撈 rehab 先前寫入的走路／生理資料
+  try{renderWalkSummary();}catch(e){}
   if(state._nhiPurged){const n=state._nhiPurged;delete state._nhiPurged;save();setTimeout(()=>{toast('已清除 '+n+' 筆舊的健保檢驗，請到「匯入串接」重新匯入一次');},400);}
   if(state._vitalsPurged){const n=state._vitalsPurged;delete state._vitalsPurged;save();setTimeout(()=>{toast('已將 '+n+' 筆「健康評估數值」移出檢驗庫（仍保留於趨勢紀錄）');},800);}
   if(maybeConsentGate()){ /* 首次使用：先取得同意 → 導覽 → 每日健康警戒 */ }
@@ -6722,8 +6734,89 @@ function footAssessHtml(r){
   h+='</div>';
   return h;
 }
-// rehab 復健系統：延遲載入 iframe（僅在開啟「足部訓練」分頁時才連網，維持本機優先）
+// rehab 復健系統：延遲載入 iframe（僅在開啟「走路訓練」分頁時才連網，維持本機優先）
 function loadRehabFrame(){ const f=document.getElementById('rehabFrame'); if(f&&!f.getAttribute('src')&&f.dataset.src){ f.src=f.dataset.src; } }
+
+/* ============ 走路訓練資料庫（來自內嵌 rehab 系統的橋接） ============ */
+// rehab 與本 App 同源（皆在 cyysongyy.github.io），故走 postMessage（即時）＋共用 localStorage（fallback）。
+function ingestRehabEntry(d){
+  if(!d||d.source!=='rehab')return 0;
+  if(d.type==='walk')return ingestWalk(d);
+  if(d.type==='vitals')return ingestVitals(d);
+  return 0;
+}
+function ingestWalk(d){
+  state.walks=state.walks||[];
+  const date=d.date||new Date().toISOString();
+  if(state.walks.some(w=>w.date===date))return 0;   // 依精確時間戳去重
+  const km=+d.km||0, minutes=+d.minutes||0, steps=+d.steps||0;
+  if(!(km>0||minutes>0||steps>0))return 0;
+  state.walks.push({date,steps,km:Math.round(km*100)/100,minutes,bpm:+d.bpm||null,mode:d.mode||'WALK',source:'rehab'});
+  if(state.walks.length>2000)state.walks=state.walks.slice(-2000);
+  save();
+  try{renderWalkSummary();}catch(e){}
+  try{if(document.getElementById('sec-foot').classList.contains('active'))renderFootAssess();}catch(e){}
+  return 1;
+}
+function ingestVitals(d){
+  // 血壓／心率 → 檢驗數據庫（餵入健康引擎、趨勢與警示）
+  const values={}; if(d.sbp)values.sbp=+d.sbp; if(d.dbp)values.dbp=+d.dbp; if(d.pulse)values.hr=+d.pulse;
+  let added=0;
+  if(Object.keys(values).length)added=ingestLabRecords([{date:d.date||new Date().toISOString(),values}],'wearable');
+  // 疼痛／精力 → checkins（供 AI 顧問參考）
+  if(d.pain!=null||d.energy!=null){
+    state.checkins=state.checkins||[];
+    const date=d.date||new Date().toISOString();
+    if(!state.checkins.some(c=>c.date===date)){
+      state.checkins.push({date,pain:d.pain!=null?+d.pain:null,energy:d.energy!=null?+d.energy:null,source:'rehab'});
+      if(state.checkins.length>500)state.checkins=state.checkins.slice(-500);
+      save();
+    }
+  }
+  try{renderWalkSummary();}catch(e){}
+  return added;
+}
+function pullWalkLog(){
+  // 從共用 localStorage 撈 rehab 寫入的紀錄（postMessage 是即時主路徑，這是補漏 fallback）
+  let log=[]; try{log=JSON.parse(localStorage.getItem('lifespan_walk_log')||'[]');}catch(e){}
+  let n=0; log.forEach(e=>{try{n+=ingestRehabEntry(e);}catch(_){}}); return n;
+}
+function onRehabMessage(e){
+  const d=e&&e.data; if(!d||d.source!=='rehab')return;
+  // 只接受同源或 rehab 部署來源的訊息
+  if(e.origin && e.origin!==location.origin && e.origin!=='https://cyysongyy.github.io' && !/^https?:\/\/localhost(:|$)/.test(e.origin))return;
+  try{ingestRehabEntry(d);}catch(_){}
+}
+function walkStats(){
+  const walks=state.walks||[]; const dayKey=d=>new Date(d).toISOString().slice(0,10);
+  const today=new Date().toISOString().slice(0,10); const wa=Date.now()-7*864e5;
+  const sum=(a,f)=>a.reduce((s,x)=>s+(+f(x)||0),0);
+  const tw=walks.filter(w=>dayKey(w.date)===today), week=walks.filter(w=>new Date(w.date).getTime()>=wa);
+  const days=new Set(walks.map(w=>dayKey(w.date))); let streak=0;
+  for(let i=0;i<3650;i++){const dd=new Date(Date.now()-i*864e5).toISOString().slice(0,10); if(days.has(dd))streak++; else if(i===0)continue; else break;}
+  return {today:{km:sum(tw,w=>w.km),steps:sum(tw,w=>w.steps),minutes:sum(tw,w=>w.minutes),sessions:tw.length},
+          week:{km:sum(week,w=>w.km),steps:sum(week,w=>w.steps),minutes:sum(week,w=>w.minutes),sessions:week.length},
+          streak,total:walks.length};
+}
+function renderWalkSummary(){
+  const el=document.getElementById('walkSummary'); if(!el)return;
+  const walks=(state.walks||[]).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));
+  if(!walks.length){ el.innerHTML='<div class="hint" style="line-height:1.7;">尚無走路紀錄。到上方 <b>Walk Beat</b> 走路訓練，按「Pause」存檔後，這裡就會自動出現今日／本週里程與趨勢，資料也會存進健康資料庫。</div>'; return; }
+  const s=walkStats();
+  const tile=(v,l,c)=>`<div style="flex:1;text-align:center;"><div style="font-size:1.35rem;font-weight:800;color:${c||'var(--pri)'};line-height:1.1;">${v}</div><div class="hint" style="margin-top:2px;">${l}</div></div>`;
+  const rows=walks.slice(0,8).map(w=>{const dt=new Date(w.date);const ds=dt.toLocaleDateString('zh-TW',{calendar:'gregory',month:'numeric',day:'numeric',timeZone:'Asia/Taipei'})+' '+dt.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Taipei'});
+    return `<tr><td>${ds}</td><td class="num">${(+w.km).toFixed(2)}</td><td class="num">${w.steps||'—'}</td><td class="num">${w.minutes||'—'}</td></tr>`;}).join('');
+  el.innerHTML=
+    `<div style="display:flex;gap:6px;margin-bottom:10px;">${tile(s.today.km.toFixed(2)+'<small style="font-size:.7rem;"> km</small>','今日里程')}${tile(s.today.minutes,'今日分鐘')}${tile('🔥 '+s.streak,'連續天數','var(--warn)')}</div>`+
+    `<div style="display:flex;gap:6px;margin-bottom:12px;">${tile(s.week.km.toFixed(1)+'<small style="font-size:.7rem;"> km</small>','近7天里程')}${tile(s.week.minutes,'近7天分鐘')}${tile(s.week.sessions,'近7天次數')}</div>`+
+    `<table style="width:100%;font-size:.8rem;"><thead><tr><th style="text-align:left;">時間</th><th style="text-align:right;">公里</th><th style="text-align:right;">步數</th><th style="text-align:right;">分鐘</th></tr></thead><tbody>${rows}</tbody></table>`+
+    `<div class="row-btn" style="margin-top:10px;"><button class="btn bg" style="font-size:.78rem;" onclick="exportWalks()">📤 匯出走路 CSV</button></div>`;
+}
+function exportWalks(){
+  const walks=state.walks||[]; if(!walks.length){toast('沒有可匯出的走路紀錄');return;}
+  csvDownload('lifespan-walks-'+todayKey()+'.csv',['date','steps','km','minutes','bpm','mode','source'],
+    walks.map(w=>[w.date?new Date(w.date).toISOString():'',w.steps||'',w.km||'',w.minutes||'',w.bpm||'',w.mode||'',w.source||'']));
+}
 function renderFootAssess(){
   const el=document.getElementById('footAssessHist'); if(!el)return;
   const arr=state.footAssess||[];

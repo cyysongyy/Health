@@ -108,7 +108,7 @@ README.md             ← 本說明文件
 | 🏋️ 復健訓練系統 Rehab R5 | 內嵌 [Rehab R5-AI-PRO](https://cyysongyy.github.io/rehab/) 復健系統：訓練計時、每日回報（疼痛／血壓）與統計圖表 |
 
 - **內嵌方式**：復健系統以 `<iframe>` 沙箱化嵌入（`sandbox` 不含 `allow-top-navigation`，避免其 `base target=_top` 劫持主程式），並**延遲載入**——僅在開啟本分頁時才連網，維持本機優先。
-- **資料分離**：復健系統的紀錄存於該系統自身（`rehab_*`），與健康預測資料（`lifespan_data_v1`）互不干擾。
+- **走路資料回傳（🚶 走路訓練紀錄）**：因兩者同源（皆 `cyysongyy.github.io`），復健系統每次走路存檔會把 `{步數, 公里, 分鐘}` 透過 `postMessage` ＋共用 `localStorage`（`lifespan_walk_log`）回傳，主程式收進 `state.walks[]`，計算今日／近 7 天里程、連續天數並可匯出 CSV；復健系統「每日回報」的血壓／心率則併入檢驗數據庫（餵入趨勢與風險引擎），疼痛／精力存入 `state.checkins[]` 供 AI 顧問參考。
 - **需連網**：復健系統載入 Chart.js 等資源，需要網路；也可點「在新分頁全螢幕開啟 ↗」單獨使用。
 
 > ⚠️ 本分頁為衛教與自主訓練用途，不能取代醫療診斷。若疼痛加劇、麻木或不適，請諮詢復健科或物理治療師。
