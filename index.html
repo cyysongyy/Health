@@ -2154,8 +2154,8 @@ function onLabsChanged(){
 function labDateStr(x){ return x&&x.date?new Date(x.date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'}):''; }
 function buildReminders(){
   const out=[],now=Date.now(),L=labLatest(),r=state.result;
-  const push=(lvl,icon,text)=>out.push({lvl,icon,text});
-  LAB_ORDER.forEach(k=>{if(L[k]==null)return;if(labFlag(k,L[k].v)==='crit'){const d=labDateStr(L[k]);push('crit','🚨',`${LAB_META[k].label} ${L[k].v}${LAB_META[k].unit} 為嚴重異常${d?`（檢驗日 ${d}）`:''}，建議儘速就醫。`);}});
+  const push=(lvl,icon,text,key)=>out.push({lvl,icon,text,key});
+  LAB_ORDER.forEach(k=>{if(L[k]==null)return;if(labFlag(k,L[k].v)==='crit'){const d=labDateStr(L[k]);push('crit','🚨',`${LAB_META[k].label} ${L[k].v}${LAB_META[k].unit} 為嚴重異常${d?`（檢驗日 ${d}）`:''}，建議儘速就醫。`,k);}});
   const highs=LAB_ORDER.filter(k=>L[k]!=null&&labFlag(k,L[k].v)==='high');
   if(highs.length)push('warn','⚠️',`有 ${highs.length} 項檢驗偏高：${highs.slice(0,5).map(k=>LAB_META[k].label+(labDateStr(L[k])?` ${L[k].v}（${labDateStr(L[k])}）`:'')).join('、')}${highs.length>5?'…':''}，建議追蹤。`);
   const worse=worseningMetrics();
@@ -2167,6 +2167,26 @@ function buildReminders(){
   out.sort((a,b)=>({crit:0,warn:1,info:2}[a.lvl]-{crit:0,warn:1,info:2}[b.lvl]));
   return out;
 }
+// 修正某檢驗項：找出含此值的「最新」紀錄，直接開編輯器
+function fixLabMetric(key){
+  const labs=state.labs||[]; let best=null;
+  labs.forEach(e=>{if(e.values&&e.values[key]!=null){const t=new Date(e.date).getTime(); if(!best||t>=best.t)best={t,id:e.id};}});
+  if(!best||!best.id){toast('找不到對應紀錄，可能已修正');return;}
+  go('labs'); setTimeout(()=>openLabEditor(best.id),80);
+}
+// 資料錯誤時：把某檢驗項從「所有」紀錄移除（處理重複／多筆殘留），整筆只剩此項則刪整筆
+function purgeLabMetric(key){
+  const label=LAB_META[key]?LAB_META[key].label:key;
+  const labs=state.labs||[]; const n=labs.filter(e=>e.values&&e.values[key]!=null).length;
+  if(!n){toast('目前沒有此項數值');return;}
+  if(!confirm('確定移除所有「'+label+'」數值？\n\n共 '+n+' 筆紀錄含此項，將從每筆移除（若整筆只剩此項則整筆刪除）。適用於「匯入/辨識錯誤、改了又出現」的情形。此動作無法復原。'))return;
+  let emptied=0;
+  state.labs=labs.map(e=>{ if(e.values&&e.values[key]!=null){const v=Object.assign({},e.values);delete v[key];e.values=v;} return e; })
+                 .filter(e=>{ if(e.values&&Object.keys(e.values).length===0){emptied++;return false;} return true; });
+  if(typeof onLabsChanged==='function')onLabsChanged(); else save();
+  if(typeof renderLabs==='function')renderLabs();
+  toast('已移除所有「'+label+'」數值（'+n+' 筆）');
+}
 function renderReminders(){
   const el=document.getElementById('dashReminders'); if(!el)return;
   const rem=buildReminders();
@@ -2174,7 +2194,9 @@ function renderReminders(){
   const checkBtn=`<button class="btn bg" style="padding:5px 12px;font-size:.74rem;" onclick="showHealthAlert(true)">🔔 立即健康檢查</button>`;
   if(!rem.length){el.innerHTML=`<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="hint">🔔 健康警戒系統運作中，偵測到問題會主動提醒。</div>${checkBtn}</div>`;return;}
   el.innerHTML=`<div class="card"><div class="ct" style="display:flex;align-items:center;justify-content:space-between;">🚩 提醒與待辦 <span class="hint">${rem.length} 項</span></div>`+
-    rem.map(x=>`<div class="rec" style="border-left-color:${col[x.lvl]};background:${x.lvl==='crit'?'#fef2f2':x.lvl==='warn'?'#fffbeb':'#f0f9ff'};"><div class="rec-icon">${x.icon}</div><div class="rec-body"><div class="rec-desc">${x.text}</div></div></div>`).join('')+
+    rem.map(x=>`<div class="rec" style="border-left-color:${col[x.lvl]};background:${x.lvl==='crit'?'#fef2f2':x.lvl==='warn'?'#fffbeb':'#f0f9ff'};"><div class="rec-icon">${x.icon}</div><div class="rec-body"><div class="rec-desc">${x.text}</div>`+
+      (x.key?`<div class="row-btn" style="margin-top:6px;gap:6px;"><button class="btn bg" style="padding:4px 10px;font-size:.72rem;" onclick="fixLabMetric('${x.key}')">✏️ 修正這筆</button><button class="btn bg" style="padding:4px 10px;font-size:.72rem;color:var(--err);" onclick="purgeLabMetric('${x.key}')">🧹 這是錯誤，全部移除</button></div>`:'')+
+      `</div></div>`).join('')+
     `<div class="row-btn" style="margin-top:10px;">${checkBtn}</div></div>`;
 }
 
@@ -5903,7 +5925,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.09-lab-tap-edit';
+const APP_VERSION='2026.08.09-lab-purge';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
