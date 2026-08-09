@@ -3965,11 +3965,11 @@ function renderLabs(){
   document.getElementById('labsCount').textContent='共 '+valLabs.length+' 筆';
   // 各項最新值
   const latest={};
-  labs.forEach(e=>{const t=new Date(e.date).getTime();Object.keys(e.values||{}).forEach(k=>{if(!latest[k]||t>=latest[k].t)latest[k]={v:e.values[k],t,date:e.date};});});
+  labs.forEach(e=>{const t=new Date(e.date).getTime();Object.keys(e.values||{}).forEach(k=>{if(!latest[k]||t>=latest[k].t)latest[k]={v:e.values[k],t,date:e.date,id:e.id};});});
   const present=LAB_ORDER.filter(k=>latest[k]!==undefined);
   document.getElementById('labsLatest').innerHTML=present.map(k=>{
     const m=LAB_META[k],fl=labFlag(k,latest[k].v),col=FLAG_COLOR[fl],ic=FLAG_ICON[fl];
-    return `<div class="sc${fl==='crit'?' crit':''}" style="border-left-color:${col};"><div class="sv" style="color:${col};">${ic?ic+' ':''}${latest[k].v}<small> ${m.unit}</small></div><div class="sl">${m.label} · ${new Date(latest[k].date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})}</div></div>`;
+    return `<div class="sc${fl==='crit'?' crit':''}" style="border-left-color:${col};cursor:pointer;" title="點一下可修正或刪除這筆數值" onclick="openLabEditor('${latest[k].id}')"><div class="sv" style="color:${col};">${ic?ic+' ':''}${latest[k].v}<small> ${m.unit}</small></div><div class="sl">${m.label} · ${new Date(latest[k].date).toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})} <span style="opacity:.6;">✏️</span></div></div>`;
   }).join('');
   // 異常警示：嚴重(crit) / 過高(high)
   const critList=present.filter(k=>labFlag(k,latest[k].v)==='crit');
@@ -4282,6 +4282,7 @@ function openLabEditor(id){
     <div class="row-btn" style="margin-top:14px;">
       <button class="btn bp" onclick="saveLabEditor('${editing?editing.id:''}')">💾 儲存</button>
       <button class="btn bg" onclick="closeLabEditor()">取消</button>
+      ${editing?`<button class="btn bd" onclick="labDelete('${editing.id}');closeLabEditor();">🗑️ 刪除此筆</button>`:''}
     </div></div>`;
   m.style.display='flex';
 }
@@ -5902,7 +5903,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.08-walk-steps';
+const APP_VERSION='2026.08.09-lab-tap-edit';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
