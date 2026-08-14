@@ -331,18 +331,24 @@ body{ background:#eef2f6;
   -webkit-mask-composite:source-in; mask-image:linear-gradient(to left,#000 34%,transparent 94%),linear-gradient(to bottom,#000 52%,transparent 100%); mask-composite:intersect; }
 
 /* 頁首：透明、深字 logo、白藥丸、AI on 深色 */
-.hd{ position:static; z-index:2; background:transparent; color:#0f172a; box-shadow:none; border:none;
+.hd{ position:relative; z-index:5; background:transparent; color:#0f172a; box-shadow:none; border:none;
   align-items:flex-start; padding-top:16px; }
 .hd .brand{ display:flex; align-items:center; gap:11px; }
 .hd .brandtext{ display:flex; flex-direction:column; }
-.hd .brandmark{ width:48px; height:48px; border-radius:15px; display:flex; align-items:center; justify-content:center;
-  background:linear-gradient(135deg,#22c55e,#2563eb); color:#fff; font-size:1.6rem; box-shadow:0 6px 16px rgba(37,99,235,.32); }
-.hd .brandname{ font-size:1.4rem; font-weight:800; color:#0f2540; line-height:1.05; letter-spacing:.3px; }
+.hd .brandmark{ width:40px; height:40px; border-radius:13px; display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(135deg,#22c55e,#2563eb); color:#fff; font-size:1.35rem; box-shadow:0 6px 16px rgba(37,99,235,.32); }
+.hd .brandname{ font-size:1.08rem; font-weight:800; color:#0f2540; line-height:1.05; letter-spacing:.2px; }
+.hd .brand{ flex-shrink:1; min-width:0; gap:8px; }
+.hd-right{ flex-wrap:wrap; min-width:0; gap:6px; }
+.hd .api-badge{ white-space:nowrap; }
 .hd .brandname span{ color:#0d9488; }
 .hd .brandtag{ display:none; }
-.hd .api-badge{ background:#fff; border:1px solid #e6ecf3; color:#334155; border-radius:999px; padding:7px 13px;
-  font-weight:700; box-shadow:0 2px 8px rgba(31,72,120,.08); display:inline-flex; align-items:center; gap:4px; }
-.hd #aiBadge, .hd #aiBadge.api-on, .hd #aiBadge.api-off{ background:#0f2540; color:#fff; border-color:#0f2540; }
+.hd .api-badge{ background:#fff; border:1px solid rgba(15,37,64,.12); color:#0f2540; border-radius:999px; padding:6px 10px;
+  font-size:.7rem; font-weight:800; box-shadow:0 4px 12px rgba(15,37,64,.22); display:inline-flex; align-items:center; gap:3px; }
+.hd #aiBadge, .hd #aiBadge.api-on, .hd #aiBadge.api-off{ background:#0f2540; color:#fff; border-color:#0f2540; box-shadow:0 4px 12px rgba(15,37,64,.3); }
+/* 往右靠、避開跑者：整組貼右上，放不下就往右對齊換行（不撐破畫面） */
+.hd{ padding-right:10px; }
+.hd-right{ align-self:flex-start; justify-content:flex-end; }
 .hd-right{ gap:8px; margin-top:4px; }
 
 /* 導覽列：透明 + 深色藥丸「選單」 */
@@ -6083,7 +6089,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.09-light-cutout';
+const APP_VERSION='2026.08.09-hd-pills';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
