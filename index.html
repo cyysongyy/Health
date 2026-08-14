@@ -6,7 +6,7 @@
 <title>LifeSpan 健康預測 · 個人健康管理系統</title>
 <meta name="description" content="個人健康管理與延壽系統：健康評估、檢驗數據庫、風險預測、足部復健，可安裝離線使用。">
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#0a141d">
+<meta name="theme-color" content="#dCE9FB">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -317,137 +317,114 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 </style>
 <style>
 /* ============================================================
-   2026 深色運動風首頁（Dark Athletic Home）— 只改視覺，不動內容/功能
-   深色範圍限「首頁 #sec-dash + 頁首/導覽/底部列」，其他分頁維持淺色卡片
+   2026 淺色運動風首頁（Light Athletic Home）— 只改視覺，不動內容/功能
    ============================================================ */
-:root{ --pri:#14b8a6; --pril:#0f2e2b; --prid:#0d9488; --acc:#22d3ee; }
-body{ background:#070d14;
-  background-image:radial-gradient(1200px 600px at 82% -10%, rgba(20,184,166,.20), transparent 60%),
-                   radial-gradient(900px 520px at 8% 6%, rgba(34,211,238,.10), transparent 55%),
-                   linear-gradient(180deg,#0a141d,#070d14); background-attachment:fixed; }
+:root{ --pri:#0d9488; --pril:#ccfbf1; --prid:#0f766e; --acc:#2563eb; }
+body{ background:#eef2f6;
+  background-image:linear-gradient(180deg,#d9e9fb 0%, #e6f0fa 210px, #eef2f6 470px, #eef2f6 100%);
+  background-attachment:fixed; }
 
-/* ---- 全域外框：深色玻璃 ---- */
-.hd{ background:rgba(10,20,28,.72); backdrop-filter:blur(12px); color:#e5e7eb;
-  border-bottom:1px solid rgba(255,255,255,.05); box-shadow:none; }
-.hd h1{ color:#e5e7eb; }
-.hd .api-badge{ background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14); color:#cbd5e1;
-  border-radius:999px; padding:6px 12px; font-weight:700; display:inline-flex; align-items:center; gap:4px; }
-.hd #cloudBadge.api-on,.hd #aiBadge.api-on{ background:var(--pri); border-color:var(--pri); color:#04201d; }
-.hd #aiBadge.api-off{ color:#64748b; }
-.hd-right{ gap:8px; }
-.navbar{ background:rgba(10,20,28,.72); backdrop-filter:blur(12px); border-bottom:1px solid rgba(255,255,255,.05); }
-.nav-toggle{ border-radius:999px; padding:8px 16px; background:var(--pri); color:#04201d; box-shadow:0 3px 12px rgba(20,184,166,.35); }
-.nav-current{ color:#e5e7eb; font-size:.9rem; }
-.nav{ background:#0c1620; border-bottom:1px solid rgba(255,255,255,.06); box-shadow:0 12px 26px rgba(0,0,0,.5); }
-.nt{ background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); color:#cbd5e1; border-radius:12px; }
-.nt.active{ background:var(--pri); border-color:var(--pri); color:#04201d; }
-.nt:active:not(.active){ background:rgba(20,184,166,.18); color:#5eead4; }
-.card{ border-radius:20px; }
-.main{ padding:16px 12px 102px; }
+/* 頂部跑者照片（右上，柔和淡入淺色背景） */
+#topPhoto{ position:absolute; top:0; right:0; width:64%; height:410px; z-index:0; pointer-events:none;
+  background:url("hero-runner.jpg") right -6px/cover no-repeat;
+  -webkit-mask-image:linear-gradient(to left,#000 34%,transparent 94%),linear-gradient(to bottom,#000 52%,transparent 100%);
+  -webkit-mask-composite:source-in; mask-image:linear-gradient(to left,#000 34%,transparent 94%),linear-gradient(to bottom,#000 52%,transparent 100%); mask-composite:intersect; }
 
-/* ---- 底部導覽列（深色玻璃 + 漸層 FAB） ---- */
-.tabbar{ position:fixed; left:0; right:0; bottom:0; z-index:400; display:flex; align-items:center;
-  justify-content:space-around; background:rgba(10,18,26,.92); backdrop-filter:blur(14px);
-  border-top:1px solid rgba(255,255,255,.06); box-shadow:0 -4px 24px rgba(0,0,0,.45);
+/* 頁首：透明、深字 logo、白藥丸、AI on 深色 */
+.hd{ position:static; z-index:2; background:transparent; color:#0f172a; box-shadow:none; border:none;
+  align-items:flex-start; padding-top:16px; }
+.hd .brand{ display:flex; align-items:center; gap:11px; }
+.hd .brandtext{ display:flex; flex-direction:column; }
+.hd .brandmark{ width:48px; height:48px; border-radius:15px; display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(135deg,#22c55e,#2563eb); color:#fff; font-size:1.6rem; box-shadow:0 6px 16px rgba(37,99,235,.32); }
+.hd .brandname{ font-size:1.4rem; font-weight:800; color:#0f2540; line-height:1.05; letter-spacing:.3px; }
+.hd .brandname span{ color:#0d9488; }
+.hd .brandtag{ display:none; }
+.hd .api-badge{ background:#fff; border:1px solid #e6ecf3; color:#334155; border-radius:999px; padding:7px 13px;
+  font-weight:700; box-shadow:0 2px 8px rgba(31,72,120,.08); display:inline-flex; align-items:center; gap:4px; }
+.hd #aiBadge, .hd #aiBadge.api-on, .hd #aiBadge.api-off{ background:#0f2540; color:#fff; border-color:#0f2540; }
+.hd-right{ gap:8px; margin-top:4px; }
+
+/* 導覽列：透明 + 深色藥丸「選單」 */
+.navbar{ position:sticky; top:0; z-index:20; background:transparent; border:none; }
+.nav-toggle{ border-radius:999px; padding:10px 18px; background:#0f2540; color:#fff; box-shadow:0 5px 14px rgba(15,37,64,.28); }
+.nav-current{ color:#0f2540; font-weight:800; }
+.nav{ position:static; background:#fff; border:none; border-radius:16px; box-shadow:0 14px 30px rgba(31,72,120,.16); }
+.nt{ background:#f1f5f9; border:1px solid #e6ecf3; color:#334155; border-radius:12px; }
+.nt.active{ background:var(--pri); border-color:var(--pri); color:#fff; }
+
+/* 卡片：白、大圓角、柔陰影 */
+.card{ border-radius:22px; background:#fff; border:1px solid #eef2f6; box-shadow:0 10px 26px rgba(31,72,120,.08); }
+.btn{ border-radius:12px; }
+.seg-btn{ border-radius:999px; }
+.main{ position:relative; z-index:1; padding:14px 12px 104px; }
+
+/* 底部導覽列：白 + 藍 active + teal FAB */
+.tabbar{ position:fixed; left:0; right:0; bottom:0; z-index:400; display:flex; align-items:center; justify-content:space-around;
+  background:rgba(255,255,255,.97); backdrop-filter:blur(12px); border-top:1px solid #eef2f6; box-shadow:0 -4px 20px rgba(31,72,120,.08);
   padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px)); }
-.tabbar .tab{ flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; background:none;
-  border:none; cursor:pointer; font-family:inherit; color:#64748b; font-size:.66rem; font-weight:600; padding:4px 0; }
-.tabbar .tab.on{ color:var(--acc); }
+.tabbar .tab{ flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; background:none; border:none;
+  cursor:pointer; font-family:inherit; color:#94a3b8; font-size:.66rem; font-weight:600; padding:4px 0; }
+.tabbar .tab.on{ color:#2563eb; }
 .tabbar .tab i{ font-size:1.4rem; }
 .tabbar .tab.fab{ flex:0 0 auto; }
 .tabbar .tab.fab .fabc{ width:52px; height:52px; margin-top:-26px; border-radius:50%;
-  background:linear-gradient(135deg,var(--pri),var(--acc)); color:#04201d; display:flex; align-items:center;
-  justify-content:center; font-size:1.7rem; box-shadow:0 8px 22px rgba(20,184,166,.5); }
+  background:linear-gradient(135deg,#14b8a6,#0d9488); color:#fff; display:flex; align-items:center; justify-content:center;
+  font-size:1.7rem; box-shadow:0 8px 20px rgba(13,148,136,.45); }
 
-/* ============ 首頁（#sec-dash）深色主題 ============ */
-#sec-dash{ color:#e5e7eb; }
-#sec-dash .card{ background:rgba(17,28,38,.72); border:1px solid rgba(255,255,255,.07);
-  box-shadow:0 8px 30px rgba(0,0,0,.35); color:#e5e7eb; backdrop-filter:blur(6px); }
-#sec-dash .ct{ color:#f1f5f9; }
-#sec-dash .hint{ color:#94a3b8; }
-#sec-dash .sc{ background:rgba(255,255,255,.04); box-shadow:none; color:#e5e7eb; }
-#sec-dash .sv{ color:#e5e7eb; }
-#sec-dash .sl,#sec-dash .age-block .l{ color:#94a3b8; }
-#sec-dash .big-num{ text-shadow:0 0 22px rgba(20,184,166,.35); }
-#sec-dash .grade{ background:var(--pri); color:#04201d; }
-#sec-dash .rec{ background:rgba(255,255,255,.03); }
-#sec-dash .rec-desc{ color:#cbd5e1; }
-#sec-dash .bar-track{ background:rgba(255,255,255,.08); }
-#sec-dash .bar-lbl{ color:#cbd5e1; }
-
-/* ---- 健康顧問 hero（跑者照片背景 + 左側深色漸層 + 心電圖線） ---- */
-.advisor-hero{ position:relative; overflow:hidden;
-  background:linear-gradient(100deg, rgba(8,18,26,.97) 24%, rgba(8,18,26,.62) 50%, rgba(8,18,26,.06) 100%),
-            url("hero-runner.jpg") right center/cover no-repeat, #0b1a24 !important;
-  border:1px solid rgba(20,184,166,.35)!important; }
-.hero-run{ display:none; }
-.advisor-hero::after{ content:''; position:absolute; left:10px; right:auto; width:58%; bottom:10px; height:26px; opacity:.7; pointer-events:none;
-  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='30' viewBox='0 0 340 30'%3E%3Cpath d='M0 15 H110 l6-12 6 24 6-19 5 13 H210 l7-7 6 7 H340' fill='none' stroke='%232dd4bf' stroke-width='2'/%3E%3C/svg%3E") left center/auto 100% no-repeat; }
+/* 健康顧問 hero：綠色漸層 + 白字 + 心電圖 + 葉子 */
+.advisor-hero{ position:relative; overflow:hidden; color:#fff;
+  background:linear-gradient(120deg,#16a34a 0%, #0d9488 100%)!important; border:none!important;
+  box-shadow:0 14px 32px rgba(13,148,136,.28)!important; }
 .advisor-hero>div{ position:relative; z-index:1; }
-/* 評分卡：右側發光跑者剪影（screen 混色去除深底、只留青光） */
-#sec-dash .score-hero{ position:relative; overflow:hidden; }
-#sec-dash .score-hero::after{ content:''; position:absolute; right:-4px; top:38px; bottom:10px; width:40%;
-  background:url("gauge-runner.jpg") right center/contain no-repeat; mix-blend-mode:screen; opacity:.9; pointer-events:none; z-index:0; }
-#sec-dash .score-hero .ct,#sec-dash .score-hero .gauge-wrap{ position:relative; z-index:1; }
-.advisor-hero .btn.bp{ border-radius:999px; padding:11px 22px; background:linear-gradient(135deg,var(--pri),#0d9488);
-  color:#04201d; box-shadow:0 6px 18px rgba(20,184,166,.4); }
+.advisor-hero::after{ content:''; position:absolute; left:auto; right:14px; top:40%; width:52%; height:30px; opacity:.9; pointer-events:none; z-index:0;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='30' viewBox='0 0 340 30'%3E%3Cpath d='M0 15 H110 l6-12 6 24 6-19 5 13 H210 l7-7 6 7 H340' fill='none' stroke='%23ffffff' stroke-width='2'/%3E%3C/svg%3E") right center/auto 100% no-repeat; }
+.advisor-hero::before{ content:'🌿'; position:absolute; right:16px; bottom:10px; font-size:2.2rem; opacity:.55; z-index:0; }
+.advisor-hero .btn.bp{ border-radius:12px; padding:11px 22px; background:#fff; color:#0d9488; font-weight:800; box-shadow:0 6px 16px rgba(0,0,0,.15); }
+.hero-run{ display:none; }
+.hero-dots{ display:flex; gap:6px; margin-top:12px; }
+.hero-dots span{ width:22px; height:5px; border-radius:3px; background:rgba(255,255,255,.45); }
+.hero-dots span.on{ background:#fff; width:26px; }
 
-/* ---- 健康量測環（心率/步數/熱量/睡眠）：橫式 圖示+數值 ---- */
+/* 評分：藍色數字 */
+#scoreNum{ color:#2563eb!important; }
+
+/* 健康量測環（淺色化） */
 .mrow{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
 .mstat{ display:flex; align-items:center; gap:6px; }
-.mring{ width:36px; height:36px; flex:0 0 36px; border-radius:50%; display:flex; align-items:center;
-  justify-content:center; position:relative; background:conic-gradient(var(--c) calc(var(--p,70)*1%), rgba(255,255,255,.09) 0); }
-.mring::before{ content:''; position:absolute; inset:4px; border-radius:50%; background:#0e1a24; }
+.mring{ width:36px; height:36px; flex:0 0 36px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+  position:relative; background:conic-gradient(var(--c) calc(var(--p,70)*1%), #e6ecf3 0); }
+.mring::before{ content:''; position:absolute; inset:4px; border-radius:50%; background:#fff; }
 .mring .mi{ position:relative; font-size:.82rem; }
 .mtxt{ min-width:0; }
-.mlbl{ font-size:.6rem; color:#94a3b8; font-weight:600; line-height:1.1; }
-.mval{ font-size:.9rem; font-weight:800; color:#e5e7eb; line-height:1.15; }
+.mlbl{ font-size:.6rem; color:#64748b; font-weight:600; line-height:1.1; }
+.mval{ font-size:.9rem; font-weight:800; color:#0f2540; line-height:1.15; }
 .mval small{ font-size:.54rem; font-weight:600; color:#94a3b8; }
 
-/* ---- 頁首 logo（範本：LifeSpan/Health 直排 + 標語）＋ 沉浸式（非置頂） ---- */
-.hd{ position:static; }
-.navbar{ position:sticky; top:0; z-index:200; }
-.nav{ position:sticky; top:44px; }
-.hd{ align-items:flex-start; padding-top:14px; }
-.hd .brand{ display:flex; align-items:center; gap:11px; }
-.hd .brandtext{ display:flex; flex-direction:column; }
-.hd .brandmark{ width:44px; height:44px; border-radius:13px; display:flex; align-items:center; justify-content:center;
-  background:linear-gradient(135deg,#0d3b36,#14b8a6); color:#5eead4; font-size:1.5rem;
-  box-shadow:0 5px 14px rgba(20,184,166,.4), inset 0 1px 0 rgba(255,255,255,.18); }
-.hd .brandname{ font-size:1.2rem; font-weight:800; color:#fff; line-height:1.08; letter-spacing:.3px; }
-.hd .brandname span{ color:#2dd4bf; }
-.hd .brandtag{ font-size:.68rem; color:#94a3b8; margin-top:3px; font-weight:500; }
-.hd-right{ margin-top:2px; }
-
-/* ---- hero 輪播圓點 + 跑者剪影 ---- */
-.hero-run{ position:absolute; right:-8px; top:2px; font-size:8.5rem; color:rgba(45,212,191,.13); z-index:0; pointer-events:none; }
-.hero-dots{ display:flex; gap:6px; margin-top:12px; }
-.hero-dots span{ width:22px; height:5px; border-radius:3px; background:rgba(255,255,255,.18); }
-.hero-dots span.on{ background:var(--pri); width:26px; }
-
-/* ---- 首頁快捷 grid（深色磚 + 彩色圖示） ---- */
+/* 首頁快捷 grid：白圓角磚 + 彩色圖示 */
 .homegrid{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px 8px; margin-top:2px; }
 .hg{ background:transparent; border:none; box-shadow:none; padding:2px; text-align:center; cursor:pointer; transition:transform .12s; }
 .hg:active{ transform:scale(.94); }
-.hg .ic{ width:58px; height:58px; margin:0 auto 6px; border-radius:18px; display:flex; align-items:center;
-  justify-content:center; font-size:1.65rem; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.09);
-  box-shadow:0 8px 18px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.07); }
-.hg .lb{ font-size:.72rem; font-weight:600; color:#cbd5e1; line-height:1.2; }
+.hg .ic{ width:58px; height:58px; margin:0 auto 6px; border-radius:18px; display:flex; align-items:center; justify-content:center;
+  font-size:1.65rem; background:#fff; border:1px solid #eef2f6; box-shadow:0 6px 15px rgba(31,72,120,.1); }
+.hg .lb{ font-size:.72rem; font-weight:600; color:#334155; line-height:1.2; }
 
-/* ---- 成就 / 連續達標橫幅 ---- */
-.streakban{ position:relative; overflow:hidden; border-radius:20px; padding:14px 16px; margin-top:12px;
-  background:linear-gradient(120deg, rgba(13,54,50,.92), rgba(11,26,36,.85)); border:1px solid rgba(20,184,166,.3);
+/* 成就 / 連續達標橫幅（淺色綠漸層） */
+.streakban{ position:relative; overflow:hidden; border-radius:22px; padding:14px 16px; margin-top:12px; color:#fff;
+  background:linear-gradient(120deg,#0d9488,#16a34a); border:none; box-shadow:0 10px 24px rgba(13,148,136,.26);
   display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 .streakban .stk-main{ flex:1; min-width:180px; }
-.streakban .stk-title{ font-weight:800; color:#e5e7eb; }
+.streakban .stk-title{ font-weight:800; color:#fff; }
 .streakban .stk-dots{ display:flex; align-items:center; gap:5px; margin-top:7px; flex-wrap:wrap; }
-.streakban .sdot{ width:20px; height:20px; border-radius:50%; background:var(--pri); color:#04201d;
+.streakban .stk-dots span{ color:#eafff8!important; }
+.streakban .sdot{ width:20px; height:20px; border-radius:50%; background:#fff; color:#0d9488;
   display:flex; align-items:center; justify-content:center; font-size:.68rem; font-weight:800; }
-.streakban .sdot.off{ background:transparent; border:2px solid rgba(255,255,255,.25); color:#94a3b8; }
-.streakban .btn{ border-radius:999px; background:rgba(255,255,255,.1); color:#e5e7eb; border:1px solid rgba(255,255,255,.16); white-space:nowrap; }
+.streakban .sdot.off{ background:transparent; border:2px solid rgba(255,255,255,.6); color:#fff; }
+.streakban .btn{ border-radius:999px; background:#fff; color:#0d9488; border:none; white-space:nowrap; font-weight:800; }
 </style>
 </head>
 <body>
+<div id="topPhoto"></div>
 <div class="hd">
   <h1 class="brand"><span class="brandmark"><i class="ti ti-heartbeat"></i></span><span class="brandtext"><span class="brandname">LifeSpan<br><span>Health</span></span><span class="brandtag">健康生活・從今天開始</span></span></h1>
   <div class="hd-right">
@@ -6099,7 +6076,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.09-runner-photo';
+const APP_VERSION='2026.08.09-light-runner';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
