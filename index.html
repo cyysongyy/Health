@@ -385,16 +385,38 @@ body{ background:#070d14;
 .advisor-hero .btn.bp{ border-radius:999px; padding:11px 22px; background:linear-gradient(135deg,var(--pri),#0d9488);
   color:#04201d; box-shadow:0 6px 18px rgba(20,184,166,.4); }
 
-/* ---- 健康量測環（心率/步數/熱量/睡眠） ---- */
-.mrow{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }
-.mstat{ text-align:center; }
-.mring{ width:56px; height:56px; margin:0 auto 5px; border-radius:50%; display:flex; align-items:center;
-  justify-content:center; position:relative; background:conic-gradient(var(--c) calc(var(--p,70)*1%), rgba(255,255,255,.08) 0); }
-.mring::before{ content:''; position:absolute; inset:5px; border-radius:50%; background:#0e1a24; }
-.mring .mi{ position:relative; font-size:1.1rem; }
-.mval{ font-size:1.02rem; font-weight:800; color:#e5e7eb; line-height:1.1; }
-.mval small{ font-size:.58rem; font-weight:600; color:#94a3b8; }
-.mlbl{ font-size:.63rem; color:#94a3b8; font-weight:600; margin-top:1px; }
+/* ---- 健康量測環（心率/步數/熱量/睡眠）：橫式 圖示+數值 ---- */
+.mrow{ display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+.mstat{ display:flex; align-items:center; gap:6px; }
+.mring{ width:36px; height:36px; flex:0 0 36px; border-radius:50%; display:flex; align-items:center;
+  justify-content:center; position:relative; background:conic-gradient(var(--c) calc(var(--p,70)*1%), rgba(255,255,255,.09) 0); }
+.mring::before{ content:''; position:absolute; inset:4px; border-radius:50%; background:#0e1a24; }
+.mring .mi{ position:relative; font-size:.82rem; }
+.mtxt{ min-width:0; }
+.mlbl{ font-size:.6rem; color:#94a3b8; font-weight:600; line-height:1.1; }
+.mval{ font-size:.9rem; font-weight:800; color:#e5e7eb; line-height:1.15; }
+.mval small{ font-size:.54rem; font-weight:600; color:#94a3b8; }
+
+/* ---- 頁首 logo（範本：LifeSpan/Health 直排 + 標語）＋ 沉浸式（非置頂） ---- */
+.hd{ position:static; }
+.navbar{ position:sticky; top:0; z-index:200; }
+.nav{ position:sticky; top:44px; }
+.hd{ align-items:flex-start; padding-top:14px; }
+.hd .brand{ display:flex; align-items:center; gap:11px; }
+.hd .brandtext{ display:flex; flex-direction:column; }
+.hd .brandmark{ width:44px; height:44px; border-radius:13px; display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(135deg,#0d3b36,#14b8a6); color:#5eead4; font-size:1.5rem;
+  box-shadow:0 5px 14px rgba(20,184,166,.4), inset 0 1px 0 rgba(255,255,255,.18); }
+.hd .brandname{ font-size:1.2rem; font-weight:800; color:#fff; line-height:1.08; letter-spacing:.3px; }
+.hd .brandname span{ color:#2dd4bf; }
+.hd .brandtag{ font-size:.68rem; color:#94a3b8; margin-top:3px; font-weight:500; }
+.hd-right{ margin-top:2px; }
+
+/* ---- hero 輪播圓點 + 跑者剪影 ---- */
+.hero-run{ position:absolute; right:-8px; top:2px; font-size:8.5rem; color:rgba(45,212,191,.13); z-index:0; pointer-events:none; }
+.hero-dots{ display:flex; gap:6px; margin-top:12px; }
+.hero-dots span{ width:22px; height:5px; border-radius:3px; background:rgba(255,255,255,.18); }
+.hero-dots span.on{ background:var(--pri); width:26px; }
 
 /* ---- 首頁快捷 grid（深色磚 + 彩色圖示） ---- */
 .homegrid{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px 8px; margin-top:2px; }
@@ -420,7 +442,7 @@ body{ background:#070d14;
 </head>
 <body>
 <div class="hd">
-  <h1>🫀 LifeSpan 健康預測</h1>
+  <h1 class="brand"><span class="brandmark"><i class="ti ti-heartbeat"></i></span><span class="brandtext"><span class="brandname">LifeSpan<br><span>Health</span></span><span class="brandtag">健康生活・從今天開始</span></span></h1>
   <div class="hd-right">
     <span id="langToggle" class="api-badge" onclick="toggleLang()" style="cursor:pointer;">EN</span>
     <span id="cloudBadge" class="api-badge api-off" onclick="quickBackup()" style="cursor:pointer;" title="點一下備份到 Google Drive">💾 備份</span>
@@ -3090,7 +3112,7 @@ function advisorActions(){
 function renderDashAdvisor(){
   const el=document.getElementById('dashAdvisor'); if(!el)return;
   const st=advisorStatus(), n=advisorActions().filter(a=>a.pri<2).length;
-  el.innerHTML=`<div class="card advisor-hero" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;"><div style="flex:1;min-width:180px;"><div style="font-weight:800;font-size:1.15rem;color:#f1f5f9;">${st.emoji} 健康顧問</div><div style="margin-top:5px;line-height:1.55;font-size:.82rem;color:#cbd5e1;">${esc(st.text)}</div></div><button class="btn bp" style="white-space:nowrap;" onclick="go('advisor')">開啟顧問${n?'（'+n+'）':''} →</button></div>`;
+  el.innerHTML=`<div class="card advisor-hero" style="min-height:150px;"><i class="ti ti-run hero-run"></i><div style="max-width:64%;"><div style="font-weight:800;font-size:1.35rem;color:#f1f5f9;">${st.emoji} 健康顧問</div><div style="margin-top:8px;line-height:1.55;font-size:.85rem;color:#cbd5e1;">${esc(st.text)}</div><button class="btn bp" style="white-space:nowrap;margin-top:14px;" onclick="go('advisor')">開啟顧問${n?'（'+n+'）':''} →</button><div class="hero-dots"><span class="on"></span><span></span><span></span></div></div></div>`;
 }
 // 首頁健康量測環：心率（最新檢驗）、今日步數（走路訓練）、消耗熱量（由步數估算）、睡眠（評估資料）
 function renderDashMetrics(){
@@ -3101,7 +3123,7 @@ function renderDashMetrics(){
   const kcal=steps>0?Math.round(steps*0.04):null;
   const sleep=(state.profile&&state.profile.sleep!=null)?state.profile.sleep:null;
   if(hr==null && !steps && sleep==null){ el.innerHTML=''; return; }   // 完全沒有資料就不顯示
-  const tile=(c,p,ic,val,unit,lbl)=>`<div class="mstat"><div class="mring" style="--c:${c};--p:${p};"><span class="mi">${ic}</span></div><div class="mval">${val}${unit&&val!=='—'?'<small> '+unit+'</small>':''}</div><div class="mlbl">${lbl}</div></div>`;
+  const tile=(c,p,ic,val,unit,lbl)=>`<div class="mstat"><div class="mring" style="--c:${c};--p:${p};"><span class="mi">${ic}</span></div><div class="mtxt"><div class="mlbl">${lbl}</div><div class="mval">${val}${unit&&val!=='—'?'<small> '+unit+'</small>':''}</div></div></div>`;
   el.innerHTML=`<div class="card" style="padding:15px 12px;"><div class="mrow">`+
     tile('#f43f5e',72,'❤️',hr!=null?hr:'—','bpm','心率')+
     tile('#14b8a6',70,'👟',steps?steps.toLocaleString():'—','步','今日步數')+
@@ -6070,7 +6092,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.09-dark-home';
+const APP_VERSION='2026.08.09-dark-home2';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
