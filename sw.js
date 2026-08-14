@@ -4,7 +4,7 @@
    - 同源靜態檔（icon/manifest）：快取優先
    - 跨網域 CDN（Chart.js/Firebase/pdf.js/字型…）：快取優先，未命中則抓取並存入（含 opaque 回應）
    換版：改 CACHE 版本號即會在 activate 時清掉舊快取。 */
-const CACHE = 'lifespan-cache-2026.08.09-dark-home2';
+const CACHE = 'lifespan-cache-2026.08.09-runner-photo';
 
 /* App shell（同源，必存）*/
 const CORE = [
@@ -14,7 +14,9 @@ const CORE = [
   './manifest.webmanifest',
   './icon-192.png',
   './icon-512.png',
-  './icon-180.png'
+  './icon-180.png',
+  './hero-runner.jpg',
+  './gauge-runner.jpg'
 ];
 
 /* CDN 相依（跨網域，盡力預存；抓不到不擋安裝）*/
