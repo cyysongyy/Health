@@ -6,7 +6,7 @@
 <title>LifeSpan 健康預測 · 個人健康管理系統</title>
 <meta name="description" content="個人健康管理與延壽系統：健康評估、檢驗數據庫、風險預測、足部復健，可安裝離線使用。">
 <link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#0d9488">
+<meta name="theme-color" content="#16a34a">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -315,12 +315,66 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
   .ld{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 }
 </style>
+<style>
+/* ============================================================
+   2026 綠白柔和皮膚（Skin）— 只改視覺樣式，不動任何內容／功能
+   ============================================================ */
+:root{
+  --pri:#16a34a; --pril:#dcfce7; --prid:#15803d; --acc:#0ea5e9;
+}
+body{ background:#eef1ef; }
+/* 頁首：白底、深字、綠 logo、藥丸按鈕（維持置頂 sticky，不改高度避免位移） */
+.hd{ background:#fff; color:var(--g900); box-shadow:0 2px 14px rgba(16,163,74,.08); }
+.hd h1{ color:var(--g900); }
+.hd .api-badge{ background:#fff; border:1.5px solid var(--g200); color:var(--g700);
+  border-radius:999px; padding:6px 12px; font-weight:700; display:inline-flex; align-items:center; gap:4px; }
+.hd #cloudBadge.api-on, .hd #aiBadge.api-on{ background:var(--pri); border-color:var(--pri); color:#fff; }
+.hd #aiBadge.api-off{ color:var(--g400); }
+.hd-right{ gap:8px; }
+/* 導覽列：白底 + 綠色藥丸「選單」 */
+.navbar{ background:#fff; border-bottom:1px solid #e6ebe8; }
+.nav-toggle{ border-radius:999px; padding:8px 16px; box-shadow:0 3px 10px rgba(16,163,74,.22); }
+.nav-current{ font-size:.9rem; }
+.nav{ box-shadow:0 10px 22px rgba(0,0,0,.08); }
+.nt{ border-radius:12px; }
+/* 卡片：更圓、更柔的陰影 */
+.card{ border-radius:20px; padding:18px; box-shadow:0 4px 16px rgba(16,163,74,.06); border:1px solid #eef1ef; }
+/* 按鈕與分段更圓潤 */
+.btn{ border-radius:12px; }
+.bp{ box-shadow:0 3px 10px rgba(22,163,74,.22); }
+.seg-btn{ border-radius:999px; }
+.main{ padding:16px 12px 96px; }
+/* 健康顧問 hero 卡（綠漸層 + 圓角 CTA） */
+.advisor-hero{ background:linear-gradient(135deg,#dcfce7,#f0fdf4)!important; border:1px solid #bbf7d0!important; }
+.advisor-hero .btn.bp{ border-radius:999px; padding:10px 20px; box-shadow:0 4px 14px rgba(22,163,74,.3); }
+/* 首頁快捷 grid */
+.homegrid{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-top:2px; }
+.hg{ background:#fff; border:1px solid #eef1ef; border-radius:18px; padding:14px 6px 12px; text-align:center;
+  cursor:pointer; box-shadow:0 3px 12px rgba(16,163,74,.06); transition:transform .12s; }
+.hg:active{ transform:scale(.95); }
+.hg .ic{ width:46px; height:46px; margin:0 auto 7px; border-radius:15px; display:flex; align-items:center;
+  justify-content:center; font-size:1.45rem; background:var(--pril); }
+.hg .lb{ font-size:.72rem; font-weight:600; color:var(--g700); line-height:1.25; }
+/* 底部導覽列（固定） */
+.tabbar{ position:fixed; left:0; right:0; bottom:0; z-index:400; display:flex; align-items:center;
+  justify-content:space-around; background:rgba(255,255,255,.97); backdrop-filter:blur(10px);
+  border-top:1px solid #e6ebe8; box-shadow:0 -2px 16px rgba(0,0,0,.05);
+  padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px)); }
+.tabbar .tab{ flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; background:none;
+  border:none; cursor:pointer; font-family:inherit; color:var(--g400); font-size:.66rem; font-weight:600; padding:4px 0; }
+.tabbar .tab.on{ color:var(--pri); }
+.tabbar .tab i{ font-size:1.4rem; }
+.tabbar .tab.fab{ flex:0 0 auto; }
+.tabbar .tab.fab .fabc{ width:50px; height:50px; margin-top:-24px; border-radius:50%; background:var(--pri);
+  color:#fff; display:flex; align-items:center; justify-content:center; font-size:1.7rem;
+  box-shadow:0 6px 16px rgba(22,163,74,.4); }
+</style>
 </head>
 <body>
 <div class="hd">
   <h1>🫀 LifeSpan 健康預測</h1>
   <div class="hd-right">
-    <span id="langToggle" class="api-badge" onclick="toggleLang()" style="cursor:pointer;background:rgba(255,255,255,.18);color:#fff;font-weight:700;">EN</span>
+    <span id="langToggle" class="api-badge" onclick="toggleLang()" style="cursor:pointer;">EN</span>
     <span id="cloudBadge" class="api-badge api-off" onclick="quickBackup()" style="cursor:pointer;" title="點一下備份到 Google Drive">💾 備份</span>
     <span id="aiBadge" class="api-badge api-off">AI 未設定</span>
   </div>
@@ -345,14 +399,14 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
 
 <!-- ========== DASHBOARD ========== -->
 <div class="sec active" id="sec-dash">
-  <div id="installBanner" class="card" style="display:none;background:linear-gradient(135deg,#0d9488,#0ea5e9);color:#fff;border:none;">
+  <div id="installBanner" class="card" style="display:none;background:linear-gradient(135deg,#16a34a,#22c55e);color:#fff;border:none;">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <div style="font-size:2rem;line-height:1;">📲</div>
       <div style="flex:1;min-width:180px;">
         <div style="font-weight:800;font-size:1.02rem;">安裝單機版到手機</div>
         <div style="font-size:.82rem;opacity:.95;line-height:1.5;margin-top:2px;">像 App 一樣有圖示、<b>可離線使用</b>、<b>資料存在你手機裡</b>。</div>
       </div>
-      <button class="btn" style="background:#fff;color:#0d9488;font-weight:800;white-space:nowrap;" onclick="installStandalone()">📲 安裝</button>
+      <button class="btn" style="background:#fff;color:#16a34a;font-weight:800;white-space:nowrap;" onclick="installStandalone()">📲 安裝</button>
       <button class="btn" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.6);padding:6px 10px;" onclick="dismissInstallBanner()" title="不再顯示">✕</button>
     </div>
   </div>
@@ -412,6 +466,17 @@ textarea.fi{resize:vertical;font-family:'DM Mono',ui-monospace,monospace;min-hei
       <div class="ct">📊 各面向健康分數</div>
       <div id="dashBars"></div>
     </div>
+  </div>
+
+  <div class="homegrid">
+    <div class="hg" onclick="go('eval')"><div class="ic">📊</div><div class="lb">數據與評分</div></div>
+    <div class="hg" onclick="go('records')"><div class="ic">🗂️</div><div class="lb">醫藥紀錄</div></div>
+    <div class="hg" onclick="go('analysis')"><div class="ic">🧠</div><div class="lb">解讀與行動</div></div>
+    <div class="hg" onclick="go('daily')"><div class="ic">📅</div><div class="lb">日常</div></div>
+    <div class="hg" onclick="go('foot')"><div class="ic">🦶</div><div class="lb">走路訓練</div></div>
+    <div class="hg" onclick="go('settings')"><div class="ic">⚙️</div><div class="lb">設定</div></div>
+    <div class="hg" onclick="go('qa')"><div class="ic">💬</div><div class="lb">健康 Q&amp;A</div></div>
+    <div class="hg" onclick="toggleNav()"><div class="ic">➕</div><div class="lb">更多功能</div></div>
   </div>
 </div>
 
@@ -1569,6 +1634,7 @@ function go(sec){
   if(nc){ if(cur)nc.textContent=cur.textContent; else if(SUBT[sec])nc.textContent=SUBT[sec]; }
   closeNav();
   window.scrollTo(0,0);
+  try{syncTabbar(sec);}catch(e){}
   if(sec==='records')renderRecords();
   if(sec==='trend')renderTrend();
   if(sec==='labs')renderLabs();
@@ -2972,7 +3038,7 @@ function advisorActions(){
 function renderDashAdvisor(){
   const el=document.getElementById('dashAdvisor'); if(!el)return;
   const st=advisorStatus(), n=advisorActions().filter(a=>a.pri<2).length;
-  el.innerHTML=`<div class="card" style="border-left:4px solid ${st.color};display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;"><div style="flex:1;min-width:180px;"><div style="font-weight:800;">${st.emoji} 健康顧問</div><div class="hint" style="margin-top:2px;line-height:1.5;">${esc(st.text)}</div></div><button class="btn bp" style="padding:8px 15px;white-space:nowrap;" onclick="go('advisor')">開啟顧問${n?'（'+n+'）':''}</button></div>`;
+  el.innerHTML=`<div class="card advisor-hero" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;"><div style="flex:1;min-width:180px;"><div style="font-weight:800;font-size:1.05rem;">${st.emoji} 健康顧問</div><div class="hint" style="margin-top:4px;line-height:1.5;color:var(--g600);">${esc(st.text)}</div></div><button class="btn bp" style="white-space:nowrap;" onclick="go('advisor')">開啟顧問${n?'（'+n+'）':''}</button></div>`;
 }
 function renderAdvisor(){
   const el=document.getElementById('advisorBody'); if(!el)return;
@@ -5925,7 +5991,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.09-lab-purge';
+const APP_VERSION='2026.08.09-green-skin';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -8392,6 +8458,22 @@ render();
 window.addEventListener('pagehide', clearTimers);
 
 })();
+</script>
+
+<!-- ========== 底部導覽列 ========== -->
+<nav class="tabbar">
+  <button class="tab on" data-tab="dash" onclick="go('dash')"><i class="ti ti-home"></i>首頁</button>
+  <button class="tab" data-tab="trend" onclick="go('trend')"><i class="ti ti-trending-up"></i>趨勢</button>
+  <button class="tab fab" data-tab="records" onclick="go('records')"><span class="fabc"><i class="ti ti-plus"></i></span></button>
+  <button class="tab" data-tab="remind" onclick="go('remind')"><i class="ti ti-bell"></i>通知</button>
+  <button class="tab" data-tab="settings" onclick="go('settings')"><i class="ti ti-user"></i>我的</button>
+</nav>
+<script>
+function syncTabbar(sec){
+  const map={dash:'dash',trend:'trend',records:'records',remind:'remind',settings:'settings'};
+  const active=map[sec]||null;
+  document.querySelectorAll('.tabbar .tab').forEach(t=>t.classList.toggle('on',t.dataset.tab===active));
+}
 </script>
 </body>
 </html>
