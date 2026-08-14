@@ -345,7 +345,12 @@ body{ background:#eef2f6;
 .hd .brandtag{ display:none; }
 .hd .api-badge{ background:#fff; border:1px solid rgba(15,37,64,.12); color:#0f2540; border-radius:999px; padding:6px 10px;
   font-size:.7rem; font-weight:800; box-shadow:0 4px 12px rgba(15,37,64,.22); display:inline-flex; align-items:center; gap:3px; }
-.hd #aiBadge, .hd #aiBadge.api-on, .hd #aiBadge.api-off{ background:#0f2540; color:#fff; border-color:#0f2540; box-shadow:0 4px 12px rgba(15,37,64,.3); }
+/* AI 徽章：只顯示「AI」，用顏色辨別狀態 */
+.hd #aiBadge{ font-weight:900; letter-spacing:.04em; }
+.hd #aiBadge.api-on{ background:linear-gradient(135deg,#14b8a6,#0d9488); color:#fff; border-color:transparent; box-shadow:0 4px 12px rgba(13,148,136,.4); }
+.hd #aiBadge.api-on::before{ content:''; width:7px; height:7px; border-radius:50%; background:#eafff8; box-shadow:0 0 6px #5eead4; }
+.hd #aiBadge.api-off{ background:#eef2f6; color:#8a97a6; border-color:#e2e8f0; box-shadow:0 2px 6px rgba(15,37,64,.12); }
+.hd #aiBadge.api-off::before{ content:''; width:7px; height:7px; border-radius:50%; background:#c2ccd6; }
 /* 往右靠、避開跑者：整組貼右上，放不下就往右對齊換行（不撐破畫面） */
 .hd{ padding-right:10px; }
 .hd-right{ align-self:flex-start; justify-content:flex-end; }
@@ -444,7 +449,7 @@ body{ background:#eef2f6;
   <div class="hd-right">
     <span id="langToggle" class="api-badge" onclick="toggleLang()" style="cursor:pointer;">EN</span>
     <span id="cloudBadge" class="api-badge api-off" onclick="quickBackup()" style="cursor:pointer;" title="點一下備份到 Google Drive">💾 備份</span>
-    <span id="aiBadge" class="api-badge api-off">AI 未設定</span>
+    <span id="aiBadge" class="api-badge api-off" title="AI 未設定">AI</span>
   </div>
 </div>
 
@@ -5778,7 +5783,8 @@ function refreshAiBadge(){
   const s=state.settings;const on=aiHasKey(s);
   const b=document.getElementById('aiBadge');
   b.className='api-badge '+(on?'api-on':'api-off');
-  b.textContent=on?'AI 已啟用':'AI 未設定';
+  b.textContent='AI';   // 只顯示「AI」，是否啟用改以顏色辨別（啟用＝青綠、未設定＝灰）
+  b.title=on?'AI 已啟用':'AI 未設定（點設定填金鑰）';
 }
 function saveSettings(){
   state.settings.gemini=document.getElementById('set-gemini').value.trim();
@@ -6090,7 +6096,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.09-photo-shift';
+const APP_VERSION='2026.08.09-ai-pill';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
