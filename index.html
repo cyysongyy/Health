@@ -629,25 +629,6 @@ body{ background:#eef2f6;
   <div class="disc">🔗 <b>資料串接說明：</b>台灣全民健保基於安全設計，<b>未開放</b>第三方 App 直接讀取。正確流程是：由你本人到 <b>健保快易通／健康存摺</b> 匯出自己的資料（FHIR/JSON），再於此匯入，系統會自動解析檢驗值並帶入評估。所有解析都在你的瀏覽器完成，資料不外傳。</div>
 
   <div class="card">
-    <div class="ct">📷 檢驗報告辨識 <span class="hint">（AI 視覺 · 圖片 / PDF）</span></div>
-    <div class="hint" style="line-height:1.6;margin-bottom:10px;">
-      拍照或上傳健檢／檢驗報告（<b>圖片或 PDF</b>），AI 自動辨識血壓、血糖、膽固醇等數值，核對後一鍵存成紀錄點；登入雲端時可把原檔留底備查。需先在「設定」填入 Gemini 或 OpenAI API Key（PDF 會自動逐頁轉圖再辨識，兩種引擎皆可）。<b>辨識時報告會傳送至你所設定的 AI 服務（Google／OpenAI）判讀。</b>
-    </div>
-    <button class="btn bp" onclick="document.getElementById('fileImg').click()">📷 拍照 / 選擇報告（圖片或 PDF）</button>
-    <input type="file" id="fileImg" accept="image/*,application/pdf" style="display:none;" onchange="handleImageImport(event)">
-    <div id="imgStatus" class="hint" style="margin-top:8px;"></div>
-    <details class="guide">
-      <summary>✍️ 或貼上純文字辨識</summary>
-      <div class="guide-body">
-        <div class="hint" style="margin-bottom:6px;">把檢驗數值文字貼上（例如：<code>血壓 130/85、空腹血糖 98、LDL 138、HbA1c 5.9</code>），用 AI 辨識成結構化數值。</div>
-        <textarea class="fi" id="reportText" rows="4" placeholder="貼上檢驗報告文字或數值…"></textarea>
-        <div class="row-btn" style="margin-top:8px;"><button class="btn bp" onclick="handleTextImport('report')">🔍 辨識文字</button></div>
-        <div id="reportTextStatus" class="hint" style="margin-top:6px;"></div>
-      </div>
-    </details>
-  </div>
-
-  <div class="card">
     <div class="ct">🏥 健康存摺（My Health Bank）</div>
     <div class="hint" style="line-height:1.6;margin-bottom:10px;">
       步驟：健保快易通 App 或 <a class="link" href="https://myhealthbank.nhi.gov.tw/" target="_blank">健康存摺網站</a> → 登入 → 下載／匯出（FHIR 或 JSON）→ 於此上傳。<br>
@@ -663,6 +644,25 @@ body{ background:#eef2f6;
         <textarea class="fi" id="nhiText" rows="4" placeholder="貼上 FHIR/JSON 或檢驗數值文字…"></textarea>
         <div class="row-btn" style="margin-top:8px;"><button class="btn bp" onclick="handleTextImport('nhi')">🔍 辨識／解析</button></div>
         <div id="nhiTextStatus" class="hint" style="margin-top:6px;"></div>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <div class="ct">📷 檢驗報告辨識 <span class="hint">（AI 視覺 · 圖片 / PDF）</span></div>
+    <div class="hint" style="line-height:1.6;margin-bottom:10px;">
+      拍照或上傳健檢／檢驗報告（<b>圖片或 PDF</b>），AI 自動辨識血壓、血糖、膽固醇等數值，核對後一鍵存成紀錄點；登入雲端時可把原檔留底備查。需先在「設定」填入 Gemini 或 OpenAI API Key（PDF 會自動逐頁轉圖再辨識，兩種引擎皆可）。<b>辨識時報告會傳送至你所設定的 AI 服務（Google／OpenAI）判讀。</b>
+    </div>
+    <button class="btn bp" onclick="document.getElementById('fileImg').click()">📷 拍照 / 選擇報告（圖片或 PDF）</button>
+    <input type="file" id="fileImg" accept="image/*,application/pdf" style="display:none;" onchange="handleImageImport(event)">
+    <div id="imgStatus" class="hint" style="margin-top:8px;"></div>
+    <details class="guide">
+      <summary>✍️ 或貼上純文字辨識</summary>
+      <div class="guide-body">
+        <div class="hint" style="margin-bottom:6px;">把檢驗數值文字貼上（例如：<code>血壓 130/85、空腹血糖 98、LDL 138、HbA1c 5.9</code>），用 AI 辨識成結構化數值。</div>
+        <textarea class="fi" id="reportText" rows="4" placeholder="貼上檢驗報告文字或數值…"></textarea>
+        <div class="row-btn" style="margin-top:8px;"><button class="btn bp" onclick="handleTextImport('report')">🔍 辨識文字</button></div>
+        <div id="reportTextStatus" class="hint" style="margin-top:6px;"></div>
       </div>
     </details>
   </div>
@@ -6096,7 +6096,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.09-photo-right';
+const APP_VERSION='2026.08.09-import-order';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
