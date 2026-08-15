@@ -440,6 +440,38 @@ body{ background:#eef2f6;
   display:flex; align-items:center; justify-content:center; font-size:.68rem; font-weight:800; }
 .streakban .sdot.off{ background:transparent; border:2px solid rgba(255,255,255,.6); color:#fff; }
 .streakban .btn{ border-radius:999px; background:#fff; color:#0d9488; border:none; white-space:nowrap; font-weight:800; }
+
+/* ---- 指標磚（BMI／腰高比／血壓／基礎代謝）：圖示 + 色塊 + 波浪 ---- */
+#sec-dash .sg{ gap:12px; }
+#sec-dash .sg .sc{ --tc:#2563eb; --tbg:#e8effe; --tw:rgba(37,99,235,.13);
+  position:relative; overflow:hidden; background:#fff; border:1px solid #eef2f6; border-left:1px solid #eef2f6;
+  border-radius:20px; padding:16px; box-shadow:0 8px 20px rgba(31,72,120,.07); }
+#sec-dash .sg .sc.g{ --tc:#10b981; --tbg:#e0f5ed; --tw:rgba(16,185,129,.13); }
+#sec-dash .sg .sc.o{ --tc:#f59e0b; --tbg:#fdefd7; --tw:rgba(245,158,11,.16); }
+#sec-dash .sg .sc.p{ --tc:#8b5cf6; --tbg:#ece7fd; --tw:rgba(139,92,246,.15); }
+#sec-dash .sg .sc::after{ content:''; position:absolute; right:-24px; bottom:-30px; width:130px; height:90px;
+  border-radius:50%; background:var(--tw); z-index:0; }
+#sec-dash .sg .sc>*{ position:relative; z-index:1; }
+#sec-dash .sg .sc-ic{ width:46px; height:46px; border-radius:14px; display:flex; align-items:center; justify-content:center;
+  font-size:1.4rem; color:var(--tc); background:var(--tbg); margin-bottom:12px; }
+#sec-dash .sg .sv{ font-size:1.95rem; font-weight:800; color:#0f2540; line-height:1.05; }
+#sec-dash .sg .sv small{ color:#9aa6b4; font-weight:700; }
+#sec-dash .sg .sl{ font-size:.82rem; font-weight:700; color:var(--tc); margin-top:5px; }
+
+/* ---- 各面向健康分數：標題列 + 每列圓形圖示 ---- */
+#sec-dash .dimhdr{ display:flex; align-items:center; gap:12px; margin-bottom:6px; }
+#sec-dash .dim-ic{ width:44px; height:44px; flex:0 0 44px; border-radius:13px; display:flex; align-items:center;
+  justify-content:center; font-size:1.3rem; color:#10b981; background:#e0f5ed; }
+#sec-dash .dimhdr .ct{ font-size:1.05rem; }
+#sec-dash .dim-info{ color:#c2ccd6; font-size:1.3rem; display:flex; }
+#sec-dash #dashBars{ border-top:1px solid #eef2f6; padding-top:12px; margin-top:6px; }
+#sec-dash #dashBars .bar-row{ gap:11px; margin-bottom:13px; align-items:center; }
+#sec-dash #dashBars .bar-ic{ width:34px; height:34px; flex:0 0 34px; border-radius:50%; display:flex;
+  align-items:center; justify-content:center; font-size:1.02rem; }
+#sec-dash #dashBars .bar-lbl{ flex:0 0 66px; font-size:.86rem; font-weight:600; color:#334155; }
+#sec-dash #dashBars .bar-track{ height:8px; border-radius:6px; background:#eef2f6; }
+#sec-dash #dashBars .bar-fill{ border-radius:6px; }
+#sec-dash #dashBars .bar-val{ flex:0 0 38px; text-align:right; font-size:1.02rem; font-weight:800; }
 </style>
 </head>
 <body>
@@ -530,14 +562,18 @@ body{ background:#eef2f6;
     </div>
 
     <div class="sg">
-      <div class="sc b"><div class="sv" id="mBmi">--</div><div class="sl">BMI 身體質量</div></div>
-      <div class="sc"><div class="sv" id="mWhtr">--</div><div class="sl">腰高比</div></div>
-      <div class="sc o"><div class="sv" id="mBp">--</div><div class="sl">血壓 mmHg</div></div>
-      <div class="sc p"><div class="sv" id="mBmr">--</div><div class="sl">基礎代謝 kcal</div></div>
+      <div class="sc b"><div class="sc-ic"><i class="ti ti-scale"></i></div><div class="sv" id="mBmi">--</div><div class="sl">BMI 身體質量</div></div>
+      <div class="sc g"><div class="sc-ic"><i class="ti ti-ruler-2"></i></div><div class="sv" id="mWhtr">--</div><div class="sl">腰高比</div></div>
+      <div class="sc o"><div class="sc-ic"><i class="ti ti-heartbeat"></i></div><div class="sv" id="mBp">--</div><div class="sl">血壓 mmHg</div></div>
+      <div class="sc p"><div class="sc-ic"><i class="ti ti-flame"></i></div><div class="sv" id="mBmr">--</div><div class="sl">基礎代謝 kcal</div></div>
     </div>
 
     <div class="card">
-      <div class="ct">📊 各面向健康分數</div>
+      <div class="dimhdr">
+        <div class="dim-ic"><i class="ti ti-activity"></i></div>
+        <div style="flex:1;min-width:0;"><div class="ct" style="margin:0;">各面向健康分數</div><div class="hint">透過數據了解您的健康狀態</div></div>
+        <div class="dim-info"><i class="ti ti-info-circle"></i></div>
+      </div>
       <div id="dashBars"></div>
     </div>
   </div>
@@ -2133,12 +2169,13 @@ function renderDash(){
 
   const bars=document.getElementById('dashBars');bars.innerHTML='';
   const order=['cardio','body','activity','nutrition','sleep','substance','metabolic','mental'];
+  const DIM_ICON={cardio:'ti-heart',body:'ti-user',activity:'ti-run',nutrition:'ti-tools-kitchen-2',sleep:'ti-moon',substance:'ti-bottle',metabolic:'ti-leaf',mental:'ti-brain'};
   order.forEach(k=>{
-    const v=Math.round(r.sub[k]);
+    const v=Math.round(r.sub[k]); const c=(v>=55?'#10b981':'#f59e0b');   // 依範本：綠（高）／橘（低）雙色
     bars.insertAdjacentHTML('beforeend',
-      `<div class="bar-row"><div class="bar-lbl">${SUB_LABELS[k]}</div>
-       <div class="bar-track"><div class="bar-fill" style="width:${v}%;background:${barColor(v)}"></div></div>
-       <div class="bar-val">${v}</div></div>`);
+      `<div class="bar-row"><div class="bar-ic" style="color:${c};background:${c}22;"><i class="ti ${DIM_ICON[k]}"></i></div><div class="bar-lbl">${SUB_LABELS[k]}</div>
+       <div class="bar-track"><div class="bar-fill" style="width:${v}%;background:${c}"></div></div>
+       <div class="bar-val" style="color:${c};">${v}</div></div>`);
   });
 }
 
@@ -6096,7 +6133,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.09-hero-fade';
+const APP_VERSION='2026.08.09-metric-cards';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
