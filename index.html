@@ -3023,9 +3023,11 @@ function showHealthAlert(force){
   const emergency=tier.tier==='red'
     ? `<div class="row-btn" style="margin:0 0 8px;"><a class="btn" style="background:#ef4444;color:#fff;flex:1;text-align:center;text-decoration:none;font-weight:800;" href="tel:119">📞 撥打 119</a>${emergencyContactBtn()}</div>
        <div class="row-btn" style="margin:0 0 10px;"><button class="btn" style="background:#111827;color:#fff;flex:1;font-weight:800;" onclick="sendSOS()">🆘 傳送 SOS（定位＋病史）</button></div>` : '';
+  const careRow=tier.tier!=='green'
+    ? `<div class="row-btn" style="margin:0 0 10px;gap:6px;">${tier.tier==='yellow'?`<button class="btn bg" style="flex:1;font-weight:700;" onclick="scheduleRecheck()">🗓️ 排複查提醒</button>`:''}<button class="btn bg" style="flex:1;font-weight:700;" onclick="shareHealthSummary()">📤 傳給家屬／個管師</button></div>` : '';
   m.innerHTML=`<div class="modal-box">
     <div class="ct">${crit?'🚨':'🔔'} 健康警戒 <span class="hint">${new Date().toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})}</span></div>
-    ${tierBanner}${emergency}
+    ${tierBanner}${emergency}${careRow}
     <div class="hint" style="margin:2px 0 10px;">系統每天為你把關；以下為偵測到的重點與建議做法（衛教參考，非醫療診斷；危急請就醫）。</div>
     ${body}
     <label style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--g600);margin-top:10px;"><input type="checkbox" id="alertDailyChk" ${state.settings.dailyAlert===false?'':'checked'} onchange="toggleDailyAlert(this.checked)"> 每天開啟 App 時自動提醒我</label>
@@ -3133,6 +3135,55 @@ function sosCopy(){
   if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(msg).then(()=>toast('✅ 已複製 SOS 訊息')).catch(()=>toast('複製失敗，請長按訊息手動複製')); }
   else toast('請長按上方訊息手動複製');
 }
+// ── 黃燈自動複查（增量 #2）——黃燈時一鍵排定 2 週後的複查提醒 ──
+function scheduleRecheck(){
+  const warns=buildHealthAlerts().filter(x=>x.lvl==='warn');
+  const items=warns.slice(0,3).map(x=>String(x.title||'').replace(/\s+/g,' ')).join('、')||'健康複查';
+  const d=new Date(); d.setDate(d.getDate()+14);
+  const startDate=localDayKey(d);
+  const title='複查追蹤：'+items;
+  state.reminders=state.reminders||[];
+  if(state.reminders.some(r=>r.type==='lab'&&r.title===title&&r.startDate===startDate)){ toast('已排過相同複查提醒'); return; }
+  state.reminders.push({id:remId(),type:'lab',title,freq:'once',time:'09:00',startDate,
+    note:'黃燈警示自動排定，建議回診或安排複檢追蹤這些項目的走向。',enabled:true,doneDates:[],createdAt:new Date().toISOString()});
+  save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  toast('🗓️ 已排定 2 週後（'+startDate+'）複查提醒');
+  try{ if(typeof renderRemind==='function')renderRemind(); if(typeof renderRemindDue==='function')renderRemindDue(); }catch(e){}
+}
+// ── 個管師／家屬連線（增量 #3）——把異常摘要整理成訊息，供簡訊／分享／複製 ──
+function abnormalSummaryText(){
+  const A=buildHealthAlerts().filter(x=>x.lvl!=='info');
+  const tier=alertTier(); const p=state.profile||{};
+  const lines=['🩺 健康摘要（給家屬／個管師參考）'];
+  const who=[]; if(p.age)who.push(p.age+' 歲'); if(p.sex)who.push(p.sex==='female'?'女':'男');
+  if(who.length)lines.push('👤 '+who.join('・'));
+  lines.push(tier.emoji+' 目前分級：'+tier.label);
+  if(A.length){
+    lines.push('','【需注意項目】');
+    A.slice(0,8).forEach((x,i)=>lines.push((i+1)+'. '+String(x.title||'').replace(/\s+/g,' ')+'：'+String(x.detail||'').replace(/\s+/g,' ')));
+  }else lines.push('','目前無明顯警訊。');
+  lines.push('','（此摘要由健康 App 自動整理，'+new Date().toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})+'；衛教參考，非醫療診斷。）');
+  return lines.join('\n');
+}
+function shareHealthSummary(){ const msg=abnormalSummaryText(); window._careMsg=msg; showCareModal(msg); }
+function showCareModal(msg){
+  let m=document.getElementById('alertModal');
+  if(!m){m=document.createElement('div');m.id='alertModal';m.className='modal-overlay';document.body.appendChild(m);}
+  const c=state.settings&&state.settings.emergencyContact; const phone=c&&c.phone?c.phone:'';
+  const smsBtn=phone
+    ? `<a class="btn" style="background:#0d9488;color:#fff;flex:1;text-align:center;text-decoration:none;font-weight:800;" href="sms:${esc(phone)}${/(iphone|ipad|mac)/i.test(navigator.userAgent)?'&':'?'}body=${encodeURIComponent(msg)}">📩 簡訊給${esc(c.name||'聯絡人')}</a>`
+    : `<button class="btn bg" style="flex:1;" onclick="setEmergencyContact()">➕ 先設定聯絡人</button>`;
+  m.innerHTML=`<div class="modal-box">
+    <div class="ct">📤 傳給家屬／個管師</div>
+    <div class="hint" style="margin:2px 0 8px;">下方摘要已整理你目前的分級與需注意項目，可傳給家人或個案管理師協助追蹤。</div>
+    <pre style="white-space:pre-wrap;word-break:break-word;background:var(--g50,#f6f7f9);border:1px solid var(--g200,#e5e7eb);border-radius:12px;padding:12px;font:inherit;font-size:.82rem;line-height:1.6;max-height:44vh;overflow:auto;margin:0 0 12px;">${esc(msg)}</pre>
+    <div class="row-btn" style="margin:0 0 8px;">${smsBtn}<button class="btn bg" style="flex:1;" onclick="careShare()">📤 分享</button></div>
+    <div class="row-btn" style="margin:0 0 8px;"><button class="btn bg" style="flex:1;" onclick="careCopy()">📋 複製</button><button class="btn bg" style="flex:1;" onclick="closeSosModal()">關閉</button></div>
+  </div>`;
+  m.style.display='flex';
+}
+function careShare(){ const msg=window._careMsg||''; if(!msg)return; if(navigator.share){navigator.share({title:'🩺 健康摘要',text:msg}).catch(()=>{});}else careCopy(); }
+function careCopy(){ const msg=window._careMsg||''; if(!msg)return; if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(msg).then(()=>toast('✅ 已複製健康摘要')).catch(()=>toast('複製失敗，請長按訊息手動複製'));}else toast('請長按上方訊息手動複製'); }
 function toggleDailyAlert(on){state.settings.dailyAlert=!!on;save();const s=document.getElementById('set-dailyalert');if(s)s.checked=!!on;}
 function toggleAutoBackup(on){
   state.settings.autoBackup=!!on; save();
@@ -6280,7 +6331,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.10-tierlink';
+const APP_VERSION='2026.08.10-care';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
