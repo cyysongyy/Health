@@ -2401,7 +2401,7 @@ function renderReminders(){
   const checkBtn=`<button class="btn bg" style="padding:5px 12px;font-size:.74rem;" onclick="showHealthAlert(true)">🔔 立即健康檢查</button>`;
   if(!rem.length){el.innerHTML=`<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="hint">🔔 健康警戒系統運作中，偵測到問題會主動提醒。</div>${checkBtn}</div>`;return;}
   const tier=alertTier();
-  el.innerHTML=`<div class="card remind-card"><div class="remind-hdr"><span style="display:inline-flex;align-items:center;gap:8px;min-width:0;">🚩 提醒與待辦 <span class="tier-pill" style="background:${tier.bg};color:${tier.color};">${tier.emoji} ${tier.label}</span></span><span>${rem.length} 項 ›</span></div>`+
+  el.innerHTML=`<div class="card remind-card"><div class="remind-hdr"><span style="display:inline-flex;align-items:center;gap:8px;min-width:0;">🚩 提醒與待辦 <span class="tier-pill" role="button" tabindex="0" title="查看${tier.label}項目" style="background:${tier.bg};color:${tier.color};cursor:pointer;" onclick="event.stopPropagation();showHealthAlert(true);">${tier.emoji} ${tier.label} ›</span></span><span>${rem.length} 項 ›</span></div>`+
     rem.map(x=>`<div class="remind-item ${x.lvl}"><div class="ri-ic">${x.icon}</div><div class="ri-body"><div class="ri-text">${x.text}</div>`+
       (x.key?`<div class="row-btn" style="margin-top:8px;gap:6px;"><button class="btn bg" style="padding:4px 10px;font-size:.72rem;" onclick="fixLabMetric('${x.key}')">✏️ 修正這筆</button><button class="btn bg" style="padding:4px 10px;font-size:.72rem;color:var(--err);" onclick="purgeLabMetric('${x.key}')">🧹 這是錯誤，全部移除</button></div>`:'')+
       `</div></div>`).join('')+
@@ -6280,7 +6280,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.10-sos';
+const APP_VERSION='2026.08.10-tierlink';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
