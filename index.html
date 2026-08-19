@@ -3021,7 +3021,8 @@ function showHealthAlert(force){
     <div style="font-size:1.7rem;line-height:1;">${tier.emoji}</div>
     <div style="flex:1;min-width:0;"><div style="font-weight:800;color:${tier.color};font-size:1rem;">${tier.label}</div><div class="hint" style="line-height:1.55;margin-top:3px;">${esc(tier.guide)}</div></div></div>`;
   const emergency=tier.tier==='red'
-    ? `<div class="row-btn" style="margin:0 0 10px;"><a class="btn" style="background:#ef4444;color:#fff;flex:1;text-align:center;text-decoration:none;font-weight:800;" href="tel:119">📞 撥打 119</a>${emergencyContactBtn()}</div>` : '';
+    ? `<div class="row-btn" style="margin:0 0 8px;"><a class="btn" style="background:#ef4444;color:#fff;flex:1;text-align:center;text-decoration:none;font-weight:800;" href="tel:119">📞 撥打 119</a>${emergencyContactBtn()}</div>
+       <div class="row-btn" style="margin:0 0 10px;"><button class="btn" style="background:#111827;color:#fff;flex:1;font-weight:800;" onclick="sendSOS()">🆘 傳送 SOS（定位＋病史）</button></div>` : '';
   m.innerHTML=`<div class="modal-box">
     <div class="ct">${crit?'🚨':'🔔'} 健康警戒 <span class="hint">${new Date().toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})}</span></div>
     ${tierBanner}${emergency}
@@ -3050,6 +3051,87 @@ function setEmergencyContact(){
   state.settings.emergencyContact={name:(name||'').trim(),phone:(phone||'').replace(/[^\d+#*,;]/g,'')};
   save(); toast('✅ 已設定緊急聯絡人');
   try{ const mm=document.getElementById('alertModal'); if(mm&&mm.style.display==='flex')showHealthAlert(true); }catch(e){}
+}
+// ── SOS 定位＋病史（增量 #4）——急症時取 GPS 定位＋關鍵病史，組成 SOS 訊息給緊急聯絡人 ──
+// 彙整關鍵病史（個資、病史、用藥、危急檢驗），供 SOS 訊息與 119 到場時參考
+function sosHistoryText(){
+  const L=[]; const p=state.profile||{};
+  const who=[]; if(p.age)who.push(p.age+' 歲'); if(p.sex)who.push(p.sex==='female'?'女':'男');
+  if(who.length)L.push('👤 '+who.join('・'));
+  // 病史（近期診斷，去重取最新 4 筆）
+  const dxSeen=new Set(), dxList=[];
+  (state.dx||[]).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)).forEach(d=>{
+    const nm=(d.name||'').trim(); if(!nm||dxSeen.has(nm))return; dxSeen.add(nm); dxList.push(nm);
+  });
+  if(dxList.length)L.push('🩺 病史：'+dxList.slice(0,4).join('、'));
+  // 用藥（近 90 天真正藥物，去重取 5 種）
+  const medSeen=new Set(), meds=[];
+  recentMeds(90).forEach(m=>{const nm=(m.name||'').trim(); if(!isRealDrug(nm)||medSeen.has(nm))return; medSeen.add(nm); meds.push(nm);});
+  if(meds.length)L.push('💊 用藥：'+meds.slice(0,5).join('、'));
+  // 危急檢驗（labFlag=crit）
+  const Lb=labLatest(), crit=[];
+  LAB_ORDER.forEach(k=>{if(Lb[k]!=null&&labFlag(k,Lb[k].v)==='crit')crit.push(LAB_META[k].label+' '+Lb[k].v+LAB_META[k].unit);});
+  if(crit.length)L.push('🚨 危急檢驗：'+crit.slice(0,5).join('、'));
+  return L.join('\n');
+}
+// 組成完整 SOS 訊息（含定位）
+function buildSosMessage(loc){
+  const p=state.profile||{}; const lines=['🆘 緊急求救 SOS'];
+  const hist=sosHistoryText();
+  if(loc&&loc.ok){
+    lines.push('📍 我的位置：https://maps.google.com/?q='+loc.lat+','+loc.lng+'（誤差約 '+Math.round(loc.acc)+' 公尺）');
+  }else{
+    lines.push('📍 位置：'+(loc&&loc.msg?loc.msg:'無法取得定位，請以電話聯繫確認')+'');
+  }
+  if(hist)lines.push('', hist);
+  lines.push('', '（此訊息由健康 App 自動產生，時間 '+new Date().toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})+'）');
+  return lines.join('\n');
+}
+// 取得定位後彈出 SOS 面板
+function sendSOS(){
+  toast('📡 正在取得定位…');
+  const done=(loc)=>{ const msg=buildSosMessage(loc); window._sosMsg=msg; showSosModal(msg); };
+  if(!navigator.geolocation){ done({ok:false,msg:'此裝置不支援定位'}); return; }
+  navigator.geolocation.getCurrentPosition(
+    pos=>done({ok:true,lat:pos.coords.latitude.toFixed(6),lng:pos.coords.longitude.toFixed(6),acc:pos.coords.accuracy||0}),
+    err=>done({ok:false,msg:(err&&err.code===1)?'定位權限被拒（請於瀏覽器允許定位後重試）':'定位逾時或失敗'}),
+    {enableHighAccuracy:true,timeout:10000,maximumAge:60000}
+  );
+}
+function showSosModal(msg){
+  let m=document.getElementById('alertModal');
+  if(!m){m=document.createElement('div');m.id='alertModal';m.className='modal-overlay';document.body.appendChild(m);}
+  const c=state.settings&&state.settings.emergencyContact;
+  const phone=c&&c.phone?c.phone:'';
+  const smsBtn=phone
+    ? `<a class="btn" style="background:#0d9488;color:#fff;flex:1;text-align:center;text-decoration:none;font-weight:800;" href="sms:${esc(phone)}${/(iphone|ipad|mac)/i.test(navigator.userAgent)?'&':'?'}body=${encodeURIComponent(msg)}">📩 簡訊給${esc(c.name||'緊急聯絡人')}</a>`
+    : `<button class="btn bg" style="flex:1;" onclick="setEmergencyContact()">➕ 先設定緊急聯絡人</button>`;
+  m.innerHTML=`<div class="modal-box">
+    <div class="ct" style="color:#ef4444;">🆘 傳送 SOS 求救</div>
+    <div class="hint" style="margin:2px 0 8px;">下方訊息已含你的定位與關鍵病史，可傳給緊急聯絡人或出示給到場救護人員。</div>
+    <pre style="white-space:pre-wrap;word-break:break-word;background:var(--g50,#f6f7f9);border:1px solid var(--g200,#e5e7eb);border-radius:12px;padding:12px;font:inherit;font-size:.82rem;line-height:1.6;max-height:44vh;overflow:auto;margin:0 0 12px;">${esc(msg)}</pre>
+    <div class="row-btn" style="margin:0 0 8px;">
+      <a class="btn" style="background:#ef4444;color:#fff;flex:1;text-align:center;text-decoration:none;font-weight:800;" href="tel:119">📞 撥打 119</a>
+      ${smsBtn}
+    </div>
+    <div class="row-btn" style="margin:0 0 8px;">
+      <button class="btn bg" style="flex:1;" onclick="sosShare()">📤 分享</button>
+      <button class="btn bg" style="flex:1;" onclick="sosCopy()">📋 複製</button>
+    </div>
+    <div class="row-btn"><button class="btn bg" style="flex:1;" onclick="closeSosModal()">關閉</button></div>
+  </div>`;
+  m.style.display='flex';
+}
+function closeSosModal(){const m=document.getElementById('alertModal');if(m){m.style.display='none';m.innerHTML='';}}
+function sosShare(){
+  const msg=window._sosMsg||''; if(!msg)return;
+  if(navigator.share){ navigator.share({title:'🆘 緊急求救 SOS',text:msg}).catch(()=>{}); }
+  else sosCopy();
+}
+function sosCopy(){
+  const msg=window._sosMsg||''; if(!msg)return;
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(msg).then(()=>toast('✅ 已複製 SOS 訊息')).catch(()=>toast('複製失敗，請長按訊息手動複製')); }
+  else toast('請長按上方訊息手動複製');
 }
 function toggleDailyAlert(on){state.settings.dailyAlert=!!on;save();const s=document.getElementById('set-dailyalert');if(s)s.checked=!!on;}
 function toggleAutoBackup(on){
@@ -6198,7 +6280,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.10-tier-alert';
+const APP_VERSION='2026.08.10-sos';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
