@@ -493,6 +493,10 @@ body{ background:#eef2f6;
   font-family:inherit; font-size:.9rem; font-weight:700; color:#0d9488; cursor:pointer; }
 #sec-dash .remind-cta:active{ background:#e9eef6; }
 #sec-dash .remind-cta .ri-chev{ color:#c2ccd6; font-size:1.25rem; font-weight:700; }
+/* 三級燈號徽章（提醒卡標題）＋ 紅燈閃爍 */
+.tier-pill{ display:inline-flex; align-items:center; gap:3px; font-size:.7rem; font-weight:800;
+  padding:3px 9px; border-radius:999px; white-space:nowrap; }
+@keyframes sirenFlash{ 0%,100%{ box-shadow:0 0 0 0 rgba(239,68,68,0); } 50%{ box-shadow:0 0 0 4px rgba(239,68,68,.28); } }
 </style>
 </head>
 <body>
@@ -2396,7 +2400,8 @@ function renderReminders(){
   const col={crit:'var(--err)',warn:'var(--warn)',info:'var(--acc)'};
   const checkBtn=`<button class="btn bg" style="padding:5px 12px;font-size:.74rem;" onclick="showHealthAlert(true)">🔔 立即健康檢查</button>`;
   if(!rem.length){el.innerHTML=`<div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:8px;"><div class="hint">🔔 健康警戒系統運作中，偵測到問題會主動提醒。</div>${checkBtn}</div>`;return;}
-  el.innerHTML=`<div class="card remind-card"><div class="remind-hdr">🚩 提醒與待辦 <span>${rem.length} 項 ›</span></div>`+
+  const tier=alertTier();
+  el.innerHTML=`<div class="card remind-card"><div class="remind-hdr"><span style="display:inline-flex;align-items:center;gap:8px;min-width:0;">🚩 提醒與待辦 <span class="tier-pill" style="background:${tier.bg};color:${tier.color};">${tier.emoji} ${tier.label}</span></span><span>${rem.length} 項 ›</span></div>`+
     rem.map(x=>`<div class="remind-item ${x.lvl}"><div class="ri-ic">${x.icon}</div><div class="ri-body"><div class="ri-text">${x.text}</div>`+
       (x.key?`<div class="row-btn" style="margin-top:8px;gap:6px;"><button class="btn bg" style="padding:4px 10px;font-size:.72rem;" onclick="fixLabMetric('${x.key}')">✏️ 修正這筆</button><button class="btn bg" style="padding:4px 10px;font-size:.72rem;color:var(--err);" onclick="purgeLabMetric('${x.key}')">🧹 這是錯誤，全部移除</button></div>`:'')+
       `</div></div>`).join('')+
@@ -2985,8 +2990,25 @@ function buildHealthAlerts(){
   A.sort((a,b)=>rank[a.lvl]-rank[b.lvl]);
   return A;
 }
+/* ===== 分級警報：三級燈號（綠／黃／紅）——沿用既有警報分級，不改偵測邏輯 ===== */
+function alertTier(alerts){
+  const A=alerts||buildHealthAlerts();
+  if(A.some(x=>x.lvl==='crit'))return {tier:'red',emoji:'🔴',label:'紅燈 · 高危',color:'#ef4444',bg:'#fef2f2',
+    guide:'請立即停止活動、就近坐下或平躺休息。若為血壓／血糖異常，休息 5 分鐘後再量兩次確認。若出現胸痛、呼吸困難、意識不清、單側無力或劇烈不適，立即撥打 119 或前往急診。'};
+  if(A.some(x=>x.lvl==='warn'))return {tier:'yellow',emoji:'🟡',label:'黃燈 · 潛在風險',color:'#d97706',bg:'#fffbeb',
+    guide:'數據出現需留意的變化。建議調整作息、飲食與運動，規律量測並記錄，安排回診或複查以觀察走向。'};
+  return {tier:'green',emoji:'🟢',label:'綠燈 · 正常',color:'#059669',bg:'#ecfdf5',
+    guide:'目前無明顯警訊。維持規律作息、均衡飲食與運動，並定期追蹤即可。'};
+}
+// 紅燈聲光警報：連續嗶聲 ＋ 震動（若裝置支援）
+function siren(){
+  try{ beep(5); }catch(e){}
+  try{ if(navigator.vibrate)navigator.vibrate([250,120,250,120,450]); }catch(e){}
+}
 function showHealthAlert(force){
   const A=buildHealthAlerts();
+  const tier=alertTier(A);
+  if(tier.tier==='red')siren();   // 紅燈：觸發聲光警報
   const actionable=A.filter(x=>x.lvl!=='info');
   if(!force&&!actionable.length)return false;
   let m=document.getElementById('alertModal');
@@ -2995,8 +3017,14 @@ function showHealthAlert(force){
   const body=A.length?A.map(x=>`<div class="rec" style="border-left-color:${col[x.lvl]};background:${x.lvl==='crit'?'#fef2f2':x.lvl==='warn'?'#fffbeb':'#f0f9ff'};"><div class="rec-icon">${x.icon}</div><div class="rec-body"><div class="rec-title">${esc(x.title)}</div><div class="rec-desc">${esc(x.detail)}</div><div class="rec-gain">💡 解決之道：${esc(x.solution)}</div></div></div>`).join('')
     :'<div class="hint" style="color:var(--ok);font-weight:600;padding:8px 0;">✅ 目前沒有偵測到需要注意的健康警訊，繼續保持！</div>';
   const crit=A.some(x=>x.lvl==='crit');
+  const tierBanner=`<div style="display:flex;align-items:center;gap:11px;background:${tier.bg};border:1px solid ${tier.color}59;border-radius:14px;padding:12px 14px;margin:2px 0 10px;${tier.tier==='red'?'animation:sirenFlash 1s ease-in-out infinite;':''}">
+    <div style="font-size:1.7rem;line-height:1;">${tier.emoji}</div>
+    <div style="flex:1;min-width:0;"><div style="font-weight:800;color:${tier.color};font-size:1rem;">${tier.label}</div><div class="hint" style="line-height:1.55;margin-top:3px;">${esc(tier.guide)}</div></div></div>`;
+  const emergency=tier.tier==='red'
+    ? `<div class="row-btn" style="margin:0 0 10px;"><a class="btn" style="background:#ef4444;color:#fff;flex:1;text-align:center;text-decoration:none;font-weight:800;" href="tel:119">📞 撥打 119</a>${emergencyContactBtn()}</div>` : '';
   m.innerHTML=`<div class="modal-box">
     <div class="ct">${crit?'🚨':'🔔'} 健康警戒 <span class="hint">${new Date().toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})}</span></div>
+    ${tierBanner}${emergency}
     <div class="hint" style="margin:2px 0 10px;">系統每天為你把關；以下為偵測到的重點與建議做法（衛教參考，非醫療診斷；危急請就醫）。</div>
     ${body}
     <label style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--g600);margin-top:10px;"><input type="checkbox" id="alertDailyChk" ${state.settings.dailyAlert===false?'':'checked'} onchange="toggleDailyAlert(this.checked)"> 每天開啟 App 時自動提醒我</label>
@@ -3009,6 +3037,20 @@ function showHealthAlert(force){
   return true;
 }
 function closeHealthAlert(){const m=document.getElementById('alertModal');if(m){m.style.display='none';m.innerHTML='';}}
+// 緊急聯絡人（紅燈時可一鍵撥打）——存於本機設定，供未來 SOS 派發沿用
+function emergencyContactBtn(){
+  const c=state.settings&&state.settings.emergencyContact;
+  if(c&&c.phone)return `<a class="btn" style="background:#0d9488;color:#fff;flex:1;text-align:center;text-decoration:none;font-weight:800;" href="tel:${esc(c.phone)}">📞 ${esc(c.name||'緊急聯絡人')}</a>`;
+  return `<button class="btn bg" style="flex:1;" onclick="setEmergencyContact()">➕ 設定緊急聯絡人</button>`;
+}
+function setEmergencyContact(){
+  const cur=state.settings.emergencyContact||{};
+  const name=prompt('緊急聯絡人姓名（例如：家人、個管師）：', cur.name||''); if(name===null)return;
+  const phone=prompt('緊急聯絡人電話：', cur.phone||''); if(phone===null)return;
+  state.settings.emergencyContact={name:(name||'').trim(),phone:(phone||'').replace(/[^\d+#*,;]/g,'')};
+  save(); toast('✅ 已設定緊急聯絡人');
+  try{ const mm=document.getElementById('alertModal'); if(mm&&mm.style.display==='flex')showHealthAlert(true); }catch(e){}
+}
 function toggleDailyAlert(on){state.settings.dailyAlert=!!on;save();const s=document.getElementById('set-dailyalert');if(s)s.checked=!!on;}
 function toggleAutoBackup(on){
   state.settings.autoBackup=!!on; save();
@@ -6156,7 +6198,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.09-navcol';
+const APP_VERSION='2026.08.10-tier-alert';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
