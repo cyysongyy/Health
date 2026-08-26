@@ -497,6 +497,20 @@ body{ background:#eef2f6;
 .tier-pill{ display:inline-flex; align-items:center; gap:3px; font-size:.7rem; font-weight:800;
   padding:3px 9px; border-radius:999px; white-space:nowrap; }
 @keyframes sirenFlash{ 0%,100%{ box-shadow:0 0 0 0 rgba(239,68,68,0); } 50%{ box-shadow:0 0 0 4px rgba(239,68,68,.28); } }
+/* 每日健康 Co-pilot 簡報卡 */
+.copilot-card{ background:linear-gradient(160deg,#f0fdfa 0%,#ffffff 46%); border:1px solid #cdeee7; }
+.copilot-card .cop-hdr{ display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
+.copilot-card .cop-hi{ font-size:1rem; font-weight:800; color:#0f2540; min-width:0; }
+.copilot-card .cop-change{ font-size:.82rem; color:#0d9488; background:#e7f7f3; border-radius:9px; padding:6px 10px; margin-bottom:9px; }
+.copilot-card .cop-list{ display:flex; flex-direction:column; gap:8px; }
+.cop-item{ display:flex; align-items:center; gap:10px; width:100%; text-align:left; border:none; cursor:pointer;
+  background:#f6f8f9; border-radius:12px; padding:10px 12px; font:inherit; }
+.cop-item.crit{ background:#fef2f2; } .cop-item.warn{ background:#fffbeb; } .cop-item.info{ background:#f0f9ff; }
+.cop-item .cop-ic{ font-size:1.15rem; line-height:1; flex:0 0 auto; }
+.cop-item .cop-tx{ flex:1; min-width:0; font-size:.9rem; font-weight:600; color:#1f2d3d; line-height:1.45; }
+.cop-item .cop-cta{ flex:0 0 auto; font-size:.78rem; font-weight:800; color:#0d9488; white-space:nowrap; }
+.cop-item.crit .cop-cta{ color:#ef4444; } .cop-item.warn .cop-cta{ color:#d97706; }
+.copilot-card .cop-ok{ font-size:.9rem; font-weight:600; color:#059669; background:#ecfdf5; border-radius:12px; padding:11px 12px; }
 </style>
 </head>
 <body>
@@ -543,6 +557,7 @@ body{ background:#eef2f6;
     </div>
   </div>
   <div id="dashAdvisor"></div>
+  <div id="dashCopilot"></div>
   <div id="dashMetrics"></div>
   <div id="dashRemindDue"></div>
   <div id="dashReminders"></div>
@@ -2163,6 +2178,7 @@ function renderDash(){
   const r=state.result;
   maybeShowInstallBanner(); // 📲 安裝單機版橫幅（未安裝且未關閉時顯示）
   renderDashAdvisor(); // 健康顧問精簡入口
+  renderCopilot();     // 每日健康 Co-pilot：把當日重點收斂成一張優先排序行動卡
   renderDashMetrics(); // 心率／步數／熱量／睡眠 量測環（真實資料）
   renderRemindDue();   // 今日／逾期的個人提醒（用藥、回診、復健、檢驗追蹤）
   renderReminders();   // 主動提醒／紅旗待辦（即使沒完成評估、只要有檢驗也顯示）
@@ -2393,6 +2409,59 @@ function purgeLabMetric(key){
   if(typeof onLabsChanged==='function')onLabsChanged(); else save();
   if(typeof renderLabs==='function')renderLabs();
   toast('已移除所有「'+label+'」數值（'+n+' 筆）');
+}
+/* ===== 每日健康 Co-pilot 簡報（增量：把散落資料收斂成一張優先排序行動卡）===== */
+// 彙整當日最該注意的重點，來源皆為既有引擎（提醒、警報、趨勢、量測缺口），不新增偵測邏輯
+function copilotItems(){
+  const items=[], now=Date.now();
+  const rank={crit:0,warn:1,info:2};
+  // 1) 今日／逾期提醒
+  try{ const due=(typeof remDueList==='function')?remDueList():[];
+    const overdue=due.filter(d=>d.state==='overdue').length;
+    if(due.length)items.push({lvl:overdue?'warn':'info',icon:'⏰',
+      text:(overdue?`${overdue} 項提醒逾期`:'')+(overdue&&due.length>overdue?'，':'')+(due.length>overdue?`今天還有 ${due.length-overdue} 項提醒`:(overdue?'':`今天有 ${due.length} 項提醒`)),
+      fn:"go('remind')",cta:'查看'});
+  }catch(e){}
+  // 2) 最高優先的健康警示（沿用 buildHealthAlerts；取前 2 項可行項目）
+  try{ const A=(typeof buildHealthAlerts==='function')?buildHealthAlerts().filter(x=>x.lvl!=='info'):[];
+    A.slice(0,2).forEach(x=>items.push({lvl:x.lvl,icon:x.icon,text:String(x.title||'').replace(/\s+/g,' '),fn:'showHealthAlert(true)',cta:'處理'}));
+  }catch(e){}
+  // 3) 一個趨勢提醒
+  try{ const worse=(typeof worseningMetrics==='function')?worseningMetrics():[];
+    if(worse.length)items.push({lvl:'warn',icon:'📈',text:'惡化趨勢：'+worse.slice(0,3).map(k=>LAB_META[k]?LAB_META[k].label:k).join('、'),fn:"go('trend')",cta:'看趨勢'});
+  }catch(e){}
+  // 4) 量測缺口：關鍵生理值久未記錄
+  try{ const L=labLatest();
+    const VIT=[['sbp','血壓',14],['glucose','血糖',30],['weight','體重',21]], gaps=[];
+    VIT.forEach(a=>{ const x=L[a[0]]; const dd=x&&x.t?Math.floor((now-x.t)/864e5):null; if(dd!=null&&dd>=a[2])gaps.push(a[1]+'（'+dd+' 天）'); });
+    if(gaps.length)items.push({lvl:'info',icon:'🩸',text:'該量了：'+gaps.join('、')+'久未記錄',fn:"go('labs')",cta:'去記錄'});
+  }catch(e){}
+  items.sort((a,b)=>rank[a.lvl]-rank[b.lvl]);
+  return items.slice(0,4);
+}
+function renderCopilot(){
+  const el=document.getElementById('dashCopilot'); if(!el)return;
+  const hasData=(state.labs&&state.labs.length)||state.result||(state.reminders&&state.reminders.length)||(state.meds&&state.meds.length);
+  if(!hasData){ el.innerHTML=''; return; }
+  const h=new Date().getHours();
+  const hi=h<11?'☀️ 早安':h<18?'🌤️ 午安':'🌙 晚安';
+  const tier=(typeof alertTier==='function')?alertTier():{tier:'green',emoji:'🟢',label:'綠燈',bg:'#ecfdf5',color:'#059669'};
+  // 燈號變化提示（與上次開啟比較）
+  let changeNote='';
+  try{ const prev=localStorage.getItem('ls_copilotTier');
+    if(prev&&prev!==tier.tier){ const zh={red:'紅燈',yellow:'黃燈',green:'綠燈'}; changeNote=`<div class="cop-change">🔔 燈號由 ${zh[prev]||prev} 變為 <b>${zh[tier.tier]}</b></div>`; }
+    localStorage.setItem('ls_copilotTier',tier.tier);
+  }catch(e){}
+  const items=copilotItems();
+  const list=items.length
+    ? items.map(x=>`<button class="cop-item ${x.lvl}" onclick="${x.fn}"><span class="cop-ic">${x.icon}</span><span class="cop-tx">${esc(x.text)}</span><span class="cop-cta">${x.cta} ›</span></button>`).join('')
+    : `<div class="cop-ok">✅ 今天沒有待辦與警訊，維持得很好，繼續保持！</div>`;
+  el.innerHTML=`<div class="card copilot-card">
+    <div class="cop-hdr"><span class="cop-hi">${hi}，今天的健康重點</span>
+      <span class="tier-pill" role="button" tabindex="0" title="查看${tier.label}項目" style="background:${tier.bg};color:${tier.color};cursor:pointer;" onclick="event.stopPropagation();showHealthAlert(true);">${tier.emoji} ${tier.label} ›</span></div>
+    ${changeNote}
+    <div class="cop-list">${list}</div>
+  </div>`;
 }
 function renderReminders(){
   const el=document.getElementById('dashReminders'); if(!el)return;
@@ -6331,7 +6400,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.10-care';
+const APP_VERSION='2026.08.10-copilot';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
