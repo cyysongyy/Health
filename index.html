@@ -3037,9 +3037,17 @@ function buildHealthAlerts(){
   const A=[],L=labLatest(),r=state.result,p=state.profile||{},now=Date.now();
   const push=(lvl,icon,title,detail,solution)=>A.push({lvl,icon,title,detail,solution});
   const v=k=>L[k]!=null?parseFloat(L[k].v):null;
-  LAB_ORDER.forEach(k=>{if(L[k]==null)return;if(labFlag(k,L[k].v)==='crit'){const d=labDateStr(L[k]);push('crit','🔴',LAB_META[k].label+' 偏離較多'+(d?'（'+d+'）':''),`最新 ${L[k].v}${LAB_META[k].unit}${d?'（檢驗日 '+d+'）':''}，超出參考範圍較多。`,'建議找時間就醫或回診，帶著這筆數據給醫師看。');}});
+  // 紅燈（crit）僅保留「具急迫性、可能危及生命」的項目——多為心血管／代謝急症：
+  // 血壓危象、嚴重高低血糖、血鉀／血鈉嚴重異常。其餘檢驗即使超出參考範圍較多，
+  // 多屬需追蹤但不急迫（如血球指數、血脂、肝腎功能），一律歸為黃燈（warn）。
+  const URGENT_LAB=new Set(['sbp','dbp','glucose','k','na']);
+  LAB_ORDER.forEach(k=>{if(L[k]==null)return;if(labFlag(k,L[k].v)!=='crit')return;
+    const d=labDateStr(L[k]), val=`最新 ${L[k].v}${LAB_META[k].unit}${d?'（檢驗日 '+d+'）':''}`;
+    if(URGENT_LAB.has(k)) push('crit','🔴',LAB_META[k].label+' 明顯異常'+(d?'（'+d+'）':''),val+'，屬需要儘快處理的範圍。','建議儘快就醫或回診；若同時有明顯不適，可撥打 119。');
+    else push('warn','⚠️',LAB_META[k].label+' 偏離較多'+(d?'（'+d+'）':''),val+'，超出參考範圍較多。','建議找時間就醫或回診，帶著這筆數據給醫師看。');
+  });
   const highs=LAB_ORDER.filter(k=>L[k]!=null&&labFlag(k,L[k].v)==='high');
-  if(highs.length)push(highs.length>=3?'crit':'warn','⚠️',highs.length+' 項檢驗過高',highs.slice(0,6).map(k=>LAB_META[k].label+' '+L[k].v+(labDateStr(L[k])?'（'+labDateStr(L[k])+'）':'')).join('、')+(highs.length>6?'…':''),'安排回診追蹤；針對偏高項目調整飲食與運動，必要時與醫師討論用藥。');
+  if(highs.length)push('warn','⚠️',highs.length+' 項檢驗過高',highs.slice(0,6).map(k=>LAB_META[k].label+' '+L[k].v+(labDateStr(L[k])?'（'+labDateStr(L[k])+'）':'')).join('、')+(highs.length>6?'…':''),'安排回診追蹤；針對偏高項目調整飲食與運動，必要時與醫師討論用藥。');
   const worse=worseningMetrics();
   if(worse.length)push('warn','📈','惡化趨勢 '+worse.length+' 項',worse.map(k=>LAB_META[k].label).join('、')+' 較先前變差。','檢視近 1–3 個月生活型態改變，並固定週期複檢觀察走向。');
   if(r&&r.risks){if(r.risks.cvd&&r.risks.cvd.level==='vhigh')push('warn','❤️','心血管風險極高','綜合評估屬極高風險族群。','積極控制血壓／血脂／血糖並戒菸，與醫師討論預防策略。');
@@ -6381,7 +6389,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.10-calm-tone';
+const APP_VERSION='2026.08.10-red-urgent';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
