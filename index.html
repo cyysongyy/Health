@@ -518,6 +518,7 @@ body{ background:#eef2f6;
 <div class="hd">
   <h1 class="brand"><span class="brandmark"><i class="ti ti-heartbeat"></i></span><span class="brandtext"><span class="brandname">LifeSpan<br><span>Health</span></span><span class="brandtag">健康生活・從今天開始</span></span></h1>
   <div class="hd-right">
+    <span id="sosBadge" class="api-badge" onclick="openEmergency()" style="cursor:pointer;background:#ef4444;color:#fff;border-color:transparent;font-weight:800;box-shadow:0 3px 9px rgba(239,68,68,.35);" title="緊急求救：撥打 119 或傳簡訊給緊急聯絡人（與健康評分無關，隨時可用）">🆘 SOS</span>
     <span id="langToggle" class="api-badge" onclick="toggleLang()" style="cursor:pointer;">EN</span>
     <span id="cloudBadge" class="api-badge api-off" onclick="quickBackup()" style="cursor:pointer;" title="點一下備份到 Google Drive">💾 備份</span>
     <span id="aiBadge" class="api-badge api-off" title="AI 未設定">AI</span>
@@ -3089,21 +3090,13 @@ function showHealthAlert(force){
   const tierBanner=`<div style="display:flex;align-items:center;gap:11px;background:${tier.bg};border:1px solid ${tier.color}59;border-radius:14px;padding:12px 14px;margin:2px 0 10px;${tier.tier==='red'?'animation:sirenFlash 1s ease-in-out infinite;':''}">
     <div style="font-size:1.7rem;line-height:1;">${tier.emoji}</div>
     <div style="flex:1;min-width:0;"><div style="font-weight:800;color:${tier.color};font-size:1rem;">${tier.label}</div><div class="hint" style="line-height:1.55;margin-top:3px;">${esc(tier.guide)}</div></div></div>`;
-  const _ec=state.settings&&state.settings.emergencyContact, _hasEc=_ec&&_ec.phone;
-  // 兩件事互相獨立：①撥打 119　②傳簡訊給緊急聯絡人（各自一顆按鈕，互不牽動）
-  const emergency=tier.tier==='red'
-    ? `<div class="row-btn" style="margin:0 0 8px;">
-         <a class="btn" style="background:#ef4444;color:#fff;flex:1;text-align:center;text-decoration:none;font-weight:800;" href="tel:119">📞 撥打 119</a>
-         ${_hasEc
-           ? `<button class="btn" style="background:#0d9488;color:#fff;flex:1;font-weight:800;" onclick="textEmergencyContact()">📩 傳簡訊給${esc(_ec.name||'聯絡人')}</button>`
-           : `<button class="btn bg" style="flex:1;" onclick="setEmergencyContact()">➕ 設定緊急聯絡人</button>`}
-       </div>
-       ${_hasEc?`<div class="row-btn" style="margin:0 0 10px;"><a class="btn bg" style="flex:1;text-align:center;text-decoration:none;" href="tel:${esc(_ec.phone)}">📞 改撥電話給${esc(_ec.name||'聯絡人')}</a></div>`:''}` : '';
+  // 註：撥打 119／傳簡訊給緊急聯絡人為「獨立的緊急功能」，改由頁首常駐的 🆘 SOS 按鈕提供，
+  //     不再與健康燈號綁定（見 openEmergency）。此處只保留健康相關的分級與家屬/個管師分享。
   const careRow=tier.tier!=='green'
     ? `<div class="row-btn" style="margin:0 0 10px;gap:6px;">${tier.tier==='yellow'?`<button class="btn bg" style="flex:1;font-weight:700;" onclick="scheduleRecheck()">🗓️ 排複查提醒</button>`:''}<button class="btn bg" style="flex:1;font-weight:700;" onclick="shareHealthSummary()">📤 傳給家屬／個管師</button></div>` : '';
   m.innerHTML=`<div class="modal-box">
     <div class="ct">${crit?'🚨':'🔔'} 健康警戒 <span class="hint">${new Date().toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})}</span></div>
-    ${tierBanner}${emergency}${careRow}
+    ${tierBanner}${careRow}
     <div class="hint" style="margin:2px 0 10px;">系統每天為你把關；以下為偵測到的重點與建議做法（衛教參考，非醫療診斷；危急請就醫）。</div>
     ${body}
     <label style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--g600);margin-top:10px;"><input type="checkbox" id="alertDailyChk" ${state.settings.dailyAlert===false?'':'checked'} onchange="toggleDailyAlert(this.checked)"> 紅燈（危急）時，開啟 App 自動提醒我</label>
@@ -3116,13 +3109,32 @@ function showHealthAlert(force){
   return true;
 }
 function closeHealthAlert(){const m=document.getElementById('alertModal');if(m){m.style.display='none';m.innerHTML='';}}
+// ── 緊急求救（與健康燈號完全獨立）：頁首常駐 🆘 SOS 按鈕 → 隨時可撥 119 或傳簡訊給聯絡人 ──
+function openEmergency(){
+  let m=document.getElementById('alertModal');
+  if(!m){m=document.createElement('div');m.id='alertModal';m.className='modal-overlay';document.body.appendChild(m);}
+  const c=state.settings&&state.settings.emergencyContact, hasC=c&&c.phone;
+  m.innerHTML=`<div class="modal-box">
+    <div class="ct" style="color:#ef4444;">🆘 緊急求救</div>
+    <div class="hint" style="margin:2px 0 10px;">緊急時可直接撥打 119，或把你的定位與關鍵病史傳給緊急聯絡人。此功能與健康評分／燈號無關，隨時都能使用。</div>
+    <div class="row-btn" style="margin:0 0 8px;">
+      <a class="btn" style="background:#ef4444;color:#fff;flex:1;text-align:center;text-decoration:none;font-weight:800;" href="tel:119">📞 撥打 119</a>
+      ${hasC
+        ? `<button class="btn" style="background:#0d9488;color:#fff;flex:1;font-weight:800;" onclick="textEmergencyContact()">📩 傳簡訊給${esc(c.name||'聯絡人')}</button>`
+        : `<button class="btn bg" style="flex:1;" onclick="setEmergencyContact()">➕ 設定緊急聯絡人</button>`}
+    </div>
+    ${hasC?`<div class="row-btn" style="margin:0 0 10px;"><a class="btn bg" style="flex:1;text-align:center;text-decoration:none;" href="tel:${esc(c.phone)}">📞 改撥電話給${esc(c.name||'聯絡人')}</a></div>`:''}
+    <div class="row-btn"><button class="btn bg" style="flex:1;" onclick="closeHealthAlert()">關閉</button></div>
+  </div>`;
+  m.style.display='flex';
+}
 function setEmergencyContact(){
   const cur=state.settings.emergencyContact||{};
   const name=prompt('緊急聯絡人姓名（例如：家人、個管師）：', cur.name||''); if(name===null)return;
   const phone=prompt('緊急聯絡人電話：', cur.phone||''); if(phone===null)return;
   state.settings.emergencyContact={name:(name||'').trim(),phone:(phone||'').replace(/[^\d+#*,;]/g,'')};
   save(); toast('✅ 已設定緊急聯絡人');
-  try{ const mm=document.getElementById('alertModal'); if(mm&&mm.style.display==='flex')showHealthAlert(true); }catch(e){}
+  try{ const mm=document.getElementById('alertModal'); if(mm&&mm.style.display==='flex')openEmergency(); }catch(e){}
 }
 // ── SOS 定位＋病史（增量 #4）——急症時取 GPS 定位＋關鍵病史，組成 SOS 訊息給緊急聯絡人 ──
 // 彙整關鍵病史（個資、病史、用藥、危急檢驗），供 SOS 訊息與 119 到場時參考
@@ -6403,7 +6415,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.10-sos-split';
+const APP_VERSION='2026.08.10-sos-global';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
