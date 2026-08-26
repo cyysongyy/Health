@@ -1517,7 +1517,7 @@ service cloud.firestore {
   <div class="card">
     <div class="ct">🔔 健康警戒系統</div>
     <div class="hint" style="margin-bottom:10px;">系統會綜合檢驗、用藥、風險與趨勢自動把關；偵測到危急值、控制未達標、多重用藥或惡化趨勢時，以彈出視窗提醒你並附上「解決之道」。</div>
-    <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;"><input type="checkbox" id="set-dailyalert" checked onchange="toggleDailyAlert(this.checked)"> 每天開啟 App 時自動檢查並提醒（每天最多一次）</label>
+    <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;"><input type="checkbox" id="set-dailyalert" checked onchange="toggleDailyAlert(this.checked)"> 紅燈（危急）時，開啟 App 自動全螢幕提醒（每天最多一次；黃／綠燈只在總覽卡片被動顯示，不打擾）</label>
     <div class="row-btn" style="margin-top:12px;"><button class="btn bp" onclick="showHealthAlert(true)">🔔 立即執行健康檢查</button></div>
   </div>
   <div class="card">
@@ -3099,7 +3099,7 @@ function showHealthAlert(force){
     ${tierBanner}${emergency}${careRow}
     <div class="hint" style="margin:2px 0 10px;">系統每天為你把關；以下為偵測到的重點與建議做法（衛教參考，非醫療診斷；危急請就醫）。</div>
     ${body}
-    <label style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--g600);margin-top:10px;"><input type="checkbox" id="alertDailyChk" ${state.settings.dailyAlert===false?'':'checked'} onchange="toggleDailyAlert(this.checked)"> 每天開啟 App 時自動提醒我</label>
+    <label style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--g600);margin-top:10px;"><input type="checkbox" id="alertDailyChk" ${state.settings.dailyAlert===false?'':'checked'} onchange="toggleDailyAlert(this.checked)"> 紅燈（危急）時，開啟 App 自動提醒我</label>
     <div class="row-btn" style="margin-top:12px;">
       <button class="btn bp" onclick="closeHealthAlert();go('report');">查看綜合報告</button>
       <button class="btn bg" onclick="closeHealthAlert()">知道了</button>
@@ -3267,6 +3267,9 @@ function maybeDailyAlert(){
   if(state.settings.dailyAlert===false)return;
   let seen=''; try{seen=localStorage.getItem('ls_alertSeen')||'';}catch(e){}
   if(seen===todayKey())return;
+  // 只有「紅燈（危急）」才主動全螢幕彈出，避免過度打擾；黃燈／綠燈改由總覽的 Co-pilot 卡與燈號被動呈現。
+  let A=[]; try{ A=buildHealthAlerts(); }catch(e){}
+  if(!A.some(x=>x.lvl==='crit'))return;
   showHealthAlert(false);
 }
 
@@ -6400,7 +6403,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.10-copilot';
+const APP_VERSION='2026.08.10-alertcalm';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
