@@ -3037,7 +3037,7 @@ function buildHealthAlerts(){
   const A=[],L=labLatest(),r=state.result,p=state.profile||{},now=Date.now();
   const push=(lvl,icon,title,detail,solution)=>A.push({lvl,icon,title,detail,solution});
   const v=k=>L[k]!=null?parseFloat(L[k].v):null;
-  LAB_ORDER.forEach(k=>{if(L[k]==null)return;if(labFlag(k,L[k].v)==='crit'){const d=labDateStr(L[k]);push('crit','🚨',LAB_META[k].label+' 嚴重異常'+(d?'（'+d+'）':''),`最新 ${L[k].v}${LAB_META[k].unit}${d?'（檢驗日 '+d+'）':''}，已達嚴重範圍。`,'儘速就醫或回診，攜帶此數據給醫師；請勿自行處理。');}});
+  LAB_ORDER.forEach(k=>{if(L[k]==null)return;if(labFlag(k,L[k].v)==='crit'){const d=labDateStr(L[k]);push('crit','🔴',LAB_META[k].label+' 偏離較多'+(d?'（'+d+'）':''),`最新 ${L[k].v}${LAB_META[k].unit}${d?'（檢驗日 '+d+'）':''}，超出參考範圍較多。`,'建議找時間就醫或回診，帶著這筆數據給醫師看。');}});
   const highs=LAB_ORDER.filter(k=>L[k]!=null&&labFlag(k,L[k].v)==='high');
   if(highs.length)push(highs.length>=3?'crit':'warn','⚠️',highs.length+' 項檢驗過高',highs.slice(0,6).map(k=>LAB_META[k].label+' '+L[k].v+(labDateStr(L[k])?'（'+labDateStr(L[k])+'）':'')).join('、')+(highs.length>6?'…':''),'安排回診追蹤；針對偏高項目調整飲食與運動，必要時與醫師討論用藥。');
   const worse=worseningMetrics();
@@ -3062,17 +3062,17 @@ function buildHealthAlerts(){
 /* ===== 分級警報：三級燈號（綠／黃／紅）——沿用既有警報分級，不改偵測邏輯 ===== */
 function alertTier(alerts){
   const A=alerts||buildHealthAlerts();
-  if(A.some(x=>x.lvl==='crit'))return {tier:'red',emoji:'🔴',label:'紅燈 · 高危',color:'#ef4444',bg:'#fef2f2',
-    guide:'請立即停止活動、就近坐下或平躺休息。若為血壓／血糖異常，休息 5 分鐘後再量兩次確認。若出現胸痛、呼吸困難、意識不清、單側無力或劇烈不適，立即撥打 119 或前往急診。'};
-  if(A.some(x=>x.lvl==='warn'))return {tier:'yellow',emoji:'🟡',label:'黃燈 · 潛在風險',color:'#d97706',bg:'#fffbeb',
-    guide:'數據出現需留意的變化。建議調整作息、飲食與運動，規律量測並記錄，安排回診或複查以觀察走向。'};
+  if(A.some(x=>x.lvl==='crit'))return {tier:'red',emoji:'🔴',label:'紅燈 · 建議就醫',color:'#ef4444',bg:'#fef2f2',
+    guide:'有項目較需注意，建議先休息，並找時間就醫或回診確認。若有明顯不適，再考慮就近急診。'};
+  if(A.some(x=>x.lvl==='warn'))return {tier:'yellow',emoji:'🟡',label:'黃燈 · 多留意',color:'#d97706',bg:'#fffbeb',
+    guide:'有些數據可以多留意，調整生活型態、安排複查追蹤即可。'};
   return {tier:'green',emoji:'🟢',label:'綠燈 · 正常',color:'#059669',bg:'#ecfdf5',
-    guide:'目前無明顯警訊。維持規律作息、均衡飲食與運動，並定期追蹤即可。'};
+    guide:'目前無明顯警訊，維持好習慣、定期追蹤就好。'};
 }
-// 紅燈聲光警報：連續嗶聲 ＋ 震動（若裝置支援）
+// 紅燈提示：輕微提示音＋短震動（若裝置支援）——僅作提醒，不做強烈警報
 function siren(){
-  try{ beep(5); }catch(e){}
-  try{ if(navigator.vibrate)navigator.vibrate([250,120,250,120,450]); }catch(e){}
+  try{ beep(1); }catch(e){}
+  try{ if(navigator.vibrate)navigator.vibrate(180); }catch(e){}
 }
 function showHealthAlert(force){
   const A=buildHealthAlerts();
@@ -3086,7 +3086,7 @@ function showHealthAlert(force){
   const body=A.length?A.map(x=>`<div class="rec" style="border-left-color:${col[x.lvl]};background:${x.lvl==='crit'?'#fef2f2':x.lvl==='warn'?'#fffbeb':'#f0f9ff'};"><div class="rec-icon">${x.icon}</div><div class="rec-body"><div class="rec-title">${esc(x.title)}</div><div class="rec-desc">${esc(x.detail)}</div><div class="rec-gain">💡 解決之道：${esc(x.solution)}</div></div></div>`).join('')
     :'<div class="hint" style="color:var(--ok);font-weight:600;padding:8px 0;">✅ 目前沒有偵測到需要注意的健康警訊，繼續保持！</div>';
   const crit=A.some(x=>x.lvl==='crit');
-  const tierBanner=`<div style="display:flex;align-items:center;gap:11px;background:${tier.bg};border:1px solid ${tier.color}59;border-radius:14px;padding:12px 14px;margin:2px 0 10px;${tier.tier==='red'?'animation:sirenFlash 1s ease-in-out infinite;':''}">
+  const tierBanner=`<div style="display:flex;align-items:center;gap:11px;background:${tier.bg};border:1px solid ${tier.color}59;border-radius:14px;padding:12px 14px;margin:2px 0 10px;">
     <div style="font-size:1.7rem;line-height:1;">${tier.emoji}</div>
     <div style="flex:1;min-width:0;"><div style="font-weight:800;color:${tier.color};font-size:1rem;">${tier.label}</div><div class="hint" style="line-height:1.55;margin-top:3px;">${esc(tier.guide)}</div></div></div>`;
   // 註：撥打 119／傳簡訊給緊急聯絡人為「獨立的緊急功能」，改由頁首常駐的 🆘 SOS 按鈕提供，
@@ -3095,7 +3095,7 @@ function showHealthAlert(force){
   const careRow=tier.tier==='yellow'
     ? `<div class="row-btn" style="margin:0 0 10px;"><button class="btn bg" style="flex:1;font-weight:700;" onclick="scheduleRecheck()">🗓️ 排複查提醒</button></div>` : '';
   m.innerHTML=`<div class="modal-box">
-    <div class="ct">${crit?'🚨':'🔔'} 健康警戒 <span class="hint">${new Date().toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})}</span></div>
+    <div class="ct">🔔 健康提醒 <span class="hint">${new Date().toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei'})}</span></div>
     ${tierBanner}${careRow}
     <div class="hint" style="margin:2px 0 10px;">系統每天為你把關；以下為偵測到的重點與建議做法（衛教參考，非醫療診斷；危急請就醫）。</div>
     ${body}
@@ -6381,7 +6381,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.10-no-careshare';
+const APP_VERSION='2026.08.10-calm-tone';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
