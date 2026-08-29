@@ -1812,6 +1812,43 @@ function go(sec){
   if(sec==='daily')renderDailyHub();
   if(curLang()==='en')applyI18n();
 }
+/* ============ Android 手勢返回攔截：避免滑動返回直接關閉 App ============ */
+function lsNonRootState(){
+  if(document.getElementById('navMenu')?.classList.contains('open'))return true;
+  const overlays=document.querySelectorAll('.modal-overlay,[id$="Modal"],#extRehab');
+  for(const el of overlays){ if(el.style&&el.style.display&&el.style.display!=='none')return true; }
+  const dashSec=document.getElementById('sec-dash');
+  if(dashSec&&!dashSec.classList.contains('active'))return true;
+  return false;
+}
+function lsCloseTopOverlay(){
+  if(document.getElementById('navMenu')?.classList.contains('open')){ closeNav(); return true; }
+  const overlays=[...document.querySelectorAll('.modal-overlay,[id$="Modal"],#extRehab')];
+  for(let i=overlays.length-1;i>=0;i--){
+    const el=overlays[i];
+    if(el.style&&el.style.display&&el.style.display!=='none'){
+      if(el.id==='extRehab')el.remove(); else { el.style.display='none'; el.innerHTML=''; }
+      return true;
+    }
+  }
+  return false;
+}
+let _lsBackGuard=false;
+function lsPushBackGuard(){
+  if(_lsBackGuard)return;
+  try{ history.pushState({lsBackGuard:true},'',location.href); _lsBackGuard=true; }catch(e){}
+}
+window.addEventListener('popstate',function(){
+  _lsBackGuard=false;
+  const closed=lsCloseTopOverlay();
+  if(!closed){
+    const dashSec=document.getElementById('sec-dash');
+    if(dashSec&&!dashSec.classList.contains('active'))go('dash');
+  }
+  if(lsNonRootState())lsPushBackGuard();
+});
+new MutationObserver(()=>{ if(lsNonRootState())lsPushBackGuard(); })
+  .observe(document.body,{attributes:true,attributeFilter:['style','class'],subtree:true});
 function toast(msg){
   const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
   clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);
