@@ -511,6 +511,21 @@ body{ background:#eef2f6;
 .cop-item .cop-cta{ flex:0 0 auto; font-size:.78rem; font-weight:800; color:#0d9488; white-space:nowrap; }
 .cop-item.crit .cop-cta{ color:#ef4444; } .cop-item.warn .cop-cta{ color:#d97706; }
 .copilot-card .cop-ok{ font-size:.9rem; font-weight:600; color:#059669; background:#ecfdf5; border-radius:12px; padding:11px 12px; }
+/* 每日健康任務圈 ＋ 進步回顧 */
+.tasks-card{ background:linear-gradient(160deg,#fff7ed 0%,#ffffff 48%); border:1px solid #fde4c8; }
+.tasks-hdr{ display:flex; align-items:center; gap:14px; }
+.task-ring{ width:66px; height:66px; border-radius:50%; flex:0 0 66px; display:flex; align-items:center; justify-content:center; }
+.task-ring-in{ width:52px; height:52px; border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; }
+.tr-num{ font-size:1.15rem; font-weight:800; color:#0f2540; } .tr-num small{ color:#9aa6b4; font-weight:700; font-size:.7rem; }
+.tasks-title{ font-size:1rem; font-weight:800; color:#0f2540; }
+.tasks-sub{ font-size:.82rem; color:#6b7785; margin-top:3px; }
+.progress-strip{ margin-top:11px; background:#ecfdf5; border:1px solid #bbf7d0; border-radius:10px; padding:8px 11px; font-size:.85rem; color:#0f2540; line-height:1.5; }
+.habit-chips{ display:flex; flex-wrap:wrap; gap:7px; margin-top:11px; }
+.habit-chip{ display:inline-flex; align-items:center; gap:5px; border:1px solid #e2e8f0; background:#fff; border-radius:999px; padding:6px 11px; font:inherit; font-size:.8rem; font-weight:600; color:#475569; cursor:pointer; }
+.habit-chip.on{ background:#10b981; border-color:#10b981; color:#fff; }
+.habit-chip .hc-ck{ font-weight:900; }
+.badge-row{ display:flex; flex-wrap:wrap; gap:7px; margin-top:11px; }
+.badge-chip{ display:inline-flex; align-items:center; gap:3px; background:#fef3c7; color:#92400e; border-radius:999px; padding:4px 10px; font-size:.74rem; font-weight:800; }
 </style>
 </head>
 <body>
@@ -558,6 +573,7 @@ body{ background:#eef2f6;
   </div>
   <div id="dashAdvisor"></div>
   <div id="dashCopilot"></div>
+  <div id="dashTasks"></div>
   <div id="dashMetrics"></div>
   <div id="dashRemindDue"></div>
   <div id="dashReminders"></div>
@@ -2216,6 +2232,7 @@ function renderDash(){
   maybeShowInstallBanner(); // 📲 安裝單機版橫幅（未安裝且未關閉時顯示）
   renderDashAdvisor(); // 健康顧問精簡入口
   renderCopilot();     // 每日健康 Co-pilot：把當日重點收斂成一張優先排序行動卡
+  renderDashTasks();   // 每日健康任務圈＋進步回顧（打卡→連續→成就，形成回訪循環）
   renderDashMetrics(); // 心率／步數／熱量／睡眠 量測環（真實資料）
   renderRemindDue();   // 今日／逾期的個人提醒（用藥、回診、復健、檢驗追蹤）
   renderReminders();   // 主動提醒／紅旗待辦（即使沒完成評估、只要有檢驗也顯示）
@@ -2498,6 +2515,58 @@ function renderCopilot(){
       <span class="tier-pill" role="button" tabindex="0" title="查看${tier.label}項目" style="background:${tier.bg};color:${tier.color};cursor:pointer;" onclick="event.stopPropagation();showHealthAlert(true);">${tier.emoji} ${tier.label} ›</span></div>
     ${changeNote}
     <div class="cop-list">${list}</div>
+  </div>`;
+}
+/* ===== 每日健康任務圈 ＋ 進步回顧（整合現有 habits／history／goals，形成每日回訪循環）===== */
+function taskToday(){ const tk=todayKey(); const d=(state.habits&&state.habits[tk])||{}; const done=HABITS.filter(h=>d[h.id]).length; return {done,total:HABITS.length}; }
+// 連續「至少完成一項任務」的天數
+function dailyTaskStreak(){ let s=0; for(let i=0;i<400;i++){ const k=new Date(Date.now()-i*86400000).toISOString().slice(0,10); const day=state.habits&&state.habits[k]; const any=day&&HABITS.some(h=>day[h.id]); if(any)s++; else if(i===0)continue; else break; } return s; }
+// 最近兩次評估的健康分／生理齡變化
+function scoreProgress(){ const h=(state.history||[]).filter(x=>x.score!=null).slice(-2); if(h.length<2)return null; const a=h[0],b=h[1];
+  return {scoreFrom:a.score,scoreTo:b.score,scoreDelta:b.score-a.score, bioDelta:(a.bio!=null&&b.bio!=null)?Math.round((b.bio-a.bio)*10)/10:null}; }
+function goalsMet(){ const goals=state.goals||{}; let met=0,total=0; Object.keys(goals).filter(k=>goals[k]!=null).forEach(k=>{const g=GOAL_DEFS.find(x=>x.k===k); if(!g)return; const c=goalCurrent(k); if(c==null)return; total++; if(g.dir==='below'?c<=goals[k]:c>=goals[k])met++;}); return {met,total}; }
+function earnedBadges(){
+  const B=[]; const ts=dailyTaskStreak();
+  [30,14,7,3].some(n=>{ if(ts>=n){B.push({icon:'🔥',label:'打卡連續 '+ts+' 天'});return true;} return false; });
+  const tt=taskToday(); if(tt.total&&tt.done>=tt.total)B.push({icon:'🌟',label:'今日全達成'});
+  try{ const wk=walkStats(); if(wk&&wk.streak>=3)B.push({icon:'👟',label:'走路連續 '+wk.streak+' 天'}); }catch(e){}
+  const sp=scoreProgress(); if(sp&&sp.scoreDelta>0)B.push({icon:'📈',label:'健康分 +'+sp.scoreDelta});
+  const gm=goalsMet(); if(gm.met>0)B.push({icon:'🎯',label:'達標 '+gm.met+'/'+gm.total});
+  return B;
+}
+function toggleDashHabit(id){
+  const tk=todayKey(); if(!state.habits)state.habits={}; if(!state.habits[tk])state.habits[tk]={};
+  const was=!!state.habits[tk][id]; state.habits[tk][id]=!was;
+  save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  const tt=taskToday(); if(!was&&tt.total&&tt.done===tt.total){ try{toast('🎉 今日任務全部完成，太棒了！');}catch(e){} }
+  renderDashTasks(); try{ if(document.getElementById('habitList'))renderHabits(); }catch(e){}
+}
+function renderDashTasks(){
+  const el=document.getElementById('dashTasks'); if(!el)return;
+  const hasData=(state.labs&&state.labs.length)||state.result||(state.reminders&&state.reminders.length)||(state.meds&&state.meds.length)||(state.habits&&Object.keys(state.habits).length);
+  if(!hasData){ el.innerHTML=''; return; }
+  const tt=taskToday(), pct=tt.total?Math.round(tt.done/tt.total*100):0, streak=dailyTaskStreak();
+  const tk=todayKey(), today=(state.habits&&state.habits[tk])||{};
+  const chips=HABITS.map(h=>{const on=!!today[h.id];return `<button class="habit-chip${on?' on':''}" onclick="toggleDashHabit('${h.id}')"><span class="hc-ic">${h.icon}</span><span class="hc-nm">${esc(h.name)}</span>${on?'<span class="hc-ck">✓</span>':''}</button>`;}).join('');
+  const badges=earnedBadges();
+  const badgeRow=badges.length
+    ? `<div class="badge-row">${badges.slice(0,4).map(b=>`<span class="badge-chip">${b.icon} ${esc(b.label)}</span>`).join('')}</div>`
+    : `<div class="hint" style="margin-top:9px;">完成今日任務即可獲得徽章 🏅</div>`;
+  const sp=scoreProgress(); let prog='';
+  if(sp){ const parts=[];
+    if(sp.scoreDelta!==0)parts.push(`健康分 ${sp.scoreFrom}→${sp.scoreTo} <b style="color:${sp.scoreDelta>0?'#059669':'#d97706'};">${sp.scoreDelta>0?'▲':'▼'}${Math.abs(sp.scoreDelta)}</b>`);
+    if(sp.bioDelta!=null&&sp.bioDelta!==0)parts.push(`生理齡${sp.bioDelta<0?'年輕':'增加'} ${Math.abs(sp.bioDelta)} 歲`);
+    if(parts.length)prog=`<div class="progress-strip">${sp.scoreDelta>0?'🎉 ':'📊 '}${parts.join('　·　')}</div>`;
+  }
+  el.innerHTML=`<div class="card tasks-card">
+    <div class="tasks-hdr">
+      <div class="task-ring" style="background:conic-gradient(#10b981 ${pct}%, #e8eef0 ${pct}% 100%);"><div class="task-ring-in"><span class="tr-num">${tt.done}<small>/${tt.total}</small></span></div></div>
+      <div class="tasks-meta"><div class="tasks-title">🎯 今日健康任務</div>
+        <div class="tasks-sub">${streak>0?`🔥 連續打卡 <b>${streak}</b> 天，別中斷！`:'完成任一項，開始你的連續紀錄'}</div></div>
+    </div>
+    ${prog}
+    <div class="habit-chips">${chips}</div>
+    ${badgeRow}
   </div>`;
 }
 function renderReminders(){
@@ -3981,7 +4050,7 @@ async function askAI(){
   btn.disabled=false;btn.textContent='✨ 產生 AI 健康建議';
 }
 async function callGemini(key,prompt){
-  const url=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+  const url=`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${key}`;
   const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{temperature:0.4,maxOutputTokens:1600}})});
   if(!res.ok)throw new Error('HTTP '+res.status);
@@ -6426,7 +6495,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.08.10-red-urgent';
+const APP_VERSION='2026.09.19-engage';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -7398,7 +7467,7 @@ function delFootAssess(idx){ if(!confirm('刪除這筆外觀評估紀錄？'))re
 async function callGeminiVision(key,images,prompt){
   const parts=[{text:prompt}];
   images.forEach(u=>{const m=u.match(/^data:(.*?);base64,(.*)$/);parts.push({inline_data:{mime_type:m?m[1]:'image/jpeg',data:m?m[2]:''}});});
-  const url=`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
+  const url=`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${key}`;
   const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({contents:[{parts}],generationConfig:{temperature:0,responseMimeType:'application/json'}})});
   if(!res.ok)throw new Error('HTTP '+res.status+'（請確認 Gemini 金鑰與額度）');
