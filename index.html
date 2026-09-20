@@ -514,6 +514,8 @@ body{ background:#eef2f6;
 /* 每日健康任務圈 ＋ 進步回顧 */
 .tasks-card{ background:linear-gradient(160deg,#fff7ed 0%,#ffffff 48%); border:1px solid #fde4c8; }
 .tasks-hdr{ display:flex; align-items:center; gap:14px; }
+.walk-ring-row{ display:flex; align-items:center; gap:14px; margin-top:12px; padding-top:12px; border-top:1px solid #f0e6d6; cursor:pointer; }
+.walk-ring .task-ring-in{ background:#fff; }
 .task-ring{ width:66px; height:66px; border-radius:50%; flex:0 0 66px; display:flex; align-items:center; justify-content:center; }
 .task-ring-in{ width:52px; height:52px; border-radius:50%; background:#fff; display:flex; align-items:center; justify-content:center; }
 .tr-num{ font-size:1.15rem; font-weight:800; color:#0f2540; } .tr-num small{ color:#9aa6b4; font-weight:700; font-size:.7rem; }
@@ -1547,6 +1549,7 @@ service cloud.firestore {
     <div class="ct">🔔 健康警戒系統</div>
     <div class="hint" style="margin-bottom:10px;">系統會綜合檢驗、用藥、風險與趨勢自動把關；偵測到危急值、控制未達標、多重用藥或惡化趨勢時，以彈出視窗提醒你並附上「解決之道」。</div>
     <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;"><input type="checkbox" id="set-dailyalert" checked onchange="toggleDailyAlert(this.checked)"> 紅燈（危急）時，開啟 App 自動全螢幕提醒（每天最多一次；黃／綠燈只在總覽卡片被動顯示，不打擾）</label>
+    <label style="display:flex;align-items:flex-start;gap:8px;font-size:.85rem;margin-top:10px;"><input type="checkbox" id="set-falldetect" onchange="toggleFallDetect(this.checked)" style="margin-top:2px;"> <span>🤸 跌倒偵測（實驗性）：App 開啟時，若偵測到疑似重摔＋靜止不動，會倒數並跳出緊急求救。<b>僅在 App 開著時有效</b>，且可能誤判，請斟酌使用。</span></label>
     <div class="row-btn" style="margin-top:12px;"><button class="btn bp" onclick="showHealthAlert(true)">🔔 立即執行健康檢查</button></div>
   </div>
   <div class="card">
@@ -2504,8 +2507,14 @@ function copilotItems(){
     VIT.forEach(a=>{ const x=L[a[0]]; const dd=x&&x.t?Math.floor((now-x.t)/864e5):null; if(dd!=null&&dd>=a[2])gaps.push(a[1]+'（'+dd+' 天）'); });
     if(gaps.length)items.push({lvl:'info',icon:'🩸',text:'該量了：'+gaps.join('、')+'久未記錄',fn:"go('labs')",cta:'去記錄'});
   }catch(e){}
+  // 5) 篩檢時程管家：依年齡/性別的國健署篩檢，逾期或該做未做時提醒（沿用 careScreenings）
+  try{ if(typeof careScreenings==='function'){ const sc=careScreenings();
+    const alert=sc.filter(x=>x.flag==='alert'); const due=sc.filter(x=>x.flag!=='done'&&x.flag!=='alert');
+    if(alert.length)items.push({lvl:'warn',icon:'🎗️',text:'篩檢異常待追蹤：'+alert[0].label,fn:"go('advisor')",cta:'看說明'});
+    else if(due.length)items.push({lvl:'info',icon:'🎗️',text:'建議篩檢 '+due.length+' 項：'+due.slice(0,2).map(x=>x.label.replace(/（.*?）/g,'')).join('、')+(due.length>2?'…':''),fn:"go('advisor')",cta:'看時程'});
+  } }catch(e){}
   items.sort((a,b)=>rank[a.lvl]-rank[b.lvl]);
-  return items.slice(0,4);
+  return items.slice(0,5);
 }
 function renderCopilot(){
   const el=document.getElementById('dashCopilot'); if(!el)return;
@@ -2572,16 +2581,46 @@ function renderDashTasks(){
     if(sp.bioDelta!=null&&sp.bioDelta!==0)parts.push(`生理齡${sp.bioDelta<0?'年輕':'增加'} ${Math.abs(sp.bioDelta)} 歲`);
     if(parts.length)prog=`<div class="progress-strip">${sp.scoreDelta>0?'🎉 ':'📊 '}${parts.join('　·　')}</div>`;
   }
+  // 走路週目標環（有走路資料時顯示；點一下可調整每週目標步數）
+  let walkRing='';
+  try{ const wk=walkStats(); if(wk&&wk.total>0){ const goal=(state.settings&&state.settings.walkGoal)||35000; const steps=Math.round(wk.week.steps||0);
+    const wpct=Math.min(100,Math.round(steps/goal*100)); const left=Math.max(0,goal-steps);
+    walkRing=`<div class="walk-ring-row" onclick="setWalkGoal()">
+      <div class="task-ring walk-ring" style="background:conic-gradient(#2563eb ${wpct}%, #e8eef0 ${wpct}% 100%);"><div class="task-ring-in"><span class="tr-num" style="font-size:.9rem;">${wpct}<small>%</small></span></div></div>
+      <div class="tasks-meta"><div class="tasks-title" style="font-size:.92rem;">👟 本週走路目標</div>
+        <div class="tasks-sub">${steps.toLocaleString()} / ${goal.toLocaleString()} 步${left>0?`　·　還差 ${left.toLocaleString()} 步`:'　·　已達標 🎉'}</div></div></div>`;
+  } }catch(e){}
   el.innerHTML=`<div class="card tasks-card">
     <div class="tasks-hdr">
       <div class="task-ring" style="background:conic-gradient(#10b981 ${pct}%, #e8eef0 ${pct}% 100%);"><div class="task-ring-in"><span class="tr-num">${tt.done}<small>/${tt.total}</small></span></div></div>
       <div class="tasks-meta"><div class="tasks-title">🎯 今日健康任務</div>
         <div class="tasks-sub">${streak>0?`🔥 連續打卡 <b>${streak}</b> 天，別中斷！`:'完成任一項，開始你的連續紀錄'}</div></div>
+      <button class="tip-btn" style="align-self:flex-start;" onclick="shareAchievement()">📤 分享</button>
     </div>
     ${prog}
     <div class="habit-chips">${chips}</div>
+    ${walkRing}
     ${badgeRow}
   </div>`;
+}
+// 調整每週走路目標步數
+function setWalkGoal(){
+  const cur=(state.settings&&state.settings.walkGoal)||35000;
+  const v=prompt('設定每週走路目標步數（例如 35000＝每天約 5000 步）：', cur); if(v===null)return;
+  const n=parseInt(String(v).replace(/[^\d]/g,''),10); if(!n||n<1000){toast('請輸入有效步數（至少 1000）');return;}
+  state.settings.walkGoal=n; save(); if(state.settings.autosync&&fbUser)fbSyncNow().catch(()=>{});
+  renderDashTasks(); toast('✅ 每週目標已設為 '+n.toLocaleString()+' 步');
+}
+// 分享正向成就到 LINE／其他 App（僅分享連續天數、徽章等，不含任何健康數據）
+function shareAchievement(){
+  const streak=dailyTaskStreak(); const badges=earnedBadges();
+  const bits=[];
+  if(streak>0)bits.push('連續健康打卡 '+streak+' 天 🔥');
+  badges.slice(0,3).forEach(b=>{ if(!/健康分|達標/.test(b.label))bits.push(b.icon+' '+b.label); });
+  try{ const wk=walkStats(); if(wk&&wk.week&&wk.week.steps)bits.push('本週走了 '+Math.round(wk.week.steps).toLocaleString()+' 步 👟'); }catch(e){}
+  const msg='我正在用健康 App 照顧自己：'+(bits.length?bits.join('、'):'今天也完成了健康任務')+'！一起加油 💪';
+  if(navigator.share){ navigator.share({title:'我的健康成就',text:msg}).catch(()=>{}); }
+  else{ try{ window.open('https://line.me/R/msg/text/?'+encodeURIComponent(msg),'_blank'); }catch(e){ if(navigator.clipboard)navigator.clipboard.writeText(msg).then(()=>toast('✅ 已複製，可貼到 LINE')); } }
 }
 /* ===== 每日個人化小知識 ＋ 語音朗讀 ＋ 每週回顧 ===== */
 const TIPS_GENERAL=[
@@ -3477,6 +3516,58 @@ function scheduleRecheck(){
   try{ if(typeof renderRemind==='function')renderRemind(); if(typeof renderRemindDue==='function')renderRemindDue(); }catch(e){}
 }
 function toggleDailyAlert(on){state.settings.dailyAlert=!!on;save();const s=document.getElementById('set-dailyalert');if(s)s.checked=!!on;}
+/* ===== 跌倒偵測（實驗性；DeviceMotion，僅 App 開啟時有效）===== */
+let _fallState={active:false,handler:null,lastImpact:0,armed:false};
+function toggleFallDetect(on){
+  state.settings.fallDetect=!!on; save();
+  const s=document.getElementById('set-falldetect'); if(s)s.checked=!!on;
+  if(on)startFallDetect(true); else stopFallDetect();
+}
+function startFallDetect(fromToggle){
+  if(_fallState.active)return;
+  const begin=()=>{
+    _fallState.handler=onDeviceMotionFall; window.addEventListener('devicemotion',_fallState.handler); _fallState.active=true;
+    if(fromToggle)toast('🤸 跌倒偵測已開啟（僅 App 開著時有效）');
+  };
+  // iOS 13+ 需要使用者手勢授權
+  try{
+    if(typeof DeviceMotionEvent!=='undefined' && typeof DeviceMotionEvent.requestPermission==='function'){
+      DeviceMotionEvent.requestPermission().then(p=>{ if(p==='granted')begin(); else{ toast('未取得動作感測權限，無法啟用跌倒偵測'); state.settings.fallDetect=false; save(); const s=document.getElementById('set-falldetect'); if(s)s.checked=false; } }).catch(()=>{ toast('無法啟用動作感測'); });
+    } else if(typeof DeviceMotionEvent!=='undefined'){ begin(); }
+    else { if(fromToggle)toast('此裝置不支援動作感測'); state.settings.fallDetect=false; save(); }
+  }catch(e){ if(fromToggle)toast('無法啟用跌倒偵測'); }
+}
+function stopFallDetect(){ if(_fallState.handler){ window.removeEventListener('devicemotion',_fallState.handler); _fallState.handler=null; } _fallState.active=false; }
+function onDeviceMotionFall(ev){
+  const a=ev.accelerationIncludingGravity||ev.acceleration; if(!a)return;
+  const mag=Math.sqrt((a.x||0)**2+(a.y||0)**2+(a.z||0)**2);
+  const now=Date.now();
+  // 重摔：瞬間加速度尖峰（約 > 30 m/s²，含重力）；避免與上次事件太近
+  if(mag>30 && now-_fallState.lastImpact>4000){
+    _fallState.lastImpact=now; _fallState.armed=true; _fallState.impactMag=Math.round(mag);
+    // 撞擊後短暫觀察是否「靜止不動」：0.8 秒後檢查近乎靜止則觸發
+    setTimeout(()=>{ if(_fallState.armed) fallCountdown(); }, 1200);
+  }
+}
+// 撞擊後若使用者持續有大動作（例如只是手機掉落被撿起），可由此解除
+function fallCountdown(){
+  _fallState.armed=false;
+  if(document.getElementById('fallModal'))return;
+  let sec=15;
+  const m=document.createElement('div'); m.id='fallModal'; m.className='modal-overlay'; document.body.appendChild(m);
+  const draw=()=>{ m.innerHTML=`<div class="modal-box" style="text-align:center;">
+    <div class="ct" style="color:#ef4444;justify-content:center;">🤸 偵測到疑似跌倒</div>
+    <div class="hint" style="margin:6px 0 12px;line-height:1.6;">若你沒事，請按「我沒事」。<br><b style="font-size:1.6rem;color:#ef4444;">${sec}</b> 秒後將自動開啟緊急求救。</div>
+    <div class="row-btn"><button class="btn bp" style="flex:1;" onclick="cancelFall()">✅ 我沒事</button></div>
+    <div class="row-btn" style="margin-top:8px;"><button class="btn" style="flex:1;background:#ef4444;color:#fff;font-weight:800;" onclick="cancelFall();openEmergency();">🆘 立即求救</button></div>
+  </div>`; };
+  draw();
+  try{ if(navigator.vibrate)navigator.vibrate([300,150,300]); }catch(e){}
+  try{ beep(2); }catch(e){}
+  _fallState.timer=setInterval(()=>{ sec--; if(sec<=0){ cancelFall(); openEmergency(); } else draw(); },1000);
+  m.style.display='flex';
+}
+function cancelFall(){ if(_fallState.timer){clearInterval(_fallState.timer);_fallState.timer=null;} const m=document.getElementById('fallModal'); if(m)m.remove(); _fallState.armed=false; }
 function toggleAutoBackup(on){
   state.settings.autoBackup=!!on; save();
   if(on){
@@ -6626,7 +6717,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.09.20-recap-tip-voice';
+const APP_VERSION='2026.09.20-screen-walk-share-fall';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -6746,6 +6837,7 @@ function init(){
   refreshAiBadge();refreshCloudBadge();
   const bt=document.getElementById('buildTag');if(bt)bt.textContent=APP_VERSION;
   const da=document.getElementById('set-dailyalert');if(da)da.checked=state.settings.dailyAlert!==false;
+  const fd=document.getElementById('set-falldetect');if(fd)fd.checked=!!(state.settings&&state.settings.fallDetect);
   const ab=document.getElementById('set-autobackup');if(ab)ab.checked=!!(state.settings&&state.settings.autoBackup);
   setupCloudGate();
   setupPWA();
@@ -6764,6 +6856,7 @@ function init(){
   else setTimeout(maybeDailyAlert,600);
   setTimeout(checkDueNotifications,1200);
   setInterval(checkDueNotifications,60000);
+  try{ if(state.settings&&state.settings.fallDetect)startFallDetect(false); }catch(e){}
 }
 /* ============ PWA：安裝與離線快取 ============ */
 let deferredInstallPrompt=null;
