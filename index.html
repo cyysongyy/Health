@@ -526,6 +526,18 @@ body{ background:#eef2f6;
 .habit-chip .hc-ck{ font-weight:900; }
 .badge-row{ display:flex; flex-wrap:wrap; gap:7px; margin-top:11px; }
 .badge-chip{ display:inline-flex; align-items:center; gap:3px; background:#fef3c7; color:#92400e; border-radius:999px; padding:4px 10px; font-size:.74rem; font-weight:800; }
+/* 每日小知識卡 ＋ 本週回顧 */
+.tip-card{ background:linear-gradient(160deg,#eef6ff 0%,#ffffff 52%); border:1px solid #cfe4fb; }
+.tip-hdr{ display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+.tip-title{ font-size:.98rem; font-weight:800; color:#0f2540; }
+.tip-tag{ font-size:.66rem; font-weight:800; color:#2563eb; background:#dbeafe; border-radius:999px; padding:2px 8px; margin-left:4px; }
+.tip-acts{ display:inline-flex; gap:6px; }
+.tip-btn{ border:1px solid #cfe0f5; background:#fff; color:#1d4ed8; border-radius:999px; padding:5px 10px; font:inherit; font-size:.74rem; font-weight:800; cursor:pointer; white-space:nowrap; }
+.tip-body{ margin-top:9px; font-size:.9rem; line-height:1.6; color:#1f2d3d; }
+.recap-list{ display:flex; flex-direction:column; gap:9px; }
+.recap-row{ display:flex; align-items:flex-start; gap:10px; }
+.recap-row .recap-ic{ font-size:1.2rem; line-height:1.3; flex:0 0 auto; }
+.recap-row b{ font-size:.9rem; color:#0f2540; }
 </style>
 </head>
 <body>
@@ -574,6 +586,7 @@ body{ background:#eef2f6;
   <div id="dashAdvisor"></div>
   <div id="dashCopilot"></div>
   <div id="dashTasks"></div>
+  <div id="dashTip"></div>
   <div id="dashMetrics"></div>
   <div id="dashRemindDue"></div>
   <div id="dashReminders"></div>
@@ -2233,6 +2246,7 @@ function renderDash(){
   renderDashAdvisor(); // 健康顧問精簡入口
   renderCopilot();     // 每日健康 Co-pilot：把當日重點收斂成一張優先排序行動卡
   renderDashTasks();   // 每日健康任務圈＋進步回顧（打卡→連續→成就，形成回訪循環）
+  renderDashTip();     // 每日個人化小知識＋語音朗讀＋本週回顧入口
   renderDashMetrics(); // 心率／步數／熱量／睡眠 量測環（真實資料）
   renderRemindDue();   // 今日／逾期的個人提醒（用藥、回診、復健、檢驗追蹤）
   renderReminders();   // 主動提醒／紅旗待辦（即使沒完成評估、只要有檢驗也顯示）
@@ -2569,6 +2583,123 @@ function renderDashTasks(){
     ${badgeRow}
   </div>`;
 }
+/* ===== 每日個人化小知識 ＋ 語音朗讀 ＋ 每週回顧 ===== */
+const TIPS_GENERAL=[
+  '每天固定量血壓並記錄，比偶爾量一次更能看出趨勢。',
+  '飯後散步 10–15 分鐘，有助血糖與消化。',
+  '每天喝足 6–8 杯水，別等到口渴才喝。',
+  '睡前 1 小時遠離手機螢幕，較容易入睡。',
+  '每坐 1 小時就起身動一動，幫助血液循環。',
+  '深呼吸 5 分鐘，可幫助放鬆、緩解壓力。',
+  '多選原型食物、少加工，對血糖與血脂都好。',
+  '鹽分少一點，血壓會跟著感謝你。'
+];
+const TIPS_BP=[
+  '得舒飲食（多蔬果、低鈉、全穀）有助於降血壓。',
+  '量血壓前先靜坐 5 分鐘、雙腳平放，數字才準確。',
+  '注意醬料與加工食品的隱藏鹽，每日鈉建議低於 2000mg。'
+];
+const TIPS_DM=[
+  '進食順序先菜、再肉、最後飯，飯後血糖較平穩。',
+  '規律運動能提升胰島素敏感性，飯後散步最方便。',
+  '糖化血色素（HbA1c）反映近 3 個月血糖，記得定期追蹤。'
+];
+const TIPS_LIPID=[
+  '用好油（橄欖油、堅果）取代動物性飽和脂肪。',
+  '燕麥、豆類的水溶性纖維有助降低壞膽固醇。',
+  '規律有氧運動能幫助提高好膽固醇 HDL。'
+];
+function dailyTip(){
+  const cls=(typeof medClasses==='function')?medClasses(200):{};
+  const L=(typeof labLatest==='function')?labLatest():{};
+  const dxTxt=(state.dx||[]).map(d=>d.name||'').join(' ');
+  const flagged=(k)=>L[k]!=null&&typeof labFlag==='function'&&labFlag(k,L[k].v)!=='ok';
+  const hasBP=cls.bp||/高血壓|hypertension/i.test(dxTxt)||flagged('sbp')||flagged('dbp');
+  const hasDM=cls.dm||/糖尿病|diabet/i.test(dxTxt)||flagged('hba1c')||flagged('glucose');
+  const hasLipid=cls.statin||/血脂|膽固醇|高脂/i.test(dxTxt)||flagged('ldl')||flagged('tg')||flagged('chol');
+  let pool=[];
+  if(hasBP)pool=pool.concat(TIPS_BP.map(t=>({t,c:'血壓'})));
+  if(hasDM)pool=pool.concat(TIPS_DM.map(t=>({t,c:'血糖'})));
+  if(hasLipid)pool=pool.concat(TIPS_LIPID.map(t=>({t,c:'血脂'})));
+  pool=pool.concat(TIPS_GENERAL.map(t=>({t,c:'保健'})));
+  const doy=Math.floor((Date.now()-new Date(new Date().getFullYear(),0,0))/864e5);
+  return pool[doy%pool.length];
+}
+// 語音朗讀（Web Speech，內建免費；zh-TW）
+function speakText(txt){
+  try{ const ss=window.speechSynthesis; if(!ss){toast('此裝置不支援語音朗讀');return;}
+    ss.cancel(); const u=new SpeechSynthesisUtterance(txt); u.lang='zh-TW'; u.rate=0.95; u.pitch=1; ss.speak(u);
+  }catch(e){ toast('語音朗讀失敗'); }
+}
+function speakDailyBrief(){
+  const h=new Date().getHours(), hi=h<11?'早安':h<18?'午安':'晚安';
+  const tier=(typeof alertTier==='function')?alertTier():null;
+  const parts=[hi+'，這是你今天的健康重點。'];
+  if(tier)parts.push('目前分級：'+String(tier.label).replace(/·/g,'，')+'。');
+  try{ (copilotItems()||[]).slice(0,3).forEach(x=>parts.push(String(x.text).replace(/\s+/g,'')+'。')); }catch(e){}
+  const tip=dailyTip(); if(tip)parts.push('今日小提醒：'+tip.t);
+  speakText(parts.join(''));
+}
+function renderDashTip(){
+  const el=document.getElementById('dashTip'); if(!el)return;
+  const hasData=(state.labs&&state.labs.length)||state.result||(state.meds&&state.meds.length)||(state.dx&&state.dx.length);
+  if(!hasData){ el.innerHTML=''; return; }
+  const tip=dailyTip();
+  el.innerHTML=`<div class="card tip-card">
+    <div class="tip-hdr"><span class="tip-title">💡 今日小知識 ${tip?`<span class="tip-tag">${esc(tip.c)}</span>`:''}</span>
+      <div class="tip-acts">
+        <button class="tip-btn" onclick="speakDailyBrief()" title="唸出今天的重點">🔊 唸給我聽</button>
+        <button class="tip-btn" onclick="weeklyRecap()" title="查看本週回顧">📅 本週回顧</button>
+      </div></div>
+    <div class="tip-body">${tip?esc(tip.t):''}</div>
+  </div>`;
+}
+// 每週回顧（沿用既有 habits／走路／趨勢／評估資料）
+function weeklyStats(){
+  let daysActive=0, taskDone=0, taskTotal=0;
+  for(let i=0;i<7;i++){ const k=new Date(Date.now()-i*86400000).toISOString().slice(0,10); const day=state.habits&&state.habits[k]; const done=day?HABITS.filter(h=>day[h.id]).length:0; if(done>0)daysActive++; taskDone+=done; taskTotal+=HABITS.length; }
+  const walk=(typeof walkStats==='function')?(function(){try{return walkStats();}catch(e){return null;}})():null;
+  const worse=(typeof worseningMetrics==='function')?(function(){try{return worseningMetrics();}catch(e){return [];}})():[];
+  const sp=(typeof scoreProgress==='function')?scoreProgress():null;
+  return {daysActive, rate:taskTotal?Math.round(taskDone/taskTotal*100):0, walk, worse, sp};
+}
+function weeklyRecap(){
+  let m=document.getElementById('alertModal');
+  if(!m){m=document.createElement('div');m.id='alertModal';m.className='modal-overlay';document.body.appendChild(m);}
+  const s=weeklyStats();
+  const d1=new Date(Date.now()-6*86400000), d2=new Date();
+  const fmt=d=>d.toLocaleDateString('zh-TW',{calendar:'gregory',timeZone:'Asia/Taipei',month:'numeric',day:'numeric'});
+  const rows=[];
+  rows.push(`<div class="recap-row"><span class="recap-ic">✅</span><div><b>任務打卡</b><div class="hint">本週 ${s.daysActive}/7 天有完成，平均完成率 ${s.rate}%</div></div></div>`);
+  if(s.walk&&s.walk.week&&(s.walk.week.steps||s.walk.week.km))
+    rows.push(`<div class="recap-row"><span class="recap-ic">👟</span><div><b>走路訓練</b><div class="hint">本週 ${s.walk.week.steps?s.walk.week.steps.toLocaleString()+' 步・':''}${(s.walk.week.km||0).toFixed(1)} 公里・${s.walk.week.sessions||0} 次；連續 ${s.walk.streak||0} 天</div></div></div>`);
+  if(s.sp&&s.sp.scoreDelta!==0)
+    rows.push(`<div class="recap-row"><span class="recap-ic">${s.sp.scoreDelta>0?'🎉':'📊'}</span><div><b>健康分變化</b><div class="hint">${s.sp.scoreFrom}→${s.sp.scoreTo}（${s.sp.scoreDelta>0?'進步 '+s.sp.scoreDelta:'下降 '+Math.abs(s.sp.scoreDelta)} 分）</div></div></div>`);
+  if(s.worse&&s.worse.length)
+    rows.push(`<div class="recap-row"><span class="recap-ic">📈</span><div><b>需留意的趨勢</b><div class="hint">${s.worse.slice(0,3).map(k=>LAB_META[k]?LAB_META[k].label:k).join('、')} 較先前變差，可安排追蹤</div></div></div>`);
+  // 下週一個重點
+  let focus='維持每日打卡，讓連續紀錄延續下去。';
+  if(s.worse&&s.worse.length)focus='安排一次回診或複檢，追蹤上面變差的項目。';
+  else if(s.rate<60)focus='下週試著把每日任務完成率再往上提一點。';
+  else if(s.walk&&s.walk.week&&!s.walk.week.steps)focus='下週加入走路訓練，累積步數對心血管很有幫助。';
+  rows.push(`<div class="recap-row" style="background:#eff6ff;border-radius:10px;padding:9px 11px;"><span class="recap-ic">🎯</span><div><b>下週重點</b><div class="hint">${esc(focus)}</div></div></div>`);
+  m.innerHTML=`<div class="modal-box">
+    <div class="ct">📅 本週回顧 <span class="hint">${fmt(d1)}–${fmt(d2)}</span></div>
+    <div class="hint" style="margin:2px 0 10px;">給你一週的小結，看看累積了哪些好習慣 👏</div>
+    <div class="recap-list">${rows.join('')}</div>
+    <div class="row-btn" style="margin-top:12px;"><button class="btn bp" onclick="speakWeeklyRecap()">🔊 唸給我聽</button><button class="btn bg" onclick="closeHealthAlert()">關閉</button></div>
+  </div>`;
+  m.style.display='flex';
+  try{ localStorage.setItem('ls_recapSeen',isoWeekKey()); }catch(e){}
+}
+function speakWeeklyRecap(){
+  const s=weeklyStats(); const parts=['這是你的本週回顧。','任務打卡，本週有 '+s.daysActive+' 天完成，平均完成率 '+s.rate+' 趴。'];
+  if(s.walk&&s.walk.week&&s.walk.week.steps)parts.push('走路，本週累積 '+s.walk.week.steps+' 步。');
+  if(s.sp&&s.sp.scoreDelta>0)parts.push('健康分進步了 '+s.sp.scoreDelta+' 分，很棒！');
+  parts.push('繼續保持喔。');
+  speakText(parts.join(''));
+}
+function isoWeekKey(d){ d=d?new Date(d):new Date(); const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); const day=(t.getUTCDay()+6)%7; t.setUTCDate(t.getUTCDate()-day+3); const week1=new Date(Date.UTC(t.getUTCFullYear(),0,4)); const wn=1+Math.round(((t-week1)/864e5-3+((week1.getUTCDay()+6)%7))/7); return t.getUTCFullYear()+'-W'+String(wn).padStart(2,'0'); }
 function renderReminders(){
   const el=document.getElementById('dashReminders'); if(!el)return;
   const rem=buildReminders();
@@ -6495,7 +6626,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.09.19-engage';
+const APP_VERSION='2026.09.20-recap-tip-voice';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
