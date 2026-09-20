@@ -540,6 +540,12 @@ body{ background:#eef2f6;
 .recap-row{ display:flex; align-items:flex-start; gap:10px; }
 .recap-row .recap-ic{ font-size:1.2rem; line-height:1.3; flex:0 0 auto; }
 .recap-row b{ font-size:.9rem; color:#0f2540; }
+/* 語音朗讀浮動按鈕 */
+.voice-fab{ position:fixed; right:14px; bottom:calc(72px + env(safe-area-inset-bottom,0px)); z-index:360;
+  width:52px; height:52px; border-radius:50%; border:none; cursor:pointer; font-size:1.5rem;
+  background:linear-gradient(135deg,#2563eb,#1d4ed8); color:#fff; box-shadow:0 6px 18px rgba(37,99,235,.45); }
+.voice-fab.speaking{ background:linear-gradient(135deg,#ef4444,#dc2626); animation:voicePulse 1s ease-in-out infinite; }
+@keyframes voicePulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(239,68,68,.5); } 50%{ box-shadow:0 0 0 10px rgba(239,68,68,0); } }
 </style>
 </head>
 <body>
@@ -1544,6 +1550,17 @@ service cloud.firestore {
         </ol>
       </div>
     </details>
+  </div>
+  <div class="card">
+    <div class="ct">🔊 語音朗讀</div>
+    <div class="hint" style="margin-bottom:10px;">想少看螢幕時，點右下角的 🔊 按鈕就會唸出你「目前這一頁」的重點（再按一次或按 ⏹ 可停止）。首頁唸今日重點、檢驗頁唸異常項目、提醒頁唸待辦、用藥頁唸藥名、趨勢頁唸走向。</div>
+    <label style="display:flex;align-items:flex-start;gap:8px;font-size:.85rem;"><input type="checkbox" id="set-voiceauto" onchange="toggleVoiceAuto(this.checked)" style="margin-top:2px;"> <span>每次開啟 App 時，自動唸出「今日健康重點」</span></label>
+    <div style="display:flex;align-items:center;gap:10px;margin-top:12px;font-size:.85rem;">
+      <span style="white-space:nowrap;">🐢 語速</span>
+      <input type="range" id="set-voicerate" min="0.6" max="1.3" step="0.05" value="0.95" oninput="setVoiceRate(this.value)" style="flex:1;">
+      <span style="white-space:nowrap;">兔 🐇</span>
+    </div>
+    <div class="row-btn" style="margin-top:12px;"><button class="btn bp" onclick="speakDailyBrief()">🔊 試聽今日重點</button><button class="btn bg" onclick="stopSpeak()">⏹ 停止</button></div>
   </div>
   <div class="card">
     <div class="ct">🔔 健康警戒系統</div>
@@ -2664,10 +2681,24 @@ function dailyTip(){
   const doy=Math.floor((Date.now()-new Date(new Date().getFullYear(),0,0))/864e5);
   return pool[doy%pool.length];
 }
-// 語音朗讀（Web Speech，內建免費；zh-TW）
+// 語音朗讀（Web Speech，內建免費；zh-TW）——支援停止、語速設定、長文分句、朗讀中浮動列
+let _speak={on:false,chunks:[],i:0};
+function voiceRate(){ const r=state.settings&&state.settings.voiceRate; return (r&&r>=0.5&&r<=1.5)?r:0.95; }
+function speakBar(show){ const f=document.getElementById('voiceFab'); if(f)f.classList.toggle('speaking',!!show); }
+function stopSpeak(){ _speak.on=false; _speak.chunks=[]; try{ window.speechSynthesis&&window.speechSynthesis.cancel(); }catch(e){} speakBar(false); refreshVoiceFab(); }
+function _speakNext(){
+  const ss=window.speechSynthesis; if(!ss||!_speak.on){ speakBar(false); refreshVoiceFab(); return; }
+  if(_speak.i>=_speak.chunks.length){ _speak.on=false; speakBar(false); refreshVoiceFab(); return; }
+  const u=new SpeechSynthesisUtterance(_speak.chunks[_speak.i++]); u.lang='zh-TW'; u.rate=voiceRate(); u.pitch=1;
+  u.onend=_speakNext; u.onerror=()=>{ _speak.on=false; speakBar(false); refreshVoiceFab(); };
+  ss.speak(u);
+}
 function speakText(txt){
   try{ const ss=window.speechSynthesis; if(!ss){toast('此裝置不支援語音朗讀');return;}
-    ss.cancel(); const u=new SpeechSynthesisUtterance(txt); u.lang='zh-TW'; u.rate=0.95; u.pitch=1; ss.speak(u);
+    ss.cancel();
+    const chunks=String(txt||'').split(/(?<=[。！？!?\n])/).map(s=>s.trim()).filter(Boolean);
+    if(!chunks.length)return;
+    _speak={on:true,chunks,i:0}; speakBar(true); refreshVoiceFab(); _speakNext();
   }catch(e){ toast('語音朗讀失敗'); }
 }
 function speakDailyBrief(){
@@ -2677,6 +2708,69 @@ function speakDailyBrief(){
   if(tier)parts.push('目前分級：'+String(tier.label).replace(/·/g,'，')+'。');
   try{ (copilotItems()||[]).slice(0,3).forEach(x=>parts.push(String(x.text).replace(/\s+/g,'')+'。')); }catch(e){}
   const tip=dailyTip(); if(tip)parts.push('今日小提醒：'+tip.t);
+  speakText(parts.join(''));
+}
+// 依目前所在分頁，朗讀該頁重點（讓使用者少看螢幕）
+function speakScreen(){
+  if(_speak.on){ stopSpeak(); return; }   // 朗讀中→再按一次停止
+  const active=document.querySelector('.sec.active'); const id=active?active.id.replace('sec-',''):'dash';
+  let txt='';
+  try{
+    if(id==='labs'){ txt=labsSpeech(); }
+    else if(id==='remind'){ txt=remindSpeech(); }
+    else if(id==='meds'){ txt=medsSpeech(); }
+    else if(id==='trend'){ txt=trendSpeech(); }
+    else if(id==='dx'){ txt=dxSpeech(); }
+    else if(id==='report'||id==='advisor'||id==='analysis'||id==='advice'){ txt=summarySpeech(); }
+    else { return speakDailyBrief(); }   // 首頁與其他頁：唸今日重點
+  }catch(e){ txt=''; }
+  if(!txt){ toast('這一頁沒有可朗讀的重點'); return; }
+  speakText(txt);
+}
+function labsSpeech(){
+  const L=(typeof labLatest==='function')?labLatest():{}; const abn=[];
+  (typeof LAB_ORDER!=='undefined'?LAB_ORDER:[]).forEach(k=>{ if(L[k]==null)return; const fl=labFlag(k,L[k].v); if(fl!=='ok')abn.push(LAB_META[k].label+' '+L[k].v+(LAB_META[k].unit||'')+'，'+(fl==='crit'?'明顯偏離':'偏高或偏低')); });
+  if(!abn.length)return '你最新的檢驗數據都在正常範圍，很好，請繼續保持。';
+  return '你目前有 '+abn.length+' 項檢驗需要注意。'+abn.slice(0,8).map(s=>s+'。').join('');
+}
+function remindSpeech(){
+  const due=(typeof remDueList==='function')?remDueList():[];
+  if(!due.length)return '你今天沒有到期的提醒。';
+  return '你今天有 '+due.length+' 項提醒。'+due.slice(0,8).map(d=>(d.rem.title||'提醒')+'。').join('');
+}
+function medsSpeech(){
+  const meds=(typeof recentMeds==='function')?recentMeds(120).filter(m=>isRealDrug(m.name)):[];
+  const seen=new Set(), names=[]; meds.forEach(m=>{const n=(m.name||'').trim(); if(n&&!seen.has(n)){seen.add(n);names.push(n);}});
+  if(!names.length)return '目前沒有記錄到用藥。';
+  return '你近期的用藥有 '+names.length+' 種，包含：'+names.slice(0,12).join('、')+'。請按醫囑規律服用。';
+}
+function trendSpeech(){
+  const r=state.result, parts=[];
+  if(r){ parts.push('你目前的健康分是 '+r.score+' 分。'); if(r.bio!=null)parts.push('生理年齡約 '+r.bio+' 歲。'); }
+  const worse=(typeof worseningMetrics==='function')?worseningMetrics():[];
+  if(worse.length)parts.push('需要留意的變差項目有：'+worse.slice(0,4).map(k=>LAB_META[k]?LAB_META[k].label:k).join('、')+'。');
+  else parts.push('目前沒有明顯變差的項目。');
+  return parts.join('');
+}
+function dxSpeech(){
+  const dx=(state.dx||[]).slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0));
+  const seen=new Set(), names=[]; dx.forEach(d=>{const n=(d.name||'').trim(); if(n&&!seen.has(n)){seen.add(n);names.push(n);}});
+  if(!names.length)return '目前沒有記錄到病史或診斷。';
+  return '你的病史紀錄有 '+names.length+' 項，主要包含：'+names.slice(0,8).join('、')+'。';
+}
+function summarySpeech(){
+  const r=state.result, parts=['以下是你的健康摘要。'];
+  if(r){ parts.push('健康分 '+r.score+' 分。'); if(r.bio!=null)parts.push('生理年齡約 '+r.bio+' 歲。'); }
+  const tier=(typeof alertTier==='function')?alertTier():null; if(tier)parts.push('目前分級：'+String(tier.label).replace(/·/g,'，')+'。');
+  try{ const A=buildHealthAlerts().filter(x=>x.lvl!=='info').slice(0,4); if(A.length){ parts.push('需要注意的重點有：'); A.forEach(x=>parts.push(String(x.title).replace(/\s+/g,'')+'。')); } else parts.push('目前沒有偵測到需要注意的警訊。'); }catch(e){}
+  return parts.join('');
+}
+function refreshVoiceFab(){ const f=document.getElementById('voiceFab'); if(f)f.textContent=_speak.on?'⏹':'🔊'; }
+// 朗讀健康警戒視窗內容
+function speakHealthAlert(){
+  const tier=(typeof alertTier==='function')?alertTier():null;
+  const parts=['健康提醒。']; if(tier){ parts.push('目前分級：'+String(tier.label).replace(/·/g,'，')+'。'); parts.push(String(tier.guide||'')); }
+  try{ buildHealthAlerts().filter(x=>x.lvl!=='info').slice(0,4).forEach(x=>parts.push(String(x.title).replace(/\s+/g,'')+'。'+String(x.detail||'').replace(/\s+/g,''))); }catch(e){}
   speakText(parts.join(''));
 }
 function renderDashTip(){
@@ -3386,6 +3480,7 @@ function showHealthAlert(force){
     <label style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--g600);margin-top:10px;"><input type="checkbox" id="alertDailyChk" ${state.settings.dailyAlert===false?'':'checked'} onchange="toggleDailyAlert(this.checked)"> 紅燈（危急）時，開啟 App 自動提醒我</label>
     <div class="row-btn" style="margin-top:12px;">
       <button class="btn bp" onclick="closeHealthAlert();go('report');">查看綜合報告</button>
+      <button class="btn bg" onclick="speakHealthAlert()">🔊 唸給我聽</button>
       <button class="btn bg" onclick="closeHealthAlert()">知道了</button>
     </div></div>`;
   m.style.display='flex';
@@ -3516,6 +3611,8 @@ function scheduleRecheck(){
   try{ if(typeof renderRemind==='function')renderRemind(); if(typeof renderRemindDue==='function')renderRemindDue(); }catch(e){}
 }
 function toggleDailyAlert(on){state.settings.dailyAlert=!!on;save();const s=document.getElementById('set-dailyalert');if(s)s.checked=!!on;}
+function toggleVoiceAuto(on){ state.settings.voiceAuto=!!on; save(); const s=document.getElementById('set-voiceauto'); if(s)s.checked=!!on; if(on)toast('已開啟：下次開啟 App 會自動唸出今日重點'); }
+function setVoiceRate(v){ const n=parseFloat(v); if(n>=0.5&&n<=1.5){ state.settings.voiceRate=n; save(); } }
 /* ===== 跌倒偵測（實驗性；DeviceMotion，僅 App 開啟時有效）===== */
 let _fallState={active:false,handler:null,lastImpact:0,armed:false};
 function toggleFallDetect(on){
@@ -6717,7 +6814,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.09.20-screen-walk-share-fall';
+const APP_VERSION='2026.09.20-voice-plus';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -6838,6 +6935,8 @@ function init(){
   const bt=document.getElementById('buildTag');if(bt)bt.textContent=APP_VERSION;
   const da=document.getElementById('set-dailyalert');if(da)da.checked=state.settings.dailyAlert!==false;
   const fd=document.getElementById('set-falldetect');if(fd)fd.checked=!!(state.settings&&state.settings.fallDetect);
+  const va=document.getElementById('set-voiceauto');if(va)va.checked=!!(state.settings&&state.settings.voiceAuto);
+  const vr=document.getElementById('set-voicerate');if(vr&&state.settings&&state.settings.voiceRate)vr.value=state.settings.voiceRate;
   const ab=document.getElementById('set-autobackup');if(ab)ab.checked=!!(state.settings&&state.settings.autoBackup);
   setupCloudGate();
   setupPWA();
@@ -6857,6 +6956,7 @@ function init(){
   setTimeout(checkDueNotifications,1200);
   setInterval(checkDueNotifications,60000);
   try{ if(state.settings&&state.settings.fallDetect)startFallDetect(false); }catch(e){}
+  try{ if(state.settings&&state.settings.voiceAuto){ setTimeout(()=>{ const modalUp=[...document.querySelectorAll('.modal-overlay')].some(o=>o.style.display==='flex'); if(!modalUp)speakDailyBrief(); },1800); } }catch(e){}
 }
 /* ============ PWA：安裝與離線快取 ============ */
 let deferredInstallPrompt=null;
@@ -9189,6 +9289,7 @@ window.addEventListener('pagehide', clearTimers);
 </script>
 
 <!-- ========== 底部導覽列 ========== -->
+<button id="voiceFab" class="voice-fab" onclick="speakScreen()" title="唸出這一頁的重點（再按一次停止）" aria-label="語音朗讀本頁重點">🔊</button>
 <nav class="tabbar">
   <button class="tab on" data-tab="dash" onclick="go('dash')"><i class="ti ti-home"></i>首頁</button>
   <button class="tab" data-tab="trend" onclick="go('trend')"><i class="ti ti-trending-up"></i>趨勢</button>
