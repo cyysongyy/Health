@@ -558,6 +558,13 @@ body{ background:#eef2f6;
 .edu-step-n{ width:22px; height:22px; flex:0 0 22px; border-radius:50%; background:#10b981; color:#fff; font-size:.78rem; display:flex; align-items:center; justify-content:center; }
 .edu-step-b{ margin-top:5px; font-size:.85rem; line-height:1.6; color:#475569; }
 .edu-toggle{ margin-top:11px; width:100%; border:1px dashed #86d3a6; background:#fff; color:#047857; border-radius:10px; padding:8px; font:inherit; font-size:.82rem; font-weight:800; cursor:pointer; }
+/* 今日語音摘要（文字版） */
+.brief-card{ background:linear-gradient(160deg,#f5f3ff 0%,#ffffff 52%); border:1px solid #ddd6fe; }
+.brief-hdr{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.brief-title{ font-size:.98rem; font-weight:800; color:#0f2540; }
+.brief-body{ margin-top:9px; display:flex; flex-direction:column; gap:7px; }
+.brief-line{ font-size:.9rem; line-height:1.6; color:#1f2d3d; padding-left:14px; position:relative; }
+.brief-line::before{ content:'•'; position:absolute; left:2px; color:#7c3aed; font-weight:800; }
 </style>
 </head>
 <body>
@@ -605,6 +612,7 @@ body{ background:#eef2f6;
   </div>
   <div id="dashAdvisor"></div>
   <div id="dashCopilot"></div>
+  <div id="dashBrief"></div>
   <div id="dashTasks"></div>
   <div id="dashTip"></div>
   <div id="dashEdu"></div>
@@ -2278,6 +2286,7 @@ function renderDash(){
   maybeShowInstallBanner(); // 📲 安裝單機版橫幅（未安裝且未關閉時顯示）
   renderDashAdvisor(); // 健康顧問精簡入口
   renderCopilot();     // 每日健康 Co-pilot：把當日重點收斂成一張優先排序行動卡
+  renderDashBrief();   // 今日語音摘要（文字版，與語音同一份內容）
   renderDashTasks();   // 每日健康任務圈＋進步回顧（打卡→連續→成就，形成回訪循環）
   renderDashTip();     // 每日個人化小知識＋語音朗讀＋本週回顧入口
   renderDashEdu();     // 今日衛教（依狀況挑選的深度衛教主題，可展開＋語音）
@@ -2715,18 +2724,33 @@ function speakText(txt){
     _speak={on:true,chunks,i:0}; speakBar(true); refreshVoiceFab(); _speakNext();
   }catch(e){ toast('語音朗讀失敗'); }
 }
-function speakDailyBrief(){
+// 今日語音摘要的內容（同時供「朗讀」與「顯示成文字」共用）
+function dailyBriefParts(){
   const h=new Date().getHours(), hi=h<11?'早安':h<18?'午安':'晚安';
   const tier=(typeof alertTier==='function')?alertTier():null;
   const parts=[hi+'，這是你今天的健康重點。'];
-  if(tier)parts.push('目前分級：'+String(tier.label).replace(/·/g,'，')+'。');
+  if(tier)parts.push('目前分級：'+String(tier.label).replace(/\s*·\s*/,"，")+'。');
   try{ (copilotItems()||[]).slice(0,3).forEach(x=>parts.push(String(x.text).replace(/\s+/g,'')+'。')); }catch(e){}
   const tip=dailyTip(); if(tip)parts.push('今日小提醒：'+tip.t);
   try{ if(typeof pickEduTopic==='function'){ const e=pickEduTopic(); if(e){
     const steps=(e.steps||[]).map(s=>s.h).join('、');
     parts.push('今天的衛教主題是：'+e.title+'。'+(steps?'做法是：'+steps+'。':'')+'試著今天就做做看，養成習慣會更有效。');
   } } }catch(err){}
-  speakText(parts.join(''));
+  return parts;
+}
+function speakDailyBrief(){ speakText(dailyBriefParts().join('')); try{renderDashBrief();}catch(e){} }
+// 今日語音摘要（文字版）——與語音同一份內容，讓使用者可邊看邊聽
+function renderDashBrief(){
+  const el=document.getElementById('dashBrief'); if(!el)return;
+  const hasData=(state.labs&&state.labs.length)||state.result||(state.reminders&&state.reminders.length)||(state.meds&&state.meds.length);
+  if(!hasData){ el.innerHTML=''; return; }
+  const parts=dailyBriefParts();
+  const lines=parts.map(p=>`<div class="brief-line">${esc(p)}</div>`).join('');
+  el.innerHTML=`<div class="card brief-card">
+    <div class="brief-hdr"><span class="brief-title">🗒️ 今日語音摘要</span>
+      <button class="tip-btn" onclick="speakDailyBrief()" title="唸出摘要（再按一次或按右下角可停止）">🔊 播放</button></div>
+    <div class="brief-body">${lines}</div>
+  </div>`;
 }
 // 依目前所在分頁，朗讀該頁重點（讓使用者少看螢幕）
 function speakScreen(){
@@ -2779,7 +2803,7 @@ function dxSpeech(){
 function summarySpeech(){
   const r=state.result, parts=['以下是你的健康摘要。'];
   if(r){ parts.push('健康分 '+r.score+' 分。'); if(r.bio!=null)parts.push('生理年齡約 '+r.bio+' 歲。'); }
-  const tier=(typeof alertTier==='function')?alertTier():null; if(tier)parts.push('目前分級：'+String(tier.label).replace(/·/g,'，')+'。');
+  const tier=(typeof alertTier==='function')?alertTier():null; if(tier)parts.push('目前分級：'+String(tier.label).replace(/\s*·\s*/,"，")+'。');
   try{ const A=buildHealthAlerts().filter(x=>x.lvl!=='info').slice(0,4); if(A.length){ parts.push('需要注意的重點有：'); A.forEach(x=>parts.push(String(x.title).replace(/\s+/g,'')+'。')); } else parts.push('目前沒有偵測到需要注意的警訊。'); }catch(e){}
   return parts.join('');
 }
@@ -2787,7 +2811,7 @@ function refreshVoiceFab(){ const f=document.getElementById('voiceFab'); if(f)f.
 // 朗讀健康警戒視窗內容
 function speakHealthAlert(){
   const tier=(typeof alertTier==='function')?alertTier():null;
-  const parts=['健康提醒。']; if(tier){ parts.push('目前分級：'+String(tier.label).replace(/·/g,'，')+'。'); parts.push(String(tier.guide||'')); }
+  const parts=['健康提醒。']; if(tier){ parts.push('目前分級：'+String(tier.label).replace(/\s*·\s*/,"，")+'。'); parts.push(String(tier.guide||'')); }
   try{ buildHealthAlerts().filter(x=>x.lvl!=='info').slice(0,4).forEach(x=>parts.push(String(x.title).replace(/\s+/g,'')+'。'+String(x.detail||'').replace(/\s+/g,''))); }catch(e){}
   speakText(parts.join(''));
 }
@@ -6901,7 +6925,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.10.03-edu-voice';
+const APP_VERSION='2026.10.03-brief-text';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
