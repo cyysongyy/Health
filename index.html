@@ -546,6 +546,18 @@ body{ background:#eef2f6;
   background:linear-gradient(135deg,#2563eb,#1d4ed8); color:#fff; box-shadow:0 6px 18px rgba(37,99,235,.45); }
 .voice-fab.speaking{ background:linear-gradient(135deg,#ef4444,#dc2626); animation:voicePulse 1s ease-in-out infinite; }
 @keyframes voicePulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(239,68,68,.5); } 50%{ box-shadow:0 0 0 10px rgba(239,68,68,0); } }
+/* 今日衛教卡 */
+.edu-card{ background:linear-gradient(160deg,#f0fdf4 0%,#ffffff 52%); border:1px solid #c6ebd3; }
+.edu-hdr{ display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+.edu-title{ font-size:.98rem; font-weight:800; color:#0f2540; }
+.edu-topic{ margin-top:9px; font-size:1rem; font-weight:800; color:#047857; line-height:1.4; }
+.edu-intro{ margin-top:6px; font-size:.88rem; line-height:1.65; color:#334155; }
+.edu-steps{ margin-top:10px; display:flex; flex-direction:column; gap:10px; }
+.edu-step{ background:#fff; border:1px solid #d9efe1; border-radius:11px; padding:10px 12px; }
+.edu-step-h{ display:flex; align-items:center; gap:8px; font-size:.9rem; font-weight:800; color:#0f2540; }
+.edu-step-n{ width:22px; height:22px; flex:0 0 22px; border-radius:50%; background:#10b981; color:#fff; font-size:.78rem; display:flex; align-items:center; justify-content:center; }
+.edu-step-b{ margin-top:5px; font-size:.85rem; line-height:1.6; color:#475569; }
+.edu-toggle{ margin-top:11px; width:100%; border:1px dashed #86d3a6; background:#fff; color:#047857; border-radius:10px; padding:8px; font:inherit; font-size:.82rem; font-weight:800; cursor:pointer; }
 </style>
 </head>
 <body>
@@ -595,6 +607,7 @@ body{ background:#eef2f6;
   <div id="dashCopilot"></div>
   <div id="dashTasks"></div>
   <div id="dashTip"></div>
+  <div id="dashEdu"></div>
   <div id="dashMetrics"></div>
   <div id="dashRemindDue"></div>
   <div id="dashReminders"></div>
@@ -2267,6 +2280,7 @@ function renderDash(){
   renderCopilot();     // 每日健康 Co-pilot：把當日重點收斂成一張優先排序行動卡
   renderDashTasks();   // 每日健康任務圈＋進步回顧（打卡→連續→成就，形成回訪循環）
   renderDashTip();     // 每日個人化小知識＋語音朗讀＋本週回顧入口
+  renderDashEdu();     // 今日衛教（依狀況挑選的深度衛教主題，可展開＋語音）
   renderDashMetrics(); // 心率／步數／熱量／睡眠 量測環（真實資料）
   renderRemindDue();   // 今日／逾期的個人提醒（用藥、回診、復健、檢驗追蹤）
   renderReminders();   // 主動提醒／紅旗待辦（即使沒完成評估、只要有檢驗也顯示）
@@ -2785,6 +2799,75 @@ function renderDashTip(){
         <button class="tip-btn" onclick="weeklyRecap()" title="查看本週回顧">📅 本週回顧</button>
       </div></div>
     <div class="tip-body">${tip?esc(tip.t):''}</div>
+  </div>`;
+}
+/* ===== 今日衛教（依狀況挑選的深度主題；可展開、可語音朗讀）===== */
+const EDU_TOPICS=[
+  { id:'eat-order', tag:'血糖', icon:'🍽️', title:'調整進食順序，減少血糖尖峰',
+    intro:'糖化血色素落在 5.7–6.4% 屬「糖尿病前期」的徵兆。光是調整「吃的順序」，就能有效降低飯後血糖與胰島素的劇烈波動——食物不變，順序改一下就有幫助。',
+    steps:[
+      {h:'第一步：先吃蔬菜類', body:'選高纖維的葉菜類、菇類、藻類等。纖維質在腸道形成網狀結構，延緩胃排空、減慢糖分吸收，可減少約三到四成的血糖上升幅度。'},
+      {h:'第二步：再吃蛋白質與油脂', body:'豆、魚、蛋、肉等優質蛋白質，以及堅果等健康脂肪。能刺激腸胃道荷爾蒙（如 GLP-1）分泌，增加飽足感並持續延緩消化。'},
+      {h:'第三步：最後吃碳水化合物', body:'白飯、麵條、全穀雜糧與水果類。前面已有蔬菜纖維與蛋白質墊底，葡萄糖會被緩慢吸收，有效降低飯後血糖尖峰與胰島素劇烈波動。'}
+    ], tags:['prediab','dm'] },
+  { id:'dash-diet', tag:'血壓', icon:'🥗', title:'得舒飲食，幫助降血壓',
+    intro:'得舒飲食（DASH）以多蔬果、全穀、低脂乳與堅果為主，並減少鈉與飽和脂肪，臨床上有助於降低血壓。',
+    steps:[
+      {h:'多蔬果與全穀', body:'每天多份蔬菜水果、以全穀取代精製澱粉，增加鉀、鎂與纖維攝取。'},
+      {h:'減鈉', body:'每日鈉建議低於 2000mg；留意醬料、湯品與加工食品的隱藏鹽。'},
+      {h:'好的蛋白與油脂', body:'選魚、豆、去皮禽肉與堅果，少紅肉與油炸。'}
+    ], tags:['htn'] },
+  { id:'walk-after-meal', tag:'運動', icon:'🚶', title:'飯後散步 10–15 分鐘',
+    intro:'飯後輕度活動能讓肌肉幫忙消耗血糖，對血糖穩定與消化都有幫助，是最容易執行的運動。',
+    steps:[
+      {h:'時機', body:'飯後 15–30 分鐘內開始，走 10–15 分鐘即可。'},
+      {h:'強度', body:'以能正常說話、略微喘的速度為宜，不需太快。'},
+      {h:'累積', body:'三餐飯後各一次，一天就累積 30–45 分鐘活動量。'}
+    ], tags:['prediab','dm','general'] },
+  { id:'sleep', tag:'睡眠', icon:'😴', title:'睡得好，代謝與血壓都受惠',
+    intro:'長期睡眠不足會影響血糖代謝、升高血壓並增加食慾。穩定的睡眠是基礎保養。',
+    steps:[
+      {h:'固定作息', body:'每天盡量固定上床與起床時間，假日也別差太多。'},
+      {h:'睡前減藍光', body:'睡前 1 小時遠離手機與電視螢幕，幫助入睡。'},
+      {h:'環境', body:'臥室保持昏暗、安靜、涼爽，避免睡前大量進食或咖啡因。'}
+    ], tags:['general'] }
+];
+function eduConditions(){
+  const cls=(typeof medClasses==='function')?medClasses(200):{};
+  const L=(typeof labLatest==='function')?labLatest():{};
+  const dxTxt=(state.dx||[]).map(d=>d.name||'').join(' ');
+  const hba1c=L.hba1c!=null?parseFloat(L.hba1c.v):null;
+  const glu=L.glucose!=null?parseFloat(L.glucose.v):null;
+  const prediab=(hba1c!=null&&hba1c>=5.7&&hba1c<6.5)||(glu!=null&&glu>=100&&glu<126);
+  const dm=cls.dm||/糖尿病|diabet/i.test(dxTxt)||(hba1c!=null&&hba1c>=6.5)||(glu!=null&&glu>=126);
+  const htn=cls.bp||/高血壓|hypertension/i.test(dxTxt)||(L.sbp&&labFlag('sbp',L.sbp.v)!=='ok');
+  return {prediab,dm,htn};
+}
+function pickEduTopic(){
+  const c=eduConditions(); const want=[];
+  if(c.dm||c.prediab)want.push('prediab','dm');
+  if(c.htn)want.push('htn');
+  let pool=EDU_TOPICS.filter(t=>t.tags.some(tag=>want.includes(tag)));
+  if(!pool.length)pool=EDU_TOPICS.filter(t=>t.tags.includes('general'));
+  if(!pool.length)pool=EDU_TOPICS.slice();
+  const doy=Math.floor((Date.now()-new Date(new Date().getFullYear(),0,0))/864e5);
+  return pool[doy%pool.length];
+}
+let _eduOpen=false;
+function toggleEdu(){ _eduOpen=!_eduOpen; renderDashEdu(); }
+function eduSpeechText(t){ return (t.title+'。'+t.intro+' ')+t.steps.map(s=>s.h+'。'+s.body).join(' '); }
+function speakEduTopic(){ const t=pickEduTopic(); if(t)speakText(eduSpeechText(t)); }
+function renderDashEdu(){
+  const el=document.getElementById('dashEdu'); if(!el)return;
+  const t=pickEduTopic(); if(!t){ el.innerHTML=''; return; }
+  const steps=t.steps.map((s,i)=>`<div class="edu-step"><div class="edu-step-h"><span class="edu-step-n">${i+1}</span>${esc(s.h)}</div><div class="edu-step-b">${esc(s.body)}</div></div>`).join('');
+  el.innerHTML=`<div class="card edu-card">
+    <div class="edu-hdr"><span class="edu-title">📖 今日衛教 <span class="tip-tag">${esc(t.tag)}</span></span>
+      <div class="tip-acts"><button class="tip-btn" onclick="speakEduTopic()" title="唸出今日衛教">🔊 唸給我聽</button></div></div>
+    <div class="edu-topic">${t.icon} ${esc(t.title)}</div>
+    <div class="edu-intro">${esc(t.intro)}</div>
+    ${_eduOpen?`<div class="edu-steps">${steps}</div>`:''}
+    <button class="edu-toggle" onclick="toggleEdu()">${_eduOpen?'收合 ▲':'看詳細步驟 ▼'}</button>
   </div>`;
 }
 // 每週回顧（沿用既有 habits／走路／趨勢／評估資料）
@@ -6814,7 +6897,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.09.20-voice-plus';
+const APP_VERSION='2026.10.03-edu';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
