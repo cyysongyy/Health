@@ -4,7 +4,7 @@
    - 同源靜態檔（icon/manifest）：快取優先
    - 跨網域 CDN（Chart.js/Firebase/pdf.js/字型…）：快取優先，未命中則抓取並存入（含 opaque 回應）
    換版：改 CACHE 版本號即會在 activate 時清掉舊快取。 */
-const CACHE = 'lifespan-cache-2026.10.03-brief-text';
+const CACHE = 'lifespan-cache-2026.11.02-lab-prev-compare';
 
 /* App shell（同源，必存）*/
 const CORE = [
@@ -80,7 +80,7 @@ self.addEventListener('fetch', (e) => {
   if (req.mode === 'navigate') {
     e.respondWith((async () => {
       try {
-        const net = await fetch(req);
+        const net = await fetch(new Request(req, { cache: 'no-cache' }));   // 每次向伺服器確認新版，避開瀏覽器 HTTP 快取
         const c = await caches.open(CACHE);
         c.put('./index.html', net.clone()).catch(() => {});
         return net;
