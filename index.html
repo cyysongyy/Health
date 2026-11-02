@@ -4728,7 +4728,8 @@ function labStats(metric){
   const s=labSeries(metric);
   if(!s.length)return null;
   const vals=s.map(x=>x.value);
-  const first=s[0], last=s[s.length-1];
+  const last=s[s.length-1];
+  const first=s.length>=2?s[s.length-2]:s[0];                      // 比較基準＝前一筆（非首次／最差／最佳）；first 欄位沿用舊名，實為「前一筆」
   const delta=Math.round((last.value-first.value)*100)/100;
   const good=LAB_GOOD[metric];
   let dir='flat';
@@ -5109,7 +5110,7 @@ function renderLabsExtra(){
 function renderLabAnalysis(present){
   const dirTxt={better:'改善',worse:'惡化',changed:'變化',flat:'持平'};
   const dirCol={better:'var(--ok)',worse:'var(--err)',changed:'var(--g600)',flat:'var(--g400)'};
-  let html='<tr><th>項目</th><th>最新</th><th>變化(vs首次)</th><th>趨勢</th><th>範圍 / 平均</th><th>筆數</th></tr>';
+  let html='<tr><th>項目</th><th>最新</th><th>變化(vs前一筆)</th><th>趨勢</th><th>筆數</th></tr>';
   present.forEach(k=>{
     const m=LAB_META[k], st=labStats(k); if(!st)return;
     const fl=labFlag(k,st.last.value);
@@ -5120,7 +5121,6 @@ function renderLabAnalysis(present){
       `<td class="num" style="color:${FLAG_COLOR[fl]};font-weight:700;">${FLAG_ICON[fl]?FLAG_ICON[fl]+' ':''}${st.last.value}</td>`+
       `<td class="num" style="font-size:.74rem;">${chg}</td>`+
       `<td>${trend}</td>`+
-      `<td class="num" style="font-size:.72rem;">${st.min}–${st.max}<br>平均 ${st.avg}</td>`+
       `<td class="num">${st.n}</td></tr>`;
   });
   document.getElementById('labAnalysisTable').innerHTML=html;
