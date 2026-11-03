@@ -2815,8 +2815,8 @@ function answerQuery(q){ const ans=assistantAnswer(q); showAssistant(q,ans); spe
 function assistantAnswer(q){
   const s=String(q||''); const L=(typeof labLatest==='function')?labLatest():{};
   const has=(...ks)=>ks.some(k=>s.toLowerCase().indexOf(k)>=0);
-  const fmtLab=(k,name)=>{ const x=L[k]; if(x==null)return name+'目前沒有紀錄，建議檢驗一次以便追蹤。'; const fl=labFlag(k,x.v); const st=fl==='ok'?'在正常範圍':(fl==='crit'?'明顯偏離參考值，建議就醫':'需要注意，請持續追蹤'); return name+'最新是 '+x.v+(LAB_META[k]?LAB_META[k].unit:'')+'，'+st+'。'; };
-  if(has('血壓')){ const sb=L.sbp,db=L.dbp; if(!sb)return '血壓目前沒有紀錄，建議量一次並記錄起來。'; return '你最近一次血壓是 '+sb.v+(db?' 分之 '+db.v:'')+'，'+(labFlag('sbp',sb.v)==='ok'?'在正常範圍':'需要留意，請持續追蹤')+'。'; }
+  const fmtLab=(k,name)=>{ const x=L[k]; if(x==null)return name+'目前沒有紀錄，建議檢驗一次以便追蹤。'; const fl=labFlag(k,x.v); const sw=labStatusWord(k,x.v); const st=fl==='ok'?'在正常範圍':(fl==='crit'?sw+'，建議就醫':sw+'，需要留意'); return name+'最新是 '+x.v+(LAB_META[k]?LAB_META[k].unit:'')+'，'+st+'。'; };
+  if(has('血壓')){ const sb=L.sbp,db=L.dbp; if(!sb)return '血壓目前沒有紀錄，建議量一次並記錄起來。'; return '你最近一次血壓是 '+sb.v+(db?' 分之 '+db.v:'')+'，'+(labFlag('sbp',sb.v)==='ok'?'在正常範圍':labStatusWord('sbp',sb.v)+'，需要留意')+'。'; }
   if(has('糖化','a1c','hba1c'))return fmtLab('hba1c','糖化血色素');
   if(has('血糖','飯前','空腹'))return fmtLab('glucose','空腹血糖');
   if(has('膽固醇','血脂','ldl','低密度'))return fmtLab('ldl','低密度膽固醇 LDL');
@@ -2876,7 +2876,7 @@ function speakScreen(){
 }
 function labsSpeech(){
   const L=(typeof labLatest==='function')?labLatest():{}; const abn=[];
-  (typeof LAB_ORDER!=='undefined'?LAB_ORDER:[]).forEach(k=>{ if(L[k]==null)return; const fl=labFlag(k,L[k].v); if(fl!=='ok')abn.push(LAB_META[k].label+' '+L[k].v+(LAB_META[k].unit||'')+'，'+(fl==='crit'?'明顯偏離':'偏高或偏低')); });
+  (typeof LAB_ORDER!=='undefined'?LAB_ORDER:[]).forEach(k=>{ if(L[k]==null)return; const fl=labFlag(k,L[k].v); if(fl!=='ok')abn.push(LAB_META[k].label+' '+L[k].v+(LAB_META[k].unit||'')+'，'+labStatusWord(k,L[k].v)); });
   if(!abn.length)return '你最新的檢驗數據都在正常範圍，很好，請繼續保持。';
   return '你目前有 '+abn.length+' 項檢驗需要注意。'+abn.slice(0,8).map(s=>s+'。').join('');
 }
@@ -4806,6 +4806,14 @@ function labFlag(metric,v){
   if(n<hl||n>hh)return 'high';
   if(n<wl||n>wh)return 'warn';
   return 'ok';
+}
+// 以「偏高／偏低／明顯偏高／明顯偏低／在正常範圍」清楚描述方向與嚴重度
+function labStatusWord(metric,v){
+  const r=LAB_REF[metric]; const n=parseFloat(v); const fl=labFlag(metric,v);
+  if(fl==='ok'||isNaN(n)||!r)return '在正常範圍';
+  const wl=r.wl!=null?r.wl:-Infinity, wh=r.wh!=null?r.wh:Infinity;
+  const dir = n>wh?'偏高' : (n<wl?'偏低':'異常');
+  return (fl==='crit'?'明顯'+dir:dir);
 }
 function beep(times){
   try{
@@ -7030,7 +7038,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.11.03-autonomy';
+const APP_VERSION='2026.11.03-lab-direction';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
