@@ -546,6 +546,16 @@ body{ background:#eef2f6;
   background:linear-gradient(135deg,#2563eb,#1d4ed8); color:#fff; box-shadow:0 6px 18px rgba(37,99,235,.45); }
 .voice-fab.speaking{ background:linear-gradient(135deg,#ef4444,#dc2626); animation:voicePulse 1s ease-in-out infinite; }
 @keyframes voicePulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(239,68,68,.5); } 50%{ box-shadow:0 0 0 10px rgba(239,68,68,0); } }
+/* 語音提問麥克風按鈕 */
+.mic-fab{ position:fixed; right:14px; bottom:calc(132px + env(safe-area-inset-bottom,0px)); z-index:360;
+  width:52px; height:52px; border-radius:50%; border:none; cursor:pointer; font-size:1.4rem;
+  background:linear-gradient(135deg,#7c3aed,#6d28d9); color:#fff; box-shadow:0 6px 18px rgba(124,58,237,.45); }
+.mic-fab.listening{ background:linear-gradient(135deg,#ef4444,#dc2626); animation:voicePulse 1s ease-in-out infinite; }
+.asst-q{ font-size:.85rem; color:#6b7785; margin:2px 0 8px; }
+.asst-a{ font-size:1rem; line-height:1.7; color:#0f2540; background:#f5f3ff; border:1px solid #ddd6fe; border-radius:12px; padding:12px; }
+.autorem-card{ background:linear-gradient(160deg,#eff6ff 0%,#ffffff 52%); border:1px solid #bfdbfe; }
+.autorem-hdr{ font-weight:800; color:#1d4ed8; font-size:.95rem; }
+.autorem-list{ margin-top:7px; font-size:.85rem; line-height:1.75; color:#334155; }
 /* 今日衛教卡 */
 .edu-card{ background:linear-gradient(160deg,#f0fdf4 0%,#ffffff 52%); border:1px solid #c6ebd3; }
 .edu-hdr{ display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
@@ -611,6 +621,7 @@ body{ background:#eef2f6;
     </div>
   </div>
   <div id="dashAdvisor"></div>
+  <div id="dashAutoRem"></div>
   <div id="dashCopilot"></div>
   <div id="dashBrief"></div>
   <div id="dashTasks"></div>
@@ -2286,6 +2297,7 @@ function renderDash(){
   maybeShowInstallBanner(); // 📲 安裝單機版橫幅（未安裝且未關閉時顯示）
   renderDashAdvisor(); // 健康顧問精簡入口
   renderCopilot();     // 每日健康 Co-pilot：把當日重點收斂成一張優先排序行動卡
+  renderDashAutoRem(); // 閉環：自動建立的追蹤提醒通知（可撤銷）
   renderDashBrief();   // 今日語音摘要（文字版，與語音同一份內容）
   renderDashTasks();   // 每日健康任務圈＋進步回顧（打卡→連續→成就，形成回訪循環）
   renderDashTip();     // 每日個人化小知識＋語音朗讀＋本週回顧入口
@@ -2740,6 +2752,99 @@ function dailyBriefParts(){
 }
 function speakDailyBrief(){ speakText(dailyBriefParts().join('')); try{renderDashBrief();}catch(e){} }
 // 今日語音摘要（文字版）——與語音同一份內容，讓使用者可邊看邊聽
+/* ===== 閉環：偵測到該追蹤的事項 → 自動建立提醒（每天最多一次、可一鍵撤銷）===== */
+function autoReminderCandidates(){
+  const out=[];
+  try{ (careLabGaps()||[]).slice(0,2).forEach(g=>out.push({sig:'lab:'+g.metric,type:'lab',title:'追蹤檢驗：'+g.label,note:(g.whys&&g.whys[0])||'建議定期追蹤',daysAhead:7})); }catch(e){}
+  try{ const sc=careScreenings()||[];
+    sc.filter(x=>x.flag==='alert').slice(0,1).forEach(x=>out.push({sig:'scrA:'+x.label,type:'visit',title:'回診討論：'+x.label,note:'篩檢結果異常，建議回診進一步評估',daysAhead:3}));
+    sc.filter(x=>x.flag!=='alert'&&x.flag!=='done').slice(0,1).forEach(x=>out.push({sig:'scr:'+x.label,type:'lab',title:'安排篩檢：'+x.label,note:x.detail||'建議安排篩檢',daysAhead:14}));
+  }catch(e){}
+  return out;
+}
+function autoScheduleReminders(){
+  let last=''; try{last=localStorage.getItem('ls_autoSchedDate')||'';}catch(e){}
+  if(last===todayKey())return;                      // 每天最多跑一次
+  try{localStorage.setItem('ls_autoSchedDate',todayKey());}catch(e){}
+  state.reminders=state.reminders||[];
+  const have=new Set(state.reminders.map(r=>r.autoSig).filter(Boolean));
+  const cands=autoReminderCandidates().filter(c=>!have.has(c.sig)).slice(0,3);
+  if(!cands.length)return;
+  const created=[];
+  cands.forEach(c=>{ const d=new Date(); d.setDate(d.getDate()+(c.daysAhead||7));
+    const rem={id:remId(),type:c.type,title:c.title,freq:'once',time:'09:00',startDate:localDayKey(d),note:c.note,enabled:true,doneDates:[],createdAt:new Date().toISOString(),auto:true,autoSig:c.sig};
+    state.reminders.push(rem); created.push(rem.id); });
+  if(!created.length)return;
+  state._autoRemBatch=created; save();
+  if(state.settings&&state.settings.autosync&&typeof fbUser!=='undefined'&&fbUser)fbSyncNow().catch(()=>{});
+}
+function undoAutoSchedule(){
+  const batch=state._autoRemBatch||[]; if(!batch.length){ackAutoSchedule();return;}
+  state.reminders=(state.reminders||[]).filter(r=>batch.indexOf(r.id)<0);
+  state._autoRemBatch=null; save(); if(state.settings&&state.settings.autosync&&typeof fbUser!=='undefined'&&fbUser)fbSyncNow().catch(()=>{});
+  try{renderDashAutoRem();}catch(e){} try{if(typeof renderRemind==='function')renderRemind();}catch(e){}
+  toast('已撤銷自動排定的提醒');
+}
+function ackAutoSchedule(){ state._autoRemBatch=null; save(); try{renderDashAutoRem();}catch(e){} }
+function renderDashAutoRem(){
+  const el=document.getElementById('dashAutoRem'); if(!el)return;
+  const batch=state._autoRemBatch||[];
+  const items=batch.length?(state.reminders||[]).filter(r=>batch.indexOf(r.id)>=0):[];
+  if(!items.length){ el.innerHTML=''; return; }
+  el.innerHTML=`<div class="card autorem-card">
+    <div class="autorem-hdr">🤖 已自動為你排定 ${items.length} 項追蹤提醒</div>
+    <div class="autorem-list">${items.map(r=>`<div>• ${esc(r.title)}（${esc(r.startDate)}）</div>`).join('')}</div>
+    <div class="row-btn" style="margin-top:10px;gap:6px;"><button class="btn bg" style="flex:1;" onclick="ackAutoSchedule();go('remind')">查看</button><button class="btn bg" style="flex:1;" onclick="undoAutoSchedule()">撤銷</button><button class="btn bg" style="flex:1;" onclick="ackAutoSchedule()">知道了</button></div>
+  </div>`;
+}
+/* ===== 雙向語音助理：語音（或文字）提問 → 語音＋文字回答（免金鑰、本機規則）===== */
+function askAssistant(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ const q=prompt('請問你想問什麼？例如：我的血壓如何、今天有什麼提醒、今日衛教'); if(q)answerQuery(q); return; }
+  try{
+    const rec=new SR(); rec.lang='zh-TW'; rec.interimResults=false; rec.maxAlternatives=1;
+    const f=document.getElementById('micFab'); if(f)f.classList.add('listening');
+    toast('🎤 請說…（例如：我的血壓如何）');
+    rec.onresult=(e)=>{ try{ answerQuery(e.results[0][0].transcript); }catch(_){}};
+    rec.onerror=()=>{ toast('沒聽清楚，請再試一次，或改用打字'); };
+    rec.onend=()=>{ const ff=document.getElementById('micFab'); if(ff)ff.classList.remove('listening'); };
+    rec.start();
+  }catch(e){ const q=prompt('請問你想問什麼？'); if(q)answerQuery(q); }
+}
+function answerQuery(q){ const ans=assistantAnswer(q); showAssistant(q,ans); speakText(ans); }
+function assistantAnswer(q){
+  const s=String(q||''); const L=(typeof labLatest==='function')?labLatest():{};
+  const has=(...ks)=>ks.some(k=>s.toLowerCase().indexOf(k)>=0);
+  const fmtLab=(k,name)=>{ const x=L[k]; if(x==null)return name+'目前沒有紀錄，建議檢驗一次以便追蹤。'; const fl=labFlag(k,x.v); const st=fl==='ok'?'在正常範圍':(fl==='crit'?'明顯偏離參考值，建議就醫':'需要注意，請持續追蹤'); return name+'最新是 '+x.v+(LAB_META[k]?LAB_META[k].unit:'')+'，'+st+'。'; };
+  if(has('血壓')){ const sb=L.sbp,db=L.dbp; if(!sb)return '血壓目前沒有紀錄，建議量一次並記錄起來。'; return '你最近一次血壓是 '+sb.v+(db?' 分之 '+db.v:'')+'，'+(labFlag('sbp',sb.v)==='ok'?'在正常範圍':'需要留意，請持續追蹤')+'。'; }
+  if(has('糖化','a1c','hba1c'))return fmtLab('hba1c','糖化血色素');
+  if(has('血糖','飯前','空腹'))return fmtLab('glucose','空腹血糖');
+  if(has('膽固醇','血脂','ldl','低密度'))return fmtLab('ldl','低密度膽固醇 LDL');
+  if(has('三酸','tg'))return fmtLab('tg','三酸甘油酯');
+  if(has('腎','egfr','肌酸酐'))return fmtLab('egfr','腎功能 eGFR');
+  if(has('體重')){ const w=(L.weight&&L.weight.v)||(state.profile&&state.profile.weight); return w?('你目前體重約 '+w+' 公斤。'):'體重目前沒有紀錄。'; }
+  if(has('提醒','待辦','今天要做'))return (typeof remindSpeech==='function')?remindSpeech():'';
+  if(has('藥','用藥'))return (typeof medsSpeech==='function')?medsSpeech():'';
+  if(has('健康分','分數','幾分'))return state.result?('你目前的健康分是 '+state.result.score+' 分。'):'還沒有健康分，先做一次健康評估吧。';
+  if(has('衛教','怎麼吃','飲食','吃的順序','進食')){ const e=(typeof pickEduTopic==='function')?pickEduTopic():null; return e?('今天的衛教是：'+e.title+'。'+e.intro):'今天沒有衛教內容。'; }
+  if(has('異常','檢驗','報告','紅字'))return (typeof labsSpeech==='function')?labsSpeech():'';
+  if(has('篩檢')){ const due=(careScreenings()||[]).filter(x=>x.flag!=='done').slice(0,3).map(x=>x.label); return due.length?('建議安排的篩檢有：'+due.join('、')+'。'):'目前沒有待做的篩檢。'; }
+  if(has('燈','分級','風險')){ const t=alertTier(); return '你目前的健康分級是 '+String(t.label).replace(/\s*·\s*/,'，')+'。'; }
+  if(has('你好','哈囉','嗨','安安'))return '你好，我是你的健康助理。你可以問我血壓、血糖、體重、今天的提醒或用藥。';
+  return '我聽到你說「'+s+'」。你可以問我：血壓、血糖、糖化血色素、膽固醇、體重、今天的提醒、目前用藥、健康分，或今日衛教。';
+}
+function showAssistant(q,ans){
+  let m=document.getElementById('asstModal'); if(!m){m=document.createElement('div');m.id='asstModal';m.className='modal-overlay';document.body.appendChild(m);}
+  window.__asstA=ans;
+  m.innerHTML=`<div class="modal-box">
+    <div class="ct">🎙️ 健康助理</div>
+    <div class="asst-q">你問：${esc(q)}</div>
+    <div class="asst-a">${esc(ans)}</div>
+    <div class="row-btn" style="margin-top:12px;gap:6px;"><button class="btn bp" style="flex:1;" onclick="speakText(window.__asstA||'')">🔊 再唸一次</button><button class="btn bg" style="flex:1;" onclick="askAssistant()">🎤 再問</button><button class="btn bg" style="flex:1;" onclick="closeAsst()">關閉</button></div>
+  </div>`;
+  m.style.display='flex';
+}
+function closeAsst(){ const m=document.getElementById('asstModal'); if(m){m.style.display='none';m.innerHTML='';} }
 function renderDashBrief(){
   const el=document.getElementById('dashBrief'); if(!el)return;
   const hasData=(state.labs&&state.labs.length)||state.result||(state.reminders&&state.reminders.length)||(state.meds&&state.meds.length);
@@ -6925,7 +7030,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.10.03-brief-text';
+const APP_VERSION='2026.11.03-autonomy';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -7064,6 +7169,7 @@ function init(){
   if(maybeConsentGate()){ /* 首次使用：先取得同意 → 導覽 → 每日健康警戒 */ }
   else if(maybeOnboarding()){ /* 已同意、尚未看過導覽（含既有使用者）：先跑導覽 */ }
   else setTimeout(maybeDailyAlert,600);
+  try{ autoScheduleReminders(); renderDashAutoRem(); }catch(e){}
   setTimeout(checkDueNotifications,1200);
   setInterval(checkDueNotifications,60000);
   try{ if(state.settings&&state.settings.fallDetect)startFallDetect(false); }catch(e){}
@@ -9400,6 +9506,7 @@ window.addEventListener('pagehide', clearTimers);
 </script>
 
 <!-- ========== 底部導覽列 ========== -->
+<button id="micFab" class="mic-fab" onclick="askAssistant()" title="用說的問健康問題（例如：我的血壓如何）" aria-label="語音提問健康助理">🎤</button>
 <button id="voiceFab" class="voice-fab" onclick="speakScreen()" title="唸出這一頁的重點（再按一次停止）" aria-label="語音朗讀本頁重點">🔊</button>
 <nav class="tabbar">
   <button class="tab on" data-tab="dash" onclick="go('dash')"><i class="ti ti-home"></i>首頁</button>
