@@ -1677,6 +1677,14 @@ service cloud.firestore {
     <div class="hint" id="pwaStatus" style="margin-top:8px;">離線快取狀態檢查中…</div>
   </div>
   <div class="card">
+    <div class="ct">🔗 分享給家人朋友</div>
+    <div style="font-size:.8rem;color:var(--g600);line-height:1.6;">
+      對方用手機相機掃描 QR Code，開啟後按「安裝」即可。免註冊、免下載商店；每個人的資料只存在自己的手機。
+    </div>
+    <div style="text-align:center;margin:10px 0;"><img src="qr.png" alt="LifeSpan 安裝 QR Code" width="180" height="180" style="border-radius:12px;border:1px solid var(--g200,#e5e7eb);"></div>
+    <div class="row-btn"><button class="btn bp" onclick="shareApp()">📤 分享連結</button><button class="btn" onclick="copyAppLink()">📋 複製網址</button></div>
+  </div>
+  <div class="card">
     <div class="ct">ℹ️ 關於</div>
     <div style="font-size:.8rem;color:var(--g600);line-height:1.6;">
       <b>LifeSpan 健康預測</b> 是一套個人健康管理與延壽輔助系統。<br>
@@ -7041,7 +7049,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.11.03-auto-voice-reply';
+const APP_VERSION='2026.11.10-easy-install';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -7243,13 +7251,37 @@ function installStandalone(){
     return;
   }
   const ua=navigator.userAgent||'';
+  if(isInAppBrowser()){ showInstallGuide('inapp'); return; }
   const isIOS=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   showInstallGuide(isIOS?'ios':(/Android/i.test(ua)?'android':'desktop'));
+}
+// LINE／Facebook／Instagram 等 App 內建瀏覽器無法安裝 PWA，需先改用 Safari／Chrome 開啟
+function isInAppBrowser(){
+  return /Line\/|FBAN|FBAV|FB_IAB|Instagram|MicroMessenger|Messenger|TikTok|; wv\)/i.test(navigator.userAgent||'');
+}
+function copyAppLink(){
+  const u=location.origin+location.pathname;
+  const done=()=>toast('✅ 已複製網址，請貼到 Safari／Chrome 開啟');
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(u).then(done,()=>prompt('請長按複製網址：',u)); }
+  else prompt('請長按複製網址：',u);
+}
+function shareApp(){
+  const u=location.origin+location.pathname;
+  if(navigator.share){ navigator.share({title:'LifeSpan 健康預測',text:'免費個人健康管理 App，可加到手機主畫面離線使用',url:u}).catch(()=>{}); }
+  else copyAppLink();
 }
 function showInstallGuide(kind){
   let m=document.getElementById('installModal');
   if(!m){m=document.createElement('div');m.id='installModal';m.className='modal-overlay';document.body.appendChild(m);}
-  const steps=kind==='ios'
+  const steps=kind==='inapp'
+    ? `<div style="line-height:1.9;"><b>目前在 LINE／Facebook 等 App 內，無法直接安裝。</b>請照下面做：
+        <ol style="padding-left:1.2em;margin:.3em 0;">
+          <li>按右上角<b>「⋯」或「︙」</b>，選<b>「以預設瀏覽器開啟」／「在 Safari 開啟」</b>。</li>
+          <li>或按下方按鈕複製網址，再貼到 Safari（iPhone）或 Chrome（Android）。</li>
+          <li>開啟後再按一次「安裝」。</li>
+        </ol></div>
+        <div class="row-btn" style="margin-top:8px;"><button class="btn bp" onclick="copyAppLink()">📋 複製網址</button></div>`
+    : kind==='ios'
     ? `<ol style="padding-left:1.2em;line-height:2;margin:.3em 0;">
         <li>點畫面下方（或右上）的<b>「分享」鈕 <span style="font-size:1.1em;">⬆️</span></b>（方框加上箭頭的圖示）。</li>
         <li>往下滑，選<b>「加入主畫面」</b>。</li>
@@ -7278,6 +7310,7 @@ function maybeShowInstallBanner(){
   const b=document.getElementById('installBanner'); if(!b)return;
   let dismissed=false; try{dismissed=localStorage.getItem('ls_installDismiss')==='1';}catch(e){}
   b.style.display=(!isStandalone()&&!dismissed)?'block':'none';
+  if(isInAppBrowser()){ const t=b.querySelector('div[style*="font-weight:800"]'); if(t)t.textContent='請用 Safari／Chrome 開啟才能安裝'; }
 }
 /* 雲端同步預設隱藏（其他使用者一律本機）；擁有者以 ?cloud=1、已存旗標、或連點版本 5 下解鎖 */
 function cloudUnlocked(){
