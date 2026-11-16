@@ -17,7 +17,9 @@
 // ── 試算表設定 ──────────────────────────────────
 const SS = SpreadsheetApp.getActiveSpreadsheet();
 const REC_SHEET = '健康紀錄';   // 每次評估的快照
-const LAB_SHEET = '檢驗匯入';   // 健康存摺 / 健檢 / 穿戴裝置匯入的原始檢驗值
+const LAB_SHEET = '檢驗匯入';
+const MED_SHEET = '醫藥紀錄';   // 手術／用藥／診斷／篩檢（由 App 同步，供 Ybot 等串接 App 查詢）
+const MED_COLS = ['id', 'kind', 'date', 'name', 'detail', 'hospital', 'source', 'updatedAt'];   // 健康存摺 / 健檢 / 穿戴裝置匯入的原始檢驗值
 const KV_SHEET  = '個人設定';   // 個人檔案 key/value
 const REPORT_SHEET = '健康週報'; // 自動化週報存檔
 
@@ -88,7 +90,8 @@ function setupSheets() {
   const lab = ensureSheet(LAB_SHEET, LAB_COLS);
   const kv  = ensureSheet(KV_SHEET, ['key', 'value']);
   const rep = ensureSheet(REPORT_SHEET, ['generatedAt', 'summary', 'score', 'bio', 'delta']);
-  return { rec, lab, kv, rep };
+  const med = ensureSheet(MED_SHEET, MED_COLS);
+  return { rec, lab, kv, rep, med };
 }
 function ensureSheet(name, cols) {
   let sh = SS.getSheetByName(name);
@@ -127,6 +130,14 @@ function doGet(e) {
   if (action === 'labs') {
     const { lab } = setupSheets();
     return jsonResp({ ok: true, labs: sheetToObjects(lab, LAB_COLS) });
+  }
+  if (action === 'records') {
+    // 醫藥紀錄。kind 可篩 surgery / med / dx / screen；不給就全部
+    const { med } = setupSheets();
+    const kind = e?.parameter?.kind || '';
+    let rows = sheetToObjects(med, MED_COLS);
+    if (kind) rows = rows.filter(r => r.kind === kind);
+    return jsonResp({ ok: true, records: rows });
   }
   return jsonResp({ ok: false, error: 'Unknown action: ' + action });
 }
@@ -190,6 +201,27 @@ function doPost(e) {
       if (rid.indexOf('latest_') === 0 && !keep[rid]) lab.deleteRow(i + 1);
     }
     return jsonResp({ ok: true, message: `已同步 ${labs.length} 項檢驗值`, latest: latestLabValues() });
+  }
+  if (action === 'syncRecords') {
+    // App 的手術／用藥／診斷／篩檢紀錄。同 id 覆寫；App 裡已刪的（同 kind 但沒送來）這邊也刪掉。
+    const recs = body.records || [];
+    const { med } = setupSheets();
+    const stamp = new Date().toISOString();
+    const keep = {}; const kinds = {};
+    recs.forEach(r => {
+      if (!r || !r.id || !r.kind) return;
+      keep[r.id] = true; kinds[r.kind] = true;
+      upsertRow(med, MED_COLS, r.id, {
+        id: r.id, kind: r.kind, date: r.date || '', name: r.name || '', detail: r.detail || '',
+        hospital: r.hospital || '', source: r.source || '', updatedAt: stamp
+      });
+    });
+    const data = med.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      const rid = String(data[i][0]), rk = String(data[i][1]);
+      if (kinds[rk] && !keep[rid]) med.deleteRow(i + 1);
+    }
+    return jsonResp({ ok: true, message: `已同步 ${recs.length} 筆醫藥紀錄` });
   }
   if (action === 'deleteSnapshot') {
     const { rec } = setupSheets();
