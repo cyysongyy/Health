@@ -1568,6 +1568,8 @@ service cloud.firestore {
       <div class="guide-body">
         <div class="guide-note">此為替代方案，適合想用 Google 試算表當資料庫、且能存取電腦的人。<b>手機無法建立 Apps Script</b>，部署步驟需在電腦上完成。設定後可額外使用每日/每週自動 Email 健康守護。</div>
         <div class="fg"><label class="fl">Apps Script 部署網址</label><input class="fi" id="set-gas" type="url" placeholder="https://script.google.com/macros/s/…/exec"></div>
+        <div class="fg"><label class="fl">通關密語</label><input class="fi" id="set-gastoken" type="password" autocomplete="off" placeholder="在 Apps Script 執行 generateApiToken() 取得"></div>
+        <div class="guide-note">後台要開放「所有人」才連得上，等於知道網址的人都讀得到你的檢驗與醫藥紀錄。設了密語，光有網址就沒用。Ybot 要串接時，也要在 Ybot 設定填同一組密語。</div>
         <div class="row-btn">
           <button class="btn bp" onclick="testCloud()">🔌 測試連線</button>
           <button class="btn bg" onclick="cloudPush()">⬆️ 上傳到試算表</button>
@@ -6795,6 +6797,7 @@ function saveSettings(){
   const nvm=document.getElementById('set-nvidia-model'); if(nvm)state.settings.nvidiaModel=nvm.value.trim();
   state.settings.engine=document.getElementById('set-engine').value;
   state.settings.gas=document.getElementById('set-gas').value.trim();
+  const gt=document.getElementById('set-gastoken'); if(gt)state.settings.gasToken=gt.value.trim();
   state.settings.autosync=document.getElementById('set-autosync').checked;
   const da=document.getElementById('set-dailyalert');if(da)state.settings.dailyAlert=da.checked;
   state.settings.fb=document.getElementById('set-fb').value.trim();
@@ -7098,7 +7101,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.11.16-records-sync';
+const APP_VERSION='2026.11.16-token';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -7208,6 +7211,7 @@ function init(){
   const nvmEl=document.getElementById('set-nvidia-model'); if(nvmEl)nvmEl.value=state.settings.nvidiaModel||'';
   document.getElementById('set-engine').value=state.settings.engine||'auto';
   document.getElementById('set-gas').value=state.settings.gas||'';
+  const gtEl=document.getElementById('set-gastoken'); if(gtEl)gtEl.value=state.settings.gasToken||'';
   document.getElementById('set-autosync').checked=!!state.settings.autosync;
   document.getElementById('set-fb').value=state.settings.fb||'';
   document.getElementById('set-fb-email').value=state.settings.fbEmail||'';
@@ -7567,7 +7571,7 @@ async function fbPull(){
   }catch(e){fbMsg('⚠️ 拉取失敗：'+fbErr(e),false);}
 }
 async function gasGet(action){
-  const url=state.settings.gas+(state.settings.gas.includes('?')?'&':'?')+'action='+action;
+  const url=state.settings.gas+(state.settings.gas.includes('?')?'&':'?')+'action='+action+(state.settings.gasToken?'&t='+encodeURIComponent(state.settings.gasToken):'');
   const res=await fetch(url,{method:'GET',redirect:'follow'});
   if(!res.ok)throw new Error('HTTP '+res.status);
   return res.json();
@@ -7575,16 +7579,24 @@ async function gasGet(action){
 async function gasPost(payload){
   // 用 text/plain 避免 CORS 預檢；Apps Script 仍能由 e.postData.contents 解析
   const res=await fetch(state.settings.gas,{method:'POST',redirect:'follow',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});
+    headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(Object.assign({t:state.settings.gasToken||''},payload))});
   if(!res.ok)throw new Error('HTTP '+res.status);
   return res.json();
 }
 function cloudMsg(t,ok){const el=document.getElementById('cloudMsg');el.textContent=t;el.style.color=ok?'var(--ok)':'var(--err)';}
 async function testCloud(){
   if(!document.getElementById('set-gas').value.trim()){cloudMsg('請先貼上 Apps Script 網址',false);return;}
-  state.settings.gas=document.getElementById('set-gas').value.trim();save();refreshCloudBadge();
+  state.settings.gas=document.getElementById('set-gas').value.trim();
+  const gtk=document.getElementById('set-gastoken'); if(gtk)state.settings.gasToken=gtk.value.trim();
+  save();refreshCloudBadge();
   cloudMsg('連線中…',true);
-  try{const d=await gasGet('ping');cloudMsg(d.ok?('✅ '+d.message):('⚠️ '+(d.error||'失敗')),d.ok);}
+  try{
+    const d=await gasGet('ping');
+    if(!d.ok){cloudMsg('⚠️ '+(d.error||'失敗'),false);return;}
+    if(d.tokenRequired&&d.tokenOk===false)cloudMsg('🔒 後台已設通關密語，但這裡填的不對或還沒填',false);
+    else if(d.tokenRequired===false)cloudMsg('✅ '+d.message+'（⚠️ 後台尚未設通關密語，知道網址的人都讀得到你的病歷；請在 Apps Script 執行 generateApiToken）',true);
+    else cloudMsg('✅ '+d.message+'（🔒 已保護）',true);
+  }
   catch(e){cloudMsg('⚠️ 連線失敗：'+e.message+'（請確認已部署為「所有人」可存取）',false);}
 }
 async function cloudSaveSnapshot(snap){
