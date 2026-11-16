@@ -104,13 +104,34 @@ function ensureSheet(name, cols) {
   return sh;
 }
 
+// ── 通關密語 ────────────────────────────────────
+// 這個後台必須部署成「所有人」才連得上，等於知道網址的人都能讀到檢驗值、手術、用藥紀錄。
+// 設了密語之後，請求要帶對 t=密語 才放行。啟用方式：在編輯器執行一次 generateApiToken()，
+// 把回傳的那串貼進 LifeSpan「設定 → 雲端 → 通關密語」，以及 Ybot「設定 → 整合其他系統 → 健康後台密語」。
+// 還沒設密語時一律放行（不然貼上新程式、還沒執行 generateApiToken 就全部連不上）；ping 會回 tokenRequired 讓 App 提醒。
+const TOKEN_PROP = 'API_TOKEN';
+function generateApiToken() {
+  const token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '').slice(0, 8);
+  PropertiesService.getScriptProperties().setProperty(TOKEN_PROP, token);
+  return '✅ 新的通關密語（整串複製，貼進 LifeSpan 設定與 Ybot 的健康後台密語欄）：\n\n' + token + '\n\n舊的密語即刻失效，網址不用換。';
+}
+function getApiToken() { return PropertiesService.getScriptProperties().getProperty(TOKEN_PROP) || ''; }
+function checkApiToken() {
+  return getApiToken() ? '✅ 已啟用通關密語。' : '⚠️ 尚未設定通關密語，任何知道網址的人都能讀到你的檢驗與醫藥紀錄。執行 generateApiToken() 產生一組。';
+}
+function clearApiToken() { PropertiesService.getScriptProperties().deleteProperty(TOKEN_PROP); return '⚠️ 已關閉通關密語檢查。'; }
+function authOk(supplied) { const t = getApiToken(); return !t || String(supplied || '') === t; }
+function authFail() { return jsonResp({ ok: false, error: '通關密語不正確或尚未填寫', authRequired: true }); }
+
 // ── GET 處理 ────────────────────────────────────
 function doGet(e) {
   const action = e?.parameter?.action || 'all';
-
   if (action === 'ping') {
-    return jsonResp({ ok: true, message: 'LifeSpan 健康後台連線正常', time: new Date().toISOString() });
+    // ping 不擋，但只透露「有沒有上鎖」，讓 App 能提醒使用者去設密語
+    return jsonResp({ ok: true, message: 'LifeSpan 健康後台連線正常', time: new Date().toISOString(), tokenRequired: !!getApiToken(), tokenOk: authOk(e?.parameter?.t) });
   }
+  if (!authOk(e?.parameter?.t)) return authFail();
+
   if (action === 'all') {
     const { rec } = setupSheets();
     return jsonResp({ ok: true, snapshots: sheetToObjects(rec, REC_COLS), profile: readProfile() });
@@ -146,6 +167,7 @@ function doGet(e) {
 function doPost(e) {
   let body;
   try { body = JSON.parse(e.postData.contents); } catch (err) { return jsonResp({ ok: false, error: 'Invalid JSON' }); }
+  if (!authOk(body.t)) return authFail();
   const action = body.action;
 
   if (action === 'saveSnapshot') {
