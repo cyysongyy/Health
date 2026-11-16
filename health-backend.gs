@@ -168,6 +168,29 @@ function doPost(e) {
     });
     return jsonResp({ ok: true, message: `已匯入 ${labs.length} 筆檢驗值`, latest: latestLabValues() });
   }
+  if (action === 'syncLabs') {
+    // 檢驗數據庫的「每個項目最新一筆」。同一項目只留一列（id = latest_<項目>），重複同步不會長出重複資料。
+    const labs = body.labs || [];
+    const { lab } = setupSheets();
+    const stamp = new Date().toISOString();
+    const keep = {};
+    labs.forEach(l => {
+      if (!l || !l.metric) return;
+      const id = 'latest_' + l.metric;
+      keep[id] = true;
+      upsertRow(lab, LAB_COLS, id, {
+        id, importedAt: stamp, source: l.source || 'labs-db',
+        metric: l.metric, value: l.value ?? '', unit: l.unit || '', measuredAt: l.measuredAt || ''
+      });
+    });
+    // 使用者在 App 刪掉的項目，雲端這邊也一併移除
+    const data = lab.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      const rid = String(data[i][0]);
+      if (rid.indexOf('latest_') === 0 && !keep[rid]) lab.deleteRow(i + 1);
+    }
+    return jsonResp({ ok: true, message: `已同步 ${labs.length} 項檢驗值`, latest: latestLabValues() });
+  }
   if (action === 'deleteSnapshot') {
     const { rec } = setupSheets();
     deleteRow(rec, body.id);
