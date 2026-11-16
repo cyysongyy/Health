@@ -1767,7 +1767,7 @@ function load(){
 function defaults(){
   return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], dx:[], screen:[], reminders:[], mhx:{}, goals:{sbp:130,ldl:130,hba1c:7}, qa:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true,fontScale:1.5,autoBackup:false}, dietVal:3, stressVal:3};
 }
-function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));scheduleAutoBackup();}
+function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));scheduleAutoBackup();try{cloudSyncRecordsSoon();}catch(e){}}
 // 自動備份到 Google Drive：開啟且已設 Client ID 時，資料變更後自動（安靜）上傳；授權過一次後不再跳窗
 let _autoBackupTimer=null,_backupDirty=false,_backupInProgress=false;
 function scheduleAutoBackup(){
@@ -2498,6 +2498,28 @@ function refreshCurrentView(){
    警示與提醒，並重繪目前畫面。所有檢驗異動點統一呼叫此函式，確保全系統連動更新。*/
 /* ---- 檢驗數據同步到雲端後台（讓 Ybot 等串接 App 讀得到糖化血色素等數值） ---- */
 const LAB_CLOUD_UNITS={hba1c:'%',glucose:'mg/dL',ldl:'mg/dL',hdl:'mg/dL',chol:'mg/dL',tg:'mg/dL',sbp:'mmHg',dbp:'mmHg',weight:'kg',waist:'cm',height:'cm',hr:'bpm',egfr:'mL/min/1.73m²',cr:'mg/dL',ua:'mg/dL'};
+/* ---- 醫藥紀錄（手術／用藥／診斷／篩檢）同步到雲端後台，Ybot 問「開刀紀錄」才找得到 ---- */
+function recordsForCloud(){
+  const out=[];
+  const d10=v=>String(v||'').slice(0,10);
+  (state.surgeries||[]).forEach(r=>{ if(r&&r.id)out.push({id:r.id,kind:'surgery',date:d10(r.date),name:r.name||'',detail:r.dx||'',hospital:r.hospital||'',source:r.source||''}); });
+  (state.meds||[]).forEach(r=>{ if(r&&r.id)out.push({id:r.id,kind:'med',date:d10(r.date),name:r.name||'',detail:[r.dose,r.route,r.days?r.days+'天':'',r.qty].filter(Boolean).join('；'),hospital:r.prescriber||'',source:r.source||''}); });
+  (state.dx||[]).forEach(r=>{ if(r&&r.id)out.push({id:r.id,kind:'dx',date:d10(r.date),name:r.name||'',detail:r.code||'',hospital:r.hospital||'',source:r.source||''}); });
+  (state.screen||[]).forEach(r=>{ if(r&&r.id)out.push({id:r.id,kind:'screen',date:d10(r.date),name:r.label||r.test||'',detail:(r.result||'')+(r.raw?'（'+r.raw+'）':''),hospital:r.hospital||'',source:r.source||''}); });
+  return out.slice(0,2000);
+}
+let _recCloudTimer=null,_recCloudSig='';
+function cloudSyncRecordsSoon(){
+  if(!state.settings||!state.settings.gas)return;
+  clearTimeout(_recCloudTimer);
+  _recCloudTimer=setTimeout(()=>{
+    const recs=recordsForCloud();
+    if(!recs.length)return;                          // 沒資料就不送，避免新裝置把雲端清空
+    const sig=recs.length+':'+recs.map(r=>r.id).join(',');
+    if(sig===_recCloudSig)return;                    // 跟上次送的一樣就不用再送
+    gasPost({action:'syncRecords',records:recs}).then(()=>{_recCloudSig=sig;}).catch(()=>{});
+  },5000);
+}
 function labsForCloud(){
   // 每個檢驗項目只取日期最新的一筆數值
   const best={};
@@ -7076,7 +7098,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.11.16-labs-sync';
+const APP_VERSION='2026.11.16-records-sync';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -7580,6 +7602,11 @@ async function cloudPush(){
     if(labs.length){
       try{const ld=await gasPost({action:'syncLabs',labs:labs});labNote=ld.ok?('；'+ld.message):'；檢驗值同步失敗（請更新後台程式）';}
       catch(e){labNote='；檢驗值同步失敗：'+e.message;}
+    }
+    const recs=recordsForCloud();
+    if(recs.length){
+      try{const rd=await gasPost({action:'syncRecords',records:recs});labNote+=rd.ok?('；'+rd.message):'；醫藥紀錄同步失敗（請更新後台程式）';}
+      catch(e){labNote+='；醫藥紀錄同步失敗：'+e.message;}
     }
     cloudMsg('✅ '+d.message+labNote,true);toast('已上傳雲端');
   }catch(e){cloudMsg('⚠️ 上傳失敗：'+e.message,false);}
