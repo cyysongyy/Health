@@ -113,9 +113,12 @@ const TOKEN_PROP = 'API_TOKEN';
 function generateApiToken() {
   const token = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '').slice(0, 8);
   PropertiesService.getScriptProperties().setProperty(TOKEN_PROP, token);
-  return '✅ 新的通關密語（整串複製，貼進 LifeSpan 設定與 Ybot 的健康後台密語欄）：\n\n' + token + '\n\n舊的密語即刻失效，網址不用換。';
+  const msg = '✅ 新的通關密語（整串複製，貼進 LifeSpan 設定與 Ybot 的健康後台密語欄）：\n\n' + token + '\n\n舊的密語即刻失效，網址不用換。';
+  console.log(msg);   // 編輯器不會顯示回傳值，要印出來使用者才看得到
+  return msg;
 }
 function getApiToken() { return PropertiesService.getScriptProperties().getProperty(TOKEN_PROP) || ''; }
+function showApiToken() { console.log(getApiToken() || '（尚未設定，請先執行 generateApiToken）'); }
 function checkApiToken() {
   return getApiToken() ? '✅ 已啟用通關密語。' : '⚠️ 尚未設定通關密語，任何知道網址的人都能讀到你的檢驗與醫藥紀錄。執行 generateApiToken() 產生一組。';
 }
