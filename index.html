@@ -622,6 +622,7 @@ body{ background:#eef2f6;
   </div>
   <div id="dashAdvisor"></div>
   <div id="dashAutoRem"></div>
+  <div id="dashCondition"></div>
   <div id="dashCopilot"></div>
   <div id="dashBrief"></div>
   <div id="dashTasks"></div>
@@ -1214,6 +1215,12 @@ body{ background:#eef2f6;
   <div id="analysisHub"></div>
 </div>
 
+<div class="sec" id="sec-agent">
+  <div class="card"><div class="ct">🧬 健康狀況辨識 <span class="hint">自主代理人</span></div>
+  <div class="hint" style="line-height:1.7;">整合你 App 內<b>所有數據</b>，自動辨識可能的健康狀況、偵測惡化並警告，還會告訴你下一步最好怎麼做。</div></div>
+  <div id="agentBody"></div>
+</div>
+
 <!-- ========== 日常（Hub）========== -->
 <div class="sec" id="sec-daily">
   <div class="card">
@@ -1762,14 +1769,16 @@ function load(){
   if(s&&s.settings&&s.settings.fontScale==null)s.settings.fontScale=1.5;
   if(s&&!s.mhx)s.mhx={};
   if(s&&!s.goals)s.goals={sbp:130,ldl:100,hba1c:7};
+  if(s&&!Array.isArray(s.symptoms))s.symptoms=[];
+  if(s&&!s.agent)s.agent={};
   if(s&&!Array.isArray(s.qa))s.qa=[];
   else if(s&&Array.isArray(s.qa))s.qa.forEach(x=>{ if(x&&typeof x.a==='string'&&x.a.indexOf('⏳')===0)x.a='（上次未完成，可重新提問）'; });
   return s;
 }
 function defaults(){
-  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], dx:[], screen:[], reminders:[], mhx:{}, goals:{sbp:130,ldl:130,hba1c:7}, qa:[], habits:{}, customHabits:[], settings:{gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true,fontScale:1.5,autoBackup:false}, dietVal:3, stressVal:3};
+  return {profile:null, result:null, history:[], labs:[], meds:[], surgeries:[], reports:[], dx:[], screen:[], reminders:[], mhx:{}, goals:{sbp:130,ldl:130,hba1c:7}, qa:[], symptoms:[], agent:{}, phq2:null, habits:{}, customHabits:[], settings:{agentLevel:2,gemini:'',openai:'',engine:'auto',gas:'',autosync:false,fb:'',fbEmail:'',dailyAlert:true,lang:'zh',gcalClientId:'',visitAheadDays:1,visitAheadTime:'07:00',remindSilent:true,fontScale:1.5,autoBackup:false}, dietVal:3, stressVal:3};
 }
-function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));scheduleAutoBackup();try{cloudSyncRecordsSoon();}catch(e){}}
+function save(){localStorage.setItem(LS_KEY,JSON.stringify(state));scheduleAutoBackup();try{cloudSyncRecordsSoon();}catch(e){}try{agentSoon('save');}catch(e){}}
 // 自動備份到 Google Drive：開啟且已設 Client ID 時，資料變更後自動（安靜）上傳；授權過一次後不再跳窗
 let _autoBackupTimer=null,_backupDirty=false,_backupInProgress=false;
 function scheduleAutoBackup(){
@@ -1874,7 +1883,7 @@ function go(sec){
     trend:'📈 趨勢追蹤',connect:'🔗 匯入串接',
     assess:'📝 健康評估',risk:'🔬 風險預測',medscore:'🩺 醫療級評估',smart:'🚨 智慧預警',
     report:'📋 綜合報告',advice:'💡 建議 & AI',advisor:'🧭 健康顧問',
-    remind:'⏰ 提醒',habit:'✅ 每日習慣'};
+    remind:'⏰ 提醒',habit:'✅ 每日習慣',agent:'🧬 健康狀況辨識'};
   if(nc){ if(cur)nc.textContent=cur.textContent; else if(SUBT[sec])nc.textContent=SUBT[sec]; }
   closeNav();
   window.scrollTo(0,0);
@@ -1898,6 +1907,7 @@ function go(sec){
   if(sec==='smart')renderSmart();
   if(sec==='advisor')renderAdvisor();
   if(sec==='qa')renderQA();
+  if(sec==='agent')renderAgent();
   if(sec==='eval')renderEvalHub();
   if(sec==='analysis')renderAnalysisHub();
   if(sec==='daily')renderDailyHub();
@@ -2022,6 +2032,7 @@ function renderAnalysisHub(){
   const hasKey=aiHasKey();
   const aiTag=hasKey?'<span class="hint" style="color:var(--ok);">AI 已啟用</span>':'<span class="hint" style="color:var(--g500);">需金鑰</span>';
   hubCards('analysisHub',[
+    {sec:'agent',icon:'🧬',title:'健康狀況辨識',sub:'自主代理人：整合全部數據，辨識可能狀況、偵測惡化、給下一步',tag:`<span class="hint">${(()=>{try{return computeConditions().filter(x=>x.status!=='risk'&&x.status!=='confirmed').length+' 項待確認';}catch(e){return '';}})()}</span>`},
     {sec:'report',icon:'📋',title:'綜合報告',sub:'整合檢驗／風險／趨勢的重點報告（本機＋AI）'},
     {sec:'advice',icon:'💡',title:'建議 & AI',sub:'個人化健康建議',tag:aiTag},
     {sec:'advisor',icon:'🧭',title:'健康顧問',sub:'目標追蹤與行動計畫'}
@@ -2307,6 +2318,7 @@ function renderDash(){
   maybeShowInstallBanner(); // 📲 安裝單機版橫幅（未安裝且未關閉時顯示）
   renderDashAdvisor(); // 健康顧問精簡入口
   renderCopilot();     // 每日健康 Co-pilot：把當日重點收斂成一張優先排序行動卡
+  try{renderDashCondition();}catch(e){}
   renderDashAutoRem(); // 閉環：自動建立的追蹤提醒通知（可撤銷）
   renderDashBrief();   // 今日語音摘要（文字版，與語音同一份內容）
   renderDashTasks();   // 每日健康任務圈＋進步回顧（打卡→連續→成就，形成回訪循環）
@@ -2493,7 +2505,7 @@ function refreshCurrentView(){
   const id=active.id.replace('sec-','');
   const R={dash:renderDash,eval:renderEvalHub,risk:renderRisk,medscore:renderMedScore,smart:renderSmart,
     analysis:renderAnalysisHub,report:renderReport,advice:renderAdvice,advisor:renderAdvisor,
-    records:renderRecords,labs:renderLabs,trend:renderTrend,dx:renderDx,qa:renderQA};
+    records:renderRecords,labs:renderLabs,trend:renderTrend,dx:renderDx,qa:renderQA,agent:renderAgent};
   if(R[id]){ try{ R[id](); }catch(e){} }
 }
 /* 單一事實來源：任何檢驗新增／修改／刪除 → 重算評估、風險、走向、依從性、照護缺口、
@@ -2892,6 +2904,7 @@ function assistantAnswer(q){
   if(has('異常','檢驗','報告','紅字'))return (typeof labsSpeech==='function')?labsSpeech():'';
   if(has('篩檢')){ const due=(careScreenings()||[]).filter(x=>x.flag!=='done').slice(0,3).map(x=>x.label); return due.length?('建議安排的篩檢有：'+due.join('、')+'。'):'目前沒有待做的篩檢。'; }
   if(has('燈','分級','風險')){ const t=alertTier(); return '你目前的健康分級是 '+String(t.label).replace(/\s*·\s*/,'，')+'。'; }
+  if(has('我有什麼病','健康狀況','可能有','什麼問題','辨識','症狀'))return agentSpeech();
   if(has('你好','哈囉','嗨','安安'))return '你好，我是你的健康助理。你可以問我血壓、血糖、體重、今天的提醒或用藥。';
   return '我聽到你說「'+s+'」。你可以問我：血壓、血糖、糖化血色素、膽固醇、體重、今天的提醒、目前用藥、健康分，或今日衛教。';
 }
@@ -3708,6 +3721,8 @@ function buildHealthAlerts(){
   if(uniq>=5)push('warn','⚠️','多重用藥（'+uniq+' 種）','近 90 天用藥種類較多，交互作用與副作用風險上升。','就醫時出示完整用藥清單，請醫師或藥師檢視是否可精簡。');
   const dates=[];(state.labs||[]).forEach(e=>dates.push(new Date(e.date).getTime()));(state.history||[]).forEach(s=>dates.push(new Date(s.date).getTime()));
   if(dates.length){const d=Math.floor((now-Math.max.apply(null,dates))/864e5);if(d>=120)push('info','⏰','已 '+d+' 天未更新資料','距上次檢驗／評估已久，分析可能失準。','安排一次抽血或健康評估以更新資料。');}
+  // 🧬 健康狀況辨識引擎：數值達標準／危急的候選狀況併入警戒（已診斷者不重複）
+  try{ computeConditions().forEach(x=>{ if(x.id==='imaging')return; if(x.status==='urgent'||x.status==='likely')push(x.status==='urgent'?'crit':'warn','🧬','可能狀況：'+x.name,x.ev.slice(0,2).map(e=>e.t).join('；'),x.next+'（建議科別：'+(x.spec||'家醫科')+'）'); }); }catch(e){}
   // 跨資料交叉訊號（影像紅旗、照護缺口…）併入警戒
   const titles=new Set(A.map(x=>x.title));
   crossFindings().forEach(f=>{ if(titles.has(f.title))return; titles.add(f.title); push(f.lvl,f.icon,f.title,f.detail,f.action); });
@@ -4190,8 +4205,11 @@ function buildDoctorSheet(){
   // 交叉／預警重點
   const cross=buildHealthAlerts().filter(a=>a.lvl!=='info').map(a=>a.title);
   if(cross.length)sec.push({title:'系統提醒重點',items:[...new Set(cross)].slice(0,10)});
+  try{ const cl=computeConditions().filter(x=>x.status!=='risk'); if(cl.length)sec.push({title:'系統辨識的可能狀況（規則比對，非診斷）',items:cl.map(x=>x.name+'：'+x.ev.slice(0,3).map(e=>e.t).join('；'))});
+    const sy=SYM_DEFS.concat(RED_FLAGS).filter(z=>symActive(z.k)).map(z=>z.label); if(sy.length)sec.push({title:'近期自述症狀',items:sy}); }catch(e){}
   // 想問醫師的問題（依發現自動產生）
   const Q=[];
+  try{ computeConditions().filter(x=>x.status==='likely'||x.status==='possible').slice(0,4).forEach(x=>Q.push('我的數據符合「'+x.name.replace(/（.*?）/g,'')+'」的標準，需要做哪些確認檢查？'+((x.miss&&x.miss[0])?'（例如：'+x.miss[0].label+'）':''))); }catch(e){}
   if(ix.length)Q.push('我目前的用藥有沒有交互作用或可以精簡的？');
   const cls=medClasses(120);
   if(cls.statin&&v('ldl')!=null&&v('ldl')>=100)Q.push('我的 LDL 還沒達標，降血脂藥需要調整嗎？');
@@ -4335,6 +4353,7 @@ function buildHealthContext(){
   // 走路訓練（來自復健系統）
   try{ const wk=walkStats(); if(wk.total&&wk.week.km>0)P.push('【走路訓練（近 7 天）】共 '+wk.week.km.toFixed(1)+' 公里、'+wk.week.minutes+' 分鐘、'+wk.week.sessions+' 次；今日 '+wk.today.km.toFixed(2)+' 公里；連續 '+wk.streak+' 天。'); }catch(e){}
   if(state.checkins&&state.checkins.length){ const c=state.checkins[state.checkins.length-1]; if(c&&(c.pain!=null||c.energy!=null))P.push('【每日回報（復健系統）】最近一次 疼痛 '+(c.pain!=null?c.pain:'—')+'/10、精力 '+(c.energy!=null?c.energy:'—')+'/10。'); }
+  try{ const cl=computeConditions().filter(x=>x.status!=='risk'); if(cl.length)P.push('【系統規則引擎辨識的可能狀況（非診斷）】\n'+cl.map(x=>x.name+'｜'+COND_STATUS[x.status].t+'｜依據：'+x.ev.slice(0,4).map(e=>e.t).join('；')).join('\n')); const sy=SYM_DEFS.concat(RED_FLAGS).filter(z=>symActive(z.k)).map(z=>z.label); if(sy.length)P.push('【近期自述症狀】'+sy.join('、')); }catch(e){}
   // 系統重點
   const alerts=[...new Set(buildHealthAlerts().filter(a=>a.lvl!=='info').map(a=>a.title))].slice(0,10);
   if(alerts.length)P.push('【系統交叉比對的重點】'+alerts.join('；'));
@@ -7101,7 +7120,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.11.16-token';
+const APP_VERSION='2026.11.20-agent';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -7203,6 +7222,495 @@ function importData(e){
 function resetAll(){ if(confirm('確定清除所有資料？此動作無法復原。')){localStorage.removeItem(LS_KEY);state=defaults();init();toast('已清除全部資料');} }
 
 /* ============ 初始化 ============ */
+/* ============ 🧬 健康狀況辨識中樞（規則引擎＋自主代理）============
+   整合：檢驗庫／用藥／健保診斷(ICD)／篩檢／影像病理／手術／個人檔案／症狀自述／走路與復健回報。
+   產出：「可能的健康狀況」清單（資料支持度、依據、還缺什麼、建議科別與下一步）。
+   自主代理：資料一有變動（匯入、新增、編輯、症狀）就自動巡檢→比對上次→惡化／新狀況即警告→
+   依「自主等級」自動排定確認檢查提醒（可撤銷）。
+   ⚠️ 僅為依公開指引門檻比對的衛教參考，不是診斷；所有文案用「可能／數值符合…標準／請醫師確認」。*/
+const SYM_DEFS=[
+  {k:'thirst',label:'口渴、喝水變多'},{k:'polyuria',label:'尿量變多／夜尿增加'},{k:'wtloss',label:'沒刻意減重但體重下降'},
+  {k:'fatigue',label:'容易疲倦、沒力氣'},{k:'blurry',label:'視力模糊'},{k:'numb',label:'手腳麻木／刺痛'},
+  {k:'dizzy',label:'頭暈、頭痛'},{k:'dyspnea',label:'活動時喘、爬樓梯喘'},{k:'edema',label:'腳或臉水腫'},{k:'palpit',label:'心悸'},
+  {k:'snore',label:'打鼾、睡眠中斷、白天嗜睡'},{k:'jointhot',label:'關節紅腫熱痛'},{k:'epigastric',label:'上腹痛／脹氣／食慾差'},
+  {k:'cough3w',label:'咳嗽超過 3 週'},{k:'lowmood',label:'情緒低落、提不起勁（近兩週）'},{k:'cold',label:'怕冷、便祕、皮膚乾'},
+  {k:'heat',label:'怕熱、手抖、心跳快'},{k:'fever',label:'發燒或反覆感染'}
+];
+const RED_FLAGS=[
+  {k:'rf_chest',label:'胸痛／胸悶壓迫感'},{k:'rf_stroke',label:'突然單側無力、嘴歪、說話不清'},
+  {k:'rf_breath',label:'突然嚴重呼吸困難'},{k:'rf_bleed',label:'黑便、吐血或大量便血'},{k:'rf_conf',label:'意識不清、抽搐、昏厥'}
+];
+const COND_SRC={lab:'🧪',dx:'📋',med:'💊',vital:'🩺',sym:'🗣️',img:'🩻',prof:'👤',trend:'📈',scr:'🔎'};
+const COND_STATUS={
+  urgent:{t:'🚨 建議儘快就醫',c:'#b91c1c',bg:'#fee2e2',r:0},
+  likely:{t:'數值符合標準・待醫師確認',c:'#b45309',bg:'#fef3c7',r:1},
+  possible:{t:'可能／前期・建議追蹤',c:'#6d28d9',bg:'#ede9fe',r:2},
+  confirmed:{t:'已診斷／治療中・看控制',c:'#0369a1',bg:'#e0f2fe',r:3},
+  risk:{t:'風險因子・留意',c:'#475569',bg:'#f1f5f9',r:4}
+};
+const METRIC_COND={hba1c:'dm',glucose:'dm',sbp:'htn',dbp:'htn',ldl:'lipid',tg:'lipid',hdl:'lipid',chol:'lipid',egfr:'ckd',cr:'ckd',uacr:'ckd',
+  alt:'liver',ast:'liver',hb:'anemia',ua:'gout',tsh:'thyroid',k:'lyte',na:'lyte',crp:'infl',wbc:'infl',trop:'cvd',bnp:'cvd',ntprobnp:'cvd'};
+
+function agentState(){ if(!state.agent||typeof state.agent!=='object')state.agent={}; const a=state.agent;
+  if(!Array.isArray(a.log))a.log=[]; if(!a.snap)a.snap={}; if(!a.msnap)a.msnap={}; if(!a.asked)a.asked={}; return a; }
+function agentLevel(){ const l=state.settings&&state.settings.agentLevel; return (l===0||l===1||l===2)?l:2; }
+function setAgentLevel(l){ state.settings.agentLevel=l; save(); toast(['👁️ 觀察模式：只巡檢、不打擾','💡 建議模式：發現異常就警告','🤖 自動模式：警告＋自動排定確認檢查提醒（可撤銷）'][l]); renderAgent(); }
+function symActive(k){ const days=k.indexOf('rf_')===0?3:30; const lim=Date.now()-days*864e5; return (state.symptoms||[]).some(s=>s.k===k&&new Date(s.ts).getTime()>=lim); }
+function symToggle(k){ state.symptoms=state.symptoms||[];
+  if(symActive(k)){ state.symptoms=state.symptoms.filter(s=>s.k!==k); }
+  else{ state.symptoms.push({k,ts:new Date().toISOString()}); }
+  save(); agentRun('symptom',true); renderAgent(); }
+function agentAnswerSym(k,yes){ const a=agentState(); a.asked[k]=Date.now();
+  if(yes){ state.symptoms=state.symptoms||[]; if(!symActive(k))state.symptoms.push({k,ts:new Date().toISOString()}); }
+  save(); agentRun('symptom',true); renderAgent(); }
+function phq2Set(i,val){ const q=state.phq2=state.phq2||{a:null,b:null,ts:null}; q[i]=+val; if(q.a!=null&&q.b!=null)q.ts=new Date().toISOString(); save(); agentRun('phq2',true); renderAgent(); }
+
+/* ---- 條件脈絡 ---- */
+function condCtx(){
+  const L=labLatest(), p=state.profile||{}, now=Date.now();
+  const v=k=>(L[k]!=null&&!isNaN(parseFloat(L[k].v)))?parseFloat(L[k].v):null;
+  const ser=k=>labSeries(k).map(x=>({t:new Date(x.date).getTime(),v:parseFloat(x.value)})).filter(x=>!isNaN(x.v));
+  const ageD=k=>{const s=ser(k);return s.length?Math.floor((now-s[s.length-1].t)/864e5):null;};
+  const cls=medClasses(400);
+  const dxc=(state.dx||[]).map(d=>String(d.code||'').toUpperCase());
+  const dxHas=re=>dxc.some(c=>re.test(c));
+  const dxName=re=>(state.dx||[]).some(d=>re.test(String(d.name||'')));
+  const sex=p.sex||null, age=p.age!=null&&p.age!==''?+p.age:null;
+  const height=v('height')||(p.height?+p.height:null), weight=v('weight')||(p.weight?+p.weight:null);
+  const bmi=(height&&weight)?+(weight/Math.pow(height/100,2)).toFixed(1):((state.result&&state.result.bmi)||null);
+  const waist=v('waist')||(p.waist?+p.waist:null);
+  const rptTxt=(state.reports||[]).map(r=>(r.name||'')+' '+(r.findings||'')+' '+(r.findingsZh||'')).join(' \n ');
+  const surTxt=(state.surgeries||[]).map(s=>(s.name||'')+' '+(s.dx||'')).join(' \n ');
+  return {L,p,v,ser,ageD,cls,dxHas,dxName,sex,age,bmi,waist,rptTxt,surTxt,now,sym:symActive};
+}
+function bpReadings(c){ // 最近最多 3 筆（一年內）同時有收縮／舒張壓的檢驗紀錄
+  return (state.labs||[]).filter(e=>e.values&&e.values.sbp!=null&&new Date(e.date).getTime()>=c.now-365*864e5)
+    .sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(-3).map(e=>({t:new Date(e.date).getTime(),s:+e.values.sbp,d:e.values.dbp!=null?+e.values.dbp:null}));
+}
+function slopePerYear(s){ if(s.length<3)return null; const t0=s[0].t; const n=s.length; let sx=0,sy=0,sxx=0,sxy=0;
+  s.forEach(p=>{const x=(p.t-t0)/(365.25*864e5);sx+=x;sy+=p.v;sxx+=x*x;sxy+=x*p.v;}); const d=n*sxx-sx*sx; if(!d)return null;
+  const span=(s[n-1].t-t0)/(365.25*864e5); if(span<0.25)return null; return (n*sxy-sx*sy)/d; }
+function noisyOr(ev){ let q=1; ev.forEach(e=>{q*=(1-Math.max(0,Math.min(.95,e.w||0)));}); return Math.round((1-q)*100); }
+
+/* ---- 規則庫：每條回傳 null 或 {id,name,icon,status,ev[],miss[],next,spec,urgent,ctrl} ---- */
+function condRules(c){
+  const R=[]; const {v,sex,age,bmi,waist,cls,dxHas,dxName,sym}=c;
+  const E=(s,t,w)=>({s,t,w}); const M=(label,metric,why)=>({label,metric:metric||null,why:why||''});
+  const rule=f=>{ try{ const r=f(); if(r)R.push(r); }catch(e){} };
+  const abn=(keys,fn)=>keys.reduce((n,k)=>n+c.ser(k).filter(x=>x.t>=c.now-365*864e5&&fn(k,x.v)).length,0);
+
+  // 1 糖尿病／前期
+  rule(()=>{ const a1=v('hba1c'),g=v('glucose'),ev=[],miss=[];
+    const dx=dxHas(/^E1[0-4]/),on=!!cls.dm;
+    if(a1!=null){ if(a1>=6.5)ev.push(E('lab','HbA1c '+a1+'%（≥6.5%）',.6)); else if(a1>=5.7)ev.push(E('lab','HbA1c '+a1+'%（5.7–6.4% 糖尿病前期範圍）',.4)); }
+    if(g!=null){ if(g>=126)ev.push(E('lab','空腹血糖 '+g+'（≥126）',.55)); else if(g>=100)ev.push(E('lab','空腹血糖 '+g+'（100–125 偏高）',.3)); }
+    const hi=ev.length>0;
+    [['thirst','口渴多飲'],['polyuria','多尿'],['wtloss','體重不明下降'],['blurry','視力模糊']].forEach(x=>{ if(sym(x[0]))ev.push(E('sym','自述：'+x[1],hi?.2:.08)); });
+    if(c.p.fhDiabetes)ev.push(E('prof','有糖尿病家族史',.1)); if(bmi!=null&&bmi>=27)ev.push(E('prof','BMI '+bmi+'（肥胖）',.1));
+    if(dx)ev.push(E('dx','健保就醫診斷含糖尿病（E10–E14）',.9)); if(on)ev.push(E('med','近期有降血糖藥／胰島素',.85));
+    if(!ev.length)return null;
+    if(a1==null||c.ageD('hba1c')>180)miss.push(M('糖化血色素 HbA1c','hba1c','近 6 個月沒有 HbA1c，是確認與追蹤血糖最重要的一項'));
+    const nAbn=abn(['hba1c','glucose'],(k,x)=>k==='hba1c'?x>=6.5:x>=126);
+    let st; if(dx||on)st='confirmed'; else if((a1!=null&&a1>=6.5)||(g!=null&&g>=126))st='likely'; else if((a1!=null&&a1>=5.7)||(g!=null&&g>=100))st='possible'; else st='risk';
+    if(st==='likely'&&nAbn<2&&!(sym('thirst')||sym('polyuria')))miss.push(M('重複一次空腹血糖或 HbA1c 確認','', '診斷通常需兩次異常（或一次異常＋典型症狀），單次可能受飲食／感染影響'));
+    if(st==='confirmed'&&a1!=null)var ctrl=a1<7?'HbA1c '+a1+'%：多數成人目標 <7% → ✅ 達標':'HbA1c '+a1+'%：高於多數成人目標 7% → ⚠️ 未達標';
+    const name=st==='confirmed'?'糖尿病（已診斷／治療中）':st==='likely'?'疑似糖尿病（血糖數值達診斷門檻）':st==='possible'?'糖尿病前期（血糖偏高）':'糖尿病風險因子';
+    return {id:'dm',name,icon:'🩸',status:st,ev,miss,ctrl,spec:'新陳代謝科／家醫科',
+      next:st==='confirmed'?'規律用藥與追蹤 HbA1c（每 3–6 個月）、每年眼底／腎功能／足部檢查。':'安排空腹血糖＋HbA1c 確認；前期階段減重 5–7%、每週 150 分鐘運動可明顯降低轉糖尿病風險。'};
+  });
+  // 2 高血壓
+  rule(()=>{ const rd=bpReadings(c),ev=[],miss=[]; const dx=dxHas(/^I1[0-5]/),on=!!cls.bp;
+    let ms=null,md=null; if(rd.length){ ms=Math.round(rd.reduce((a,x)=>a+x.s,0)/rd.length); const ds=rd.filter(x=>x.d!=null); md=ds.length?Math.round(ds.reduce((a,x)=>a+x.d,0)/ds.length):null; }
+    const hi=(ms!=null&&(ms>=140||(md!=null&&md>=90))), el=(ms!=null&&(ms>=130||(md!=null&&md>=80)));
+    if(ms!=null)ev.push(E('vital','近 '+rd.length+' 次平均血壓 '+ms+'/'+(md!=null?md:'?')+' mmHg',hi?.55:el?.3:.05));
+    if(dx)ev.push(E('dx','健保就醫診斷含高血壓（I10–I15）',.9)); if(on)ev.push(E('med','近期有降血壓藥',.85));
+    if(sym('dizzy'))ev.push(E('sym','自述：頭暈／頭痛',.1)); if(c.p.smoke==='current')ev.push(E('prof','目前吸菸',.05));
+    if(!dx&&!on&&!el)return null; if(!ev.length)return null;
+    if(!on&&!dx&&rd.length<4)miss.push(M('連續 7 天家用血壓（早晚各 2 次）','sbp','家用平均 ≥135/85 即符合高血壓標準，比單次診間值更可靠'));
+    let st=(dx||on)?'confirmed':hi?(rd.length>=2?'likely':'possible'):'possible';
+    const urg=rd.length&&(rd[rd.length-1].s>=180||(rd[rd.length-1].d||0)>=120);
+    if(urg)st='urgent';
+    const ctrl=(st==='confirmed'&&ms!=null)?(ms<130&&(md==null||md<80)?'平均 '+ms+'/'+md+'：<130/80 ✅ 達標':'平均 '+ms+'/'+md+'：未達 <130/80 目標 ⚠️'):null;
+    return {id:'htn',name:st==='confirmed'?'高血壓（已診斷／治療中）':st==='urgent'?'血壓過高（≥180/120）':st==='likely'?'疑似高血壓（多次血壓偏高）':'血壓偏高（高血壓前期／待確認）',
+      icon:'❤️',status:st,ev,miss,ctrl,urgent:!!urg,spec:'心臟內科／家醫科',
+      next:urg?'血壓 ≥180/120：若有胸痛、頭痛劇烈、視力或說話異常請立即就醫（119）；無症狀也請當天聯絡醫師。':'規律量家用血壓並記錄；減鹽（<5 g 鹽/日）、體重與運動管理，連續偏高請回診評估是否需用藥。'};
+  });
+  // 3 血脂
+  rule(()=>{ const ldl=v('ldl'),tg=v('tg'),hdl=v('hdl'),tc=v('chol'),ev=[],miss=[]; const dx=dxHas(/^E78/),on=!!cls.statin;
+    if(ldl!=null){ if(ldl>=160)ev.push(E('lab','LDL '+ldl+'（≥160）',.6)); else if(ldl>=130)ev.push(E('lab','LDL '+ldl+'（130–159 邊緣偏高）',.35)); }
+    if(tg!=null){ if(tg>=200)ev.push(E('lab','三酸甘油酯 '+tg+'（≥200）',.5)); else if(tg>=150)ev.push(E('lab','三酸甘油酯 '+tg+'（150–199）',.3)); }
+    if(hdl!=null&&sex&&hdl<(sex==='male'?40:50))ev.push(E('lab','HDL '+hdl+'（偏低）',.3));
+    if(tc!=null&&tc>=240)ev.push(E('lab','總膽固醇 '+tc+'（≥240）',.5));
+    if(dx)ev.push(E('dx','健保就醫診斷含血脂異常（E78）',.9)); if(on)ev.push(E('med','近期有降血脂藥',.85));
+    if(!ev.length)return null;
+    if(c.ageD('ldl')==null||c.ageD('ldl')>365)miss.push(M('血脂（LDL／HDL／TG）','ldl','近一年沒有完整血脂'));
+    const st=(dx||on)?'confirmed':(ev.some(e=>e.w>=.5)?'likely':'possible');
+    const ctrl=(st==='confirmed'&&ldl!=null)?(ldl<130?'LDL '+ldl+'：<130 ✅（高風險者目標更低，請依醫師設定）':'LDL '+ldl+'：⚠️ 偏高，可與醫師討論目標'):null;
+    return {id:'lipid',name:st==='confirmed'?'血脂異常（已診斷／治療中）':'血脂異常（數值偏高）',icon:'🧈',status:st,ev,miss,ctrl,spec:'心臟內科／家醫科／新陳代謝科',
+      next:(ldl!=null&&ldl>=190?'LDL ≥190 建議請醫師評估是否為家族性高膽固醇血症。':'')+'調整飲食（減飽和脂肪／加工食品、增加蔬果與纖維）、運動；依心血管風險由醫師決定是否用藥。'};
+  });
+  // 4 代謝症候群（國健署成人標準：5 項符合 ≥3）
+  rule(()=>{ const items=[],unk=[];
+    const ms=(label,known,hit,t)=>{ if(!known)unk.push(label); else if(hit)items.push(t); };
+    ms('腰圍',waist!=null&&!!sex,waist!=null&&sex&&waist>=(sex==='male'?90:80),'腰圍 '+waist+' cm（男≥90／女≥80）');
+    const rd=bpReadings(c),lastS=rd.length?rd[rd.length-1].s:null,lastD=rd.length?rd[rd.length-1].d:null;
+    ms('血壓',lastS!=null||!!cls.bp,!!cls.bp||(lastS!=null&&(lastS>=130||(lastD!=null&&lastD>=85))),'血壓偏高或已用降壓藥');
+    ms('空腹血糖',v('glucose')!=null||!!cls.dm,!!cls.dm||(v('glucose')!=null&&v('glucose')>=100),'空腹血糖 '+v('glucose')+'（≥100）或已用降糖藥');
+    ms('三酸甘油酯',v('tg')!=null,v('tg')!=null&&v('tg')>=150,'三酸甘油酯 '+v('tg')+'（≥150）');
+    ms('HDL',v('hdl')!=null&&!!sex,v('hdl')!=null&&sex&&v('hdl')<(sex==='male'?40:50),'HDL '+v('hdl')+'（偏低）');
+    if(items.length<2)return null;
+    const ev=items.map(t=>E('lab',t,.3)); const st=items.length>=3?'likely':'possible';
+    const miss=unk.map(u=>M('補測：'+u,'', '尚缺此項，無法完整判斷'));
+    return {id:'mets',name:st==='likely'?'代謝症候群（5 項中符合 '+items.length+' 項）':'代謝症候群邊緣（已符合 '+items.length+'/5 項）',icon:'⚖️',status:st,ev,miss,spec:'家醫科／新陳代謝科',
+      next:'代謝症候群是心血管病與糖尿病的上游訊號；以腰圍縮小（減重 5–10%）、規律運動、減精製糖為主，並追蹤血壓／血糖／血脂。'};
+  });
+  // 5 慢性腎臟病
+  rule(()=>{ let s=c.ser('egfr'); if(!s.length&&sex&&age){ s=c.ser('cr').map(x=>({t:x.t,v:calcCKDEPI({sex,age,scr:x.v}).egfr})); }
+    const ua=v('uacr'),dx=dxHas(/^N18/),ev=[],miss=[]; const last=s.length?s[s.length-1]:null;
+    const low=s.filter(x=>x.v<60);
+    if(last&&last.v<60){ ev.push(E('lab','eGFR '+Math.round(last.v)+'（<60）',.5)); }
+    if(low.length>=2&&(low[low.length-1].t-low[0].t)>=90*864e5)ev.push(E('trend','eGFR 偏低已持續 ≥3 個月（符合慢性判定）',.4));
+    const sl=slopePerYear(s.slice(-6)); if(sl!=null&&sl<-5)ev.push(E('trend','eGFR 每年下降約 '+Math.abs(Math.round(sl))+'（>5/年 屬快速下降）',.35));
+    if(ua!=null&&ua>=30)ev.push(E('lab','尿白蛋白 UACR '+ua+'（≥30）',.5));
+    if(dx)ev.push(E('dx','健保就醫診斷含慢性腎臟病（N18）',.9));
+    if(!ev.length)return null;
+    const hasChronic=ev.some(e=>e.s==='trend'&&/持續/.test(e.t))||dx||(ua!=null&&ua>=30&&last&&last.v<60);
+    if(ua==null)miss.push(M('尿白蛋白 UACR','uacr','腎臟病分期與風險需 eGFR＋尿蛋白一起看'));
+    if(!hasChronic)miss.push(M('3 個月後複驗腎功能','egfr','單次偏低可能是脫水／感染／藥物，需間隔 ≥3 個月確認'));
+    const g=last?(last.v>=90?'G1':last.v>=60?'G2':last.v>=45?'G3a':last.v>=30?'G3b':last.v>=15?'G4':'G5'):'';
+    const urg=last&&last.v<15;
+    return {id:'ckd',name:dx?'慢性腎臟病（已診斷'+(g?'・'+g:'')+'）':hasChronic?'疑似慢性腎臟病（'+g+'）':'腎功能偏低（待複驗）',icon:'🫘',status:urg?'urgent':dx?'confirmed':hasChronic?'likely':'possible',urgent:!!urg,ev,miss,spec:'腎臟科',
+      next:'避免 NSAID 止痛藥、控好血壓血糖、多喝水（除非醫師限水）；eGFR 快速下降或 <45 建議轉介腎臟科。'};
+  });
+  // 6 肝臟／脂肪肝
+  rule(()=>{ const alt=v('alt'),ast=v('ast'),plt=v('plt'),ev=[],miss=[];
+    const fatty=/脂肪肝|fatty liver|hepatic steatosis|fatty infiltration|steatosis/i.test(c.rptTxt);
+    if(alt!=null&&alt>40)ev.push(E('lab','ALT '+alt+'（>40）',alt>120?.55:.4)); if(ast!=null&&ast>40)ev.push(E('lab','AST '+ast+'（>40）',.3));
+    if(fatty)ev.push(E('img','影像報告提到脂肪肝',.6));
+    let fib=null; if(age&&ast!=null&&alt&&plt){ fib=+((age*ast)/(plt*Math.sqrt(alt))).toFixed(2); if(fib>=1.3)ev.push(E('lab','FIB-4 '+fib+(fib>=2.67?'（高，肝纖維化風險高）':'（1.3–2.67 不確定區）'),fib>=2.67?.45:.25)); }
+    if((bmi!=null&&bmi>=27)||c.dxName(/糖尿|高血壓/)||v('tg')>=150)if(ev.length)ev.push(E('prof','合併代謝風險（肥胖／血糖／血脂）',.15));
+    if(c.p.alcohol!=null&&+c.p.alcohol>14)ev.push(E('prof','每週飲酒 '+c.p.alcohol+' 份',.15));
+    if(c.dxHas(/^K7[0-6]|^K76/))ev.push(E('dx','健保診斷含肝病（K70–K76）',.9));
+    if(!ev.length)return null;
+    if(alt!=null&&alt>40)miss.push(M('B 型／C 型肝炎篩檢','','肝指數異常先排除病毒性肝炎（本 App 無紀錄，請問醫師是否做過）'));
+    const st=fatty?'likely':(fib!=null&&fib>=2.67)?'likely':'possible';
+    return {id:'liver',name:fatty?'脂肪肝（影像提示）':(alt>40||ast>40)?'肝功能指數偏高（原因待查）':'肝纖維化風險指標偏高',icon:'🫀',status:st,ev,miss,spec:'腸胃肝膽科',
+      next:'減重（體重降 7–10% 可明顯改善脂肪肝）、少酒少含糖飲料、運動；ALT 持續異常或 FIB-4 偏高請至腸胃肝膽科評估（可安排肝纖維化超音波）。'};
+  });
+  // 7 貧血
+  rule(()=>{ const hb=v('hb'); if(hb==null||!sex)return null; const lim=sex==='male'?13:12; if(hb>=lim)return null;
+    const mcv=v('mcv'),fer=v('ferritin'),ev=[E('lab','血紅素 '+hb+'（<'+lim+'）',hb<8?.8:.6)],miss=[];
+    let type='貧血（原因待查）';
+    if(mcv!=null){ if(mcv<80){ev.push(E('lab','MCV '+mcv+'（小球性：常見缺鐵）',.25));type='小球性貧血（常見缺鐵）';} else if(mcv>100){ev.push(E('lab','MCV '+mcv+'（大球性：留意 B12／葉酸／酒精／甲狀腺）',.25));type='大球性貧血';} }
+    if(fer!=null&&fer<30)ev.push(E('lab','鐵蛋白 '+fer+'（<30 提示缺鐵）',.5));
+    if(cls.antithrombotic)ev.push(E('med','正在使用抗凝／抗血小板藥（需留意出血）',.2));
+    const f=latestScreen('fobt'); if(f&&f.result==='pos')ev.push(E('scr','糞便潛血陽性',.35));
+    ['fatigue','dizzy','dyspnea'].forEach(k=>{ if(sym(k))ev.push(E('sym','自述：'+(SYM_DEFS.find(x=>x.k===k)||{}).label,.1)); });
+    if(fer==null)miss.push(M('鐵蛋白 Ferritin','ferritin','區分缺鐵與其他貧血的關鍵'));
+    if(mcv!=null&&mcv>100)miss.push(M('維生素 B12／葉酸','b12','大球性貧血常見原因'));
+    const urg=hb<8;
+    return {id:'anemia',name:type,icon:'🩸',status:urg?'urgent':'likely',urgent:urg,ev,miss,spec:'家醫科／血液科／腸胃科',
+      next:(urg?'血紅素 <8 請儘快就醫。':'')+'男性或停經後女性的缺鐵性貧血，指引建議評估是否有消化道出血（胃鏡／大腸鏡）；不要自行長期補鐵而不查原因。'};
+  });
+  // 8 高尿酸／痛風
+  rule(()=>{ const ua=v('ua'); const dx=dxHas(/^M10/),on=!!cls.uricLowering; const ev=[],miss=[];
+    if(ua!=null&&ua>7)ev.push(E('lab','尿酸 '+ua+'（>7.0）',.55)); else if(ua!=null&&ua>6)ev.push(E('lab','尿酸 '+ua+'（6–7，痛風者目標 <6）',.25));
+    if(sym('jointhot'))ev.push(E('sym','自述：關節紅腫熱痛',ua!=null&&ua>6?.4:.15));
+    if(dx)ev.push(E('dx','健保診斷含痛風（M10）',.9)); if(on)ev.push(E('med','近期有降尿酸藥',.85));
+    if(!ev.length)return null; if(ua==null||c.ageD('ua')>365)miss.push(M('尿酸 UA','ua','追蹤是否達標'));
+    const st=(dx||on)?'confirmed':(ua>7||sym('jointhot')&&ua>6)?'likely':'possible';
+    const ctrl=(st==='confirmed'&&ua!=null)?(ua<6?'尿酸 '+ua+'：<6 ✅':'尿酸 '+ua+'：未達 <6 ⚠️'):null;
+    return {id:'gout',name:st==='confirmed'?'痛風／高尿酸（已診斷／治療中）':'高尿酸血症'+(sym('jointhot')?'・疑似痛風發作':''),icon:'🦶',status:st,ev,miss,ctrl,spec:'風濕免疫科／家醫科',
+      next:'少酒（尤其啤酒）、少內臟與濃湯、多喝水；急性關節紅腫熱痛請盡快就醫，不要自行熱敷或亂吃止痛藥（腎功能不佳者避免 NSAID）。'};
+  });
+  // 9 甲狀腺
+  rule(()=>{ const tsh=v('tsh'),ft4=v('ft4'); if(tsh==null)return null; const ev=[],miss=[]; let name,st='possible';
+    if(tsh>4.5){ ev.push(E('lab','TSH '+tsh+'（>4.5）',.5)); if(ft4!=null&&ft4<0.8){ev.push(E('lab','FT4 '+ft4+'（偏低）',.4));name='疑似甲狀腺功能低下';st='likely';} else name=ft4!=null?'亞臨床甲狀腺低下（TSH 高、FT4 正常）':'TSH 偏高（甲狀腺功能低下可能）'; if(sym('cold'))ev.push(E('sym','自述：怕冷／便祕／皮膚乾',.15)); }
+    else if(tsh<0.4){ ev.push(E('lab','TSH '+tsh+'（<0.4）',.5)); if(ft4!=null&&ft4>1.8){ev.push(E('lab','FT4 '+ft4+'（偏高）',.4));name='疑似甲狀腺功能亢進';st='likely';} else name=ft4!=null?'亞臨床甲狀腺亢進':'TSH 偏低（甲狀腺亢進可能）'; if(sym('heat'))ev.push(E('sym','自述：怕熱／手抖／心跳快',.15)); }
+    else return null;
+    if(ft4==null)miss.push(M('游離 T4（FT4）','ft4','TSH 異常需搭配 FT4 才能分辨臨床或亞臨床'));
+    return {id:'thyroid',name,icon:'🦋',status:st,ev,miss,spec:'新陳代謝科（內分泌）',next:'請內分泌／新陳代謝科確認；亞臨床者常先 6–12 週複驗追蹤，並留意心悸、體重變化。'};
+  });
+  // 10 體重
+  rule(()=>{ if(bmi==null)return null; if(bmi<24&&!(waist!=null&&sex&&waist>=(sex==='male'?90:80)))return null;
+    const ev=[]; if(bmi>=27)ev.push(E('prof','BMI '+bmi+'（國健署：≥27 為肥胖）',.7)); else if(bmi>=24)ev.push(E('prof','BMI '+bmi+'（24–26.9 過重）',.4));
+    if(waist!=null&&sex&&waist>=(sex==='male'?90:80))ev.push(E('prof','腰圍 '+waist+' cm（中央型肥胖）',.5));
+    return {id:'obesity',name:bmi>=27?'肥胖':bmi>=24?'過重':'中央型肥胖（腰圍超標）',icon:'⚖️',status:'risk',ev,miss:[],spec:'家醫科／肥胖代謝門診',
+      next:'目標先減 5–10% 體重：每週 ≥150 分鐘中等強度運動、控制精製糖與含糖飲料、足夠蛋白質與睡眠；BMI≥30 或合併疾病可諮詢減重門診。'};
+  });
+  // 11 電解質
+  rule(()=>{ const k=v('k'),na=v('na'),ev=[]; let urg=false;
+    if(k!=null){ if(k>=6||k<3){ev.push(E('lab','血鉀 '+k+'（危險範圍）',.8));urg=true;} else if(k>5.1||k<3.5)ev.push(E('lab','血鉀 '+k+'（偏離 3.5–5.1）',.5)); }
+    if(na!=null){ if(na<130||na>150){ev.push(E('lab','血鈉 '+na+'（危險範圍）',.8));urg=true;} else if(na<135||na>145)ev.push(E('lab','血鈉 '+na+'（偏離 135–145）',.5)); }
+    if(!ev.length)return null; if(cls.bp&&k!=null&&k>5.1)ev.push(E('med','正在用降壓藥（部分 ARB／ACEI 會升血鉀）',.2));
+    return {id:'lyte',name:'電解質異常（鉀／鈉）',icon:'🧂',status:urg?'urgent':'possible',urgent:urg,ev,miss:[],spec:'家醫科／腎臟科',next:urg?'數值達危險範圍，請當天就醫複驗；有無力、心悸、意識改變請撥 119。':'回診複驗並檢視用藥（降壓藥、利尿劑）與飲水／飲食。'};
+  });
+  // 12 發炎／血球
+  rule(()=>{ const crp=v('crp'),wbc=v('wbc'),plt=v('plt'),ev=[];
+    if(crp!=null&&crp>10)ev.push(E('lab','CRP '+crp+'（>10 提示明顯發炎）',crp>50?.6:.4)); if(wbc!=null&&(wbc>11||wbc<3.5))ev.push(E('lab','白血球 '+wbc+(wbc>11?'（偏高）':'（偏低）'),.35));
+    if(plt!=null&&(plt<100||plt>450))ev.push(E('lab','血小板 '+plt+(plt<100?'（明顯偏低）':'（偏高）'),.4));
+    if(!ev.length)return null; if(sym('fever'))ev.push(E('sym','自述：發燒或反覆感染',.25));
+    const urg=(plt!=null&&plt<50)||(wbc!=null&&(wbc<2||wbc>30));
+    return {id:'infl',name:'發炎／血球指標異常',icon:'🔥',status:urg?'urgent':'possible',urgent:!!urg,ev,miss:[],spec:'家醫科／感染科／血液科',next:'結合症狀回診找原因（感染、發炎性疾病、藥物）；持續異常或合併發燒、出血點、體重下降請儘快就醫。'};
+  });
+  // 13 心血管風險／心肌指標
+  rule(()=>{ const I=medInputs(),ev=[],miss=[]; let pct=null;
+    try{ if(I.sex&&I.age>=40&&I.age<=79&&I.tc&&I.hdl&&I.sbp)pct=calcASCVD(I).pct; }catch(e){}
+    if(pct!=null&&pct>=5)ev.push(E('lab','10 年心血管風險 ASCVD '+pct+'%（'+(pct>=20?'高':pct>=7.5?'中':'邊緣')+'）',pct>=20?.6:pct>=7.5?.4:.2));
+    const tp=v('trop'); if(tp!=null&&tp>0.04)ev.push(E('lab','肌鈣蛋白 '+tp+'（升高）',.8));
+    const bn=v('ntprobnp')!=null?v('ntprobnp'):null,bb=v('bnp'); if((bn!=null&&bn>125)||(bb!=null&&bb>100))ev.push(E('lab','BNP／NT-proBNP 偏高（心臟負荷）',.45));
+    if(sym('dyspnea')&&sym('edema'))ev.push(E('sym','自述：活動喘＋水腫',.3)); else if(sym('dyspnea')||sym('palpit'))ev.push(E('sym','自述：喘或心悸',.12));
+    if(c.p.smoke==='current')ev.push(E('prof','目前吸菸',.15));
+    if(!ev.length)return null; const urg=tp!=null&&tp>0.04;
+    const strong=pct!=null&&pct>=7.5;
+    return {id:'cvd',name:urg?'心肌損傷指標升高':(bn!=null||bb!=null)?'心臟負荷指標偏高（心衰竭待評估）':'心血管疾病風險'+(strong?'偏高':'邊緣'),icon:'🫀',status:urg?'urgent':strong?'possible':'risk',urgent:urg,ev,miss,spec:'心臟內科',
+      next:urg?'肌鈣蛋白升高請立即就醫。':'控制血壓／血脂／血糖、戒菸、規律運動；風險中高者與醫師討論是否需要藥物預防（如 statin）。'};
+  });
+  // 14 睡眠呼吸中止（STOP-BANG 部分項）
+  rule(()=>{ if(!sym('snore'))return null; let n=1; const ev=[E('sym','自述：打鼾／睡眠中斷／白天嗜睡',.25)];
+    if(sym('fatigue')){n++;} if(bpReadings(c).some(x=>x.s>=130)||cls.bp){n++;ev.push(E('vital','血壓偏高或已用降壓藥',.1));} if(bmi!=null&&bmi>35){n++;ev.push(E('prof','BMI>35',.15));} else if(bmi!=null&&bmi>=27){ev.push(E('prof','BMI '+bmi,.08));}
+    if(age!=null&&age>50){n++;ev.push(E('prof','年齡>50',.08));} if(sex==='male'){n++;ev.push(E('prof','男性',.05));}
+    if(n<3)return {id:'osa',name:'睡眠品質（打鼾）',icon:'😴',status:'risk',ev,miss:[],spec:'睡眠中心／耳鼻喉科',next:'側睡、避免睡前酒精、控制體重；若白天嗜睡明顯或家人看到你睡眠中停止呼吸，請做睡眠檢查。'};
+    return {id:'osa',name:'可能有睡眠呼吸中止（STOP-BANG 約 '+n+' 項）',icon:'😴',status:'possible',ev:ev.concat([E('sym','STOP-BANG 已知項目符合 '+n+' 項（≥3 屬中高風險）',n>=5?.4:.25)]),miss:[M('睡眠多項生理檢查（PSG）','', '確診需睡眠檢查')],spec:'睡眠中心／耳鼻喉科／胸腔科',
+      next:'未治療的睡眠呼吸中止與高血壓、心律不整、中風相關；建議預約睡眠檢查，並避免在疲勞下開車。'};
+  });
+  // 15 情緒（PHQ-2）
+  rule(()=>{ const q=state.phq2,ev=[]; const sc=(q&&q.a!=null&&q.b!=null)?q.a+q.b:null;
+    if(sc!=null&&sc>=3)ev.push(E('sym','PHQ-2 得分 '+sc+'/6（≥3 篩檢陽性）',.5)); else if(sc==null&&!sym('lowmood'))return null;
+    if(sym('lowmood'))ev.push(E('sym','自述：情緒低落／提不起勁',.3)); if(c.p.sleep!=null&&+c.p.sleep<6)ev.push(E('prof','睡眠 <6 小時',.1)); if(c.p.stress!=null&&+c.p.stress>=4)ev.push(E('prof','壓力自評高',.1));
+    if(!ev.length)return null;
+    return {id:'mood',name:'情緒狀態需要關心（篩檢）',icon:'💙',status:(sc!=null&&sc>=3)?'likely':'possible',ev,miss:[],spec:'身心科／精神科、心理諮商',
+      next:'這只是兩題篩檢，不是診斷。情緒低落超過兩週影響生活，建議與身心科或心理師談；任何時候覺得撐不住，可撥 24 小時安心專線 1925。'};
+  });
+  // 16 神經／下肢功能（腓總神經、垂足、糖尿病神經病變）
+  rule(()=>{ const hit=/G5[6-9]|G6[0-4]|M21\.?37/.test(c.dxHas&&(state.dx||[]).map(d=>d.code).join(' ')) || /腓|peroneal|垂足|foot ?drop|神經(瘤|修補|移植|重建)|肌腱轉位|tendon transfer|nerve (graft|repair)/i.test(c.surTxt+' '+(state.dx||[]).map(d=>d.name).join(' '));
+    const dmNumb=sym('numb')&&(v('hba1c')>=5.7||v('glucose')>=100||cls.dm);
+    if(!hit&&!dmNumb)return null; const ev=[],miss=[];
+    if(hit)ev.push(E('dx','病史／手術紀錄含周邊神經（如腓總神經）相關',.9)); if(dmNumb)ev.push(E('sym','手腳麻木＋血糖偏高：留意糖尿病神經病變',.45));
+    let ctrl=''; try{ const w=walkStats(); if(w.total)ctrl='近 7 天走路 '+w.week.km.toFixed(1)+' 公里、'+w.week.sessions+' 次'; }catch(e){}
+    const ck=state.checkins&&state.checkins.length?state.checkins[state.checkins.length-1]:null; if(ck&&ck.pain!=null)ctrl+=(ctrl?'；':'')+'最近回報疼痛 '+ck.pain+'/10';
+    const fa=(state.footAssess||[]).slice(-1)[0]; if(fa&&fa.severity)ev.push(E('img','最近一次足部外觀評估：'+fa.severity,.15));
+    return {id:'neuro',name:hit?'周邊神經／下肢功能追蹤（已有病史）':'疑似周邊神經病變（麻木＋血糖偏高）',icon:'🦶',status:hit?'confirmed':'possible',ev,miss,ctrl:ctrl||null,spec:'復健科／神經科',goFoot:true,
+      next:'持續足部訓練與步態練習、注意足部皮膚與鞋襪；新出現的無力、麻木範圍擴大或疼痛加劇請回診，必要時複查神經傳導檢查。'};
+  });
+  // 17 糞便潛血陽性
+  rule(()=>{ const f=latestScreen('fobt'); if(!f||f.result!=='pos')return null;
+    return {id:'fobt',name:'糞便潛血陽性（需大腸鏡確認）',icon:'🔎',status:'likely',ev:[E('scr','糞便潛血陽性（'+String(f.date).slice(0,10)+'）',.8)],miss:[M('大腸鏡檢查','', '陽性者應接受大腸鏡檢查')],spec:'腸胃科',
+      next:'糞便潛血陽性不一定是癌症（痔瘡、息肉也會），但需大腸鏡釐清；國健署對陽性者提供大腸鏡檢查，請儘速預約。'};
+  });
+  // 18 影像追蹤
+  rule(()=>{ const imgs=(state.reports||[]).filter(r=>IMG_FLAG_RX.test((r.findings||'')+' '+(r.findingsZh||''))); if(!imgs.length)return null;
+    const ev=imgs.slice(0,4).map(r=>E('img',(r.name||'影像報告')+(r.date?'（'+String(r.date).slice(0,10)+'）':'')+'：'+((r.findingsZh||r.findings||'').slice(0,50)),.3));
+    return {id:'imaging',name:'影像／病理報告有需追蹤的發現（'+imgs.length+' 份）',icon:'🩻',status:'possible',ev,miss:[],spec:'原開單科別',next:'帶報告回診，請醫師確認是否需追蹤或進一步檢查（本比對僅是關鍵字提示）。'};
+  });
+  return R;
+}
+let _condCache=null,_condSig='';
+function computeConditions(force){
+  const sig=agentSig(); if(!force&&_condCache&&_condSig===sig)return _condCache;
+  const c=condCtx(); let list=[]; try{ list=condRules(c); }catch(e){ list=[]; }
+  list.forEach(x=>{ x.conf=noisyOr(x.ev||[]); if(x.status==='confirmed')x.conf=Math.max(x.conf,90); x.ev.sort((a,b)=>b.w-a.w); });
+  const rank=s=>(COND_STATUS[s]||{r:9}).r;
+  list.sort((a,b)=>rank(a.status)-rank(b.status)||b.conf-a.conf);
+  _condCache=list; _condSig=sig; return list;
+}
+function activeRedFlags(){ return RED_FLAGS.filter(r=>symActive(r.k)); }
+
+/* ---- 自主代理：輸入簽章 → 巡檢 → 與上次比對 → 警告／排程 ---- */
+function agentSig(){
+  const p=state.profile||{}, n=a=>Array.isArray(a)?a.length:0, last=a=>Array.isArray(a)&&a.length?(a[a.length-1].id||a[a.length-1].date||''):'';
+  return [n(state.labs),last(state.labs),n(state.meds),last(state.meds),n(state.dx),n(state.screen),n(state.reports),n(state.surgeries),
+    (state.symptoms||[]).map(s=>s.k+s.ts).join(','),state.phq2&&state.phq2.ts,p.age,p.sex,p.weight,p.height,p.waist,p.smoke,p.alcohol,p.sleep,p.stress,p.fhDiabetes,
+    state.walks?state.walks.length:0].join('|');
+}
+let _agentTimer=null,_agentBusy=false;
+function agentSoon(reason){ if(_agentBusy)return; clearTimeout(_agentTimer); _agentTimer=setTimeout(()=>{try{agentRun(reason||'auto',false);}catch(e){}},2500); }
+const _FR={ok:0,warn:1,high:2,crit:3};
+function metricDiff(prev){ // 與上次巡檢相比，哪些檢驗項目「新增了更新的值且變差／變好」
+  const L=labLatest(),out={worse:[],better:[]},snap={};
+  Object.keys(L).forEach(k=>{ if(!LAB_META[k])return; const val=parseFloat(L[k].v); if(isNaN(val))return;
+    const fl=labFlag(k,val); snap[k]={v:val,t:L[k].t,f:fl}; const p=prev[k]; if(!p||L[k].t<=p.t)return;   // 只看「比上次更新」的資料
+    const dr=(_FR[fl]||0)-(_FR[p.f]||0); const good=LAB_GOOD[k]; const rel=p.v?Math.abs(val-p.v)/Math.abs(p.v):0;
+    const badDir=good?((good==='down'&&val>p.v)||(good==='up'&&val<p.v)):false;
+    if(dr>0||(dr===0&&fl!=='ok'&&badDir&&rel>=.1))out.worse.push({k,from:p.v,to:val,f:fl,pf:p.f,dr});
+    else if(dr<0||(good&&!badDir&&rel>=.1&&p.f!=='ok'))out.better.push({k,from:p.v,to:val,f:fl});
+  });
+  return {out,snap};
+}
+function agentRun(reason,force){
+  if(_agentBusy)return null; _agentBusy=true; let evs=[];
+  try{
+    const ag=agentState(), sig=agentSig();
+    if(!force&&ag.sig===sig&&ag.lastRun&&Date.now()-ag.lastRun<6*36e5)return null;
+    const first=!ag.lastRun, list=computeConditions(true), lvl=agentLevel(), now=Date.now();
+    const md=metricDiff(ag.msnap||{}); const prevSnap=ag.snap||{}, newSnap={};
+    list.forEach(x=>{ newSnap[x.id]={st:x.status,conf:x.conf,name:x.name}; });
+    if(!first){
+      md.out.worse.forEach(w=>{ const cid=METRIC_COND[w.k]; const cd=cid&&list.find(x=>x.id===cid);
+        evs.push({type:'worse',metric:w.k,label:LAB_META[w.k].label,from:w.from,to:w.to,unit:LAB_META[w.k].unit,flag:w.f,cond:cid||null,
+          advice:cd?cd.next:'回診時帶著新舊數據請醫師判讀，並確認複檢時間。',spec:cd?cd.spec:'家醫科'}); });
+      md.out.better.slice(0,3).forEach(w=>evs.push({type:'better',metric:w.k,label:LAB_META[w.k].label,from:w.from,to:w.to,unit:LAB_META[w.k].unit}));
+      list.forEach(x=>{ const pv=prevSnap[x.id]; const r=(COND_STATUS[x.status]||{r:9}).r;
+        if(!pv){ if(x.status!=='risk')evs.push({type:'new',id:x.id,name:x.name,status:x.status,conf:x.conf,next:x.next,spec:x.spec}); }
+        else if(((COND_STATUS[pv.st]||{r:9}).r>r)&&x.status!=='confirmed'&&x.status!=='risk')evs.push({type:'up',id:x.id,name:x.name,status:x.status,from:pv.st,next:x.next,spec:x.spec}); });
+      Object.keys(prevSnap).forEach(id=>{ if(!newSnap[id]&&prevSnap[id].st!=='risk')evs.push({type:'clear',id,name:prevSnap[id].name}); });
+    }
+    evs.forEach(e=>{ e.ts=new Date().toISOString(); });
+    ag.log=(ag.log||[]).concat(evs.filter(e=>e.type!=='better'||true)).slice(-80);
+    ag.snap=newSnap; ag.msnap=md.snap; ag.sig=sig; ag.lastRun=now; ag.lastReason=reason;
+    if(first)ag.log.push({type:'baseline',ts:new Date().toISOString(),n:list.length});
+    // 自主行動
+    const bad=evs.filter(e=>e.type==='worse'||e.type==='new'||e.type==='up');
+    if(lvl>=2){ const made=agentAutoSchedule(list); if(made.length)ag.log.push({type:'sched',ts:new Date().toISOString(),titles:made}); }
+    ag.unseen=(ag.unseen||0)+bad.length;
+    save();
+    if(lvl>=1&&bad.length&&!first){ agentNotify(evs,reason); }
+    try{ if(document.getElementById('sec-agent')&&document.getElementById('sec-agent').classList.contains('active'))renderAgent(); renderDashCondition(); renderDashAutoRem(); }catch(e){}
+    return evs;
+  }catch(err){ return null; }
+  finally{ _agentBusy=false; }
+}
+function agentAutoSchedule(list){
+  state.reminders=state.reminders||[]; const have=new Set(state.reminders.map(r=>r.autoSig).filter(Boolean)); const made=[],ids=[];
+  const add=(sig,type,title,note,days)=>{ if(have.has(sig)||made.length>=3)return; have.add(sig); const d=new Date(); d.setDate(d.getDate()+days);
+    const rem={id:remId(),type,title,freq:'once',time:'09:00',startDate:localDayKey(d),note,enabled:true,doneDates:[],createdAt:new Date().toISOString(),auto:true,autoSig:sig};
+    state.reminders.push(rem); ids.push(rem.id); made.push(title); };
+  list.filter(x=>x.status==='urgent'||x.status==='likely'||x.status==='possible').forEach(x=>{
+    if(x.status==='urgent')add('cond:'+x.id+':visit','visit','儘快就醫：'+x.name,x.next,0);
+    (x.miss||[]).slice(0,1).forEach(m=>add(m.metric?'lab:'+m.metric:'cond:'+x.id+':'+m.label,m.metric?'lab':'visit','確認檢查：'+m.label+'（'+x.name.replace(/（.*$/,'')+'）',m.why||x.next,x.status==='likely'?5:14)); });
+  if(ids.length)state._autoRemBatch=(state._autoRemBatch||[]).concat(ids);
+  return made;
+}
+function agentNotify(evs,reason){
+  const worse=evs.filter(e=>e.type==='worse'), cands=evs.filter(e=>e.type==='new'||e.type==='up');
+  const crit=worse.some(w=>w.flag==='crit')||cands.some(c=>c.status==='urgent');
+  const msg=(worse.length?'📉 '+worse.length+' 項數據變差：'+worse.slice(0,3).map(w=>w.label+' '+w.from+'→'+w.to).join('、'):'')+(worse.length&&cands.length?'；':'')+(cands.length?'🧬 新發現 '+cands.length+' 個可能狀況':'');
+  try{ if(notifySupported()&&Notification.permission==='granted'&&document.hidden)new Notification('🧬 健康代理人巡檢',{body:msg,tag:'agent'}); }catch(e){}
+  showAgentAlert(evs,crit);
+}
+function showAgentAlert(evs,crit){
+  const worse=evs.filter(e=>e.type==='worse'), better=evs.filter(e=>e.type==='better'), cands=evs.filter(e=>e.type==='new'||e.type==='up');
+  if(!worse.length&&!cands.length)return; if(crit)try{siren();}catch(e){}
+  let m=document.getElementById('agentModal'); if(!m){m=document.createElement('div');m.id='agentModal';m.className='modal-overlay';document.body.appendChild(m);}
+  const fcol={crit:'var(--err)',high:'var(--warn)',warn:'var(--warn)',ok:'var(--ok)'};
+  const wHtml=worse.map(w=>`<div class="rec" style="border-left-color:${fcol[w.flag]||'var(--warn)'};background:${w.flag==='crit'?'#fef2f2':'#fffbeb'};"><div class="rec-icon">📉</div><div class="rec-body"><div class="rec-title">${esc(w.label)}：${w.from} → <b>${w.to}</b> ${esc(w.unit)}</div><div class="rec-desc">${esc(w.advice)}<br><span class="hint">建議科別：${esc(w.spec)}</span></div></div></div>`).join('');
+  const cHtml=cands.map(x=>`<div class="rec" style="border-left-color:${(COND_STATUS[x.status]||{}).c};background:${(COND_STATUS[x.status]||{}).bg};"><div class="rec-icon">🧬</div><div class="rec-body"><div class="rec-title">${x.type==='up'?'狀況升級：':'新發現：'}${esc(x.name)}</div><div class="rec-desc">${esc(x.next)}<br><span class="hint">建議科別：${esc(x.spec)}</span></div></div></div>`).join('');
+  const bHtml=better.length?`<div class="hint" style="margin-top:8px;">📈 同時有進步：${better.map(b=>esc(b.label)+' '+b.from+'→'+b.to).join('、')}</div>`:'';
+  m.innerHTML=`<div class="modal-box"><div class="ct">🤖 健康代理人：偵測到新匯入／新增的數據有變化</div>
+    <div class="hint" style="margin-bottom:8px;line-height:1.6;">已把這次資料與你<b>所有紀錄（檢驗、用藥、病史、影像、症狀、走路訓練）</b>交叉比對。以下為衛教參考，不是診斷，請與醫師確認。</div>
+    ${wHtml}${cHtml}${bHtml}
+    <div class="row-btn" style="margin-top:12px;"><button class="btn bp" onclick="closeAgentAlert();go('agent')">🧬 看完整辨識</button><button class="btn bg" onclick="closeAgentAlert();agentAI()">🤖 請 AI 找最佳做法</button><button class="btn bg" onclick="closeAgentAlert()">知道了</button></div></div>`;
+  m.style.display='flex';
+}
+function closeAgentAlert(){ const m=document.getElementById('agentModal'); if(m){m.style.display='none';m.innerHTML='';} const a=agentState(); a.unseen=0; save(); }
+
+/* ---- 向使用者提問（資訊增益最高的幾題）---- */
+function agentQuestions(list){
+  const a=agentState(),Q=[]; const asked=k=>a.asked[k]&&Date.now()-a.asked[k]<14*864e5;
+  const q=(k,text)=>{ if(!symActive(k)&&!asked(k)&&Q.length<3&&!Q.some(x=>x.k===k))Q.push({k,text}); };
+  list.forEach(x=>{ if(x.status==='risk'&&x.id!=='obesity')return;
+    if(x.id==='dm'&&x.status!=='confirmed'){q('thirst','最近有口渴、喝水變多嗎？');q('polyuria','最近尿量變多或夜尿增加嗎？');}
+    if(x.id==='anemia'){q('fatigue','最近常覺得疲倦、沒力氣嗎？');q('dizzy','最近有頭暈嗎？');}
+    if(x.id==='gout'){q('jointhot','最近關節有紅腫熱痛嗎？');}
+    if(x.id==='thyroid'){q(x.name.indexOf('亢')>=0?'heat':'cold',x.name.indexOf('亢')>=0?'最近怕熱、手抖、心跳快嗎？':'最近怕冷、便祕、皮膚乾嗎？');}
+    if(x.id==='htn'||x.id==='mets'||x.id==='obesity'){q('snore','睡覺會打鼾、或白天很想睡嗎？');}
+    if(x.id==='ckd'||x.id==='cvd'){q('edema','腳或臉最近有水腫嗎？');q('dyspnea','爬樓梯或快走會喘嗎？');}
+    if(x.id==='dm'||x.id==='ckd'){q('numb','手腳有麻木或刺痛嗎？');} });
+  return Q;
+}
+function agentAddReminder(id,i){ const x=computeConditions().find(y=>y.id===id); if(!x||!x.miss[i])return; const m=x.miss[i];
+  const d=new Date(); d.setDate(d.getDate()+7); state.reminders=state.reminders||[];
+  state.reminders.push({id:remId(),type:m.metric?'lab':'visit',title:'確認檢查：'+m.label,freq:'once',time:'09:00',startDate:localDayKey(d),note:m.why||x.next,enabled:true,doneDates:[],createdAt:new Date().toISOString()});
+  save(); toast('⏰ 已加入提醒（7 天後）'); }
+
+/* ---- AI 白話解讀＋最佳做法（選填，需金鑰）---- */
+async function agentAI(){
+  if(!aiHasKey(state.settings)){ toast('請先到「設定」填入 AI API Key；本機辨識不需金鑰'); go('agent'); return; }
+  const list=computeConditions(), a=agentState();
+  const box=document.getElementById('agentAI'); if(box)box.innerHTML='<div class="hint">⏳ AI 分析中…</div>';
+  const struct=list.map(x=>`- ${x.name}｜${COND_STATUS[x.status].t}｜資料支持度${x.conf}%｜依據：${x.ev.slice(0,5).map(e=>e.t).join('；')}｜缺：${(x.miss||[]).map(m=>m.label).join('、')||'無'}`).join('\n');
+  const recent=(a.log||[]).filter(e=>e.type==='worse').slice(-5).map(e=>`${e.label} ${e.from}→${e.to}`).join('、');
+  const prompt=`你是協助民眾理解自己健康資料的衛教助理，使用繁體中文、白話、不嚇人。
+【硬性規則】不可下診斷；不可給藥物名稱與劑量；用「可能／數值符合…標準／請醫師確認」；若有紅旗症狀（胸痛、單側無力、嚴重喘、黑便、意識不清）先提醒撥 119。
+【系統用規則引擎辨識出的可能狀況】\n${struct||'（尚無）'}\n【最近變差的指標】${recent||'無'}\n【完整健康背景】\n${buildHealthContext()}\n
+請輸出（總共約 500 字內）：
+1. 最需要先處理的 3 件事（按急迫度，各 1–2 句，說明為什麼）
+2. 各狀況一句話白話解釋與「最有效的生活／追蹤做法」（有實證的）
+3. 建議掛哪一科、就診時帶什麼資料、可以問醫師的 3 個問題
+4. 還需要向我確認的 3 個問題（幫助更準確辨識）`;
+  try{ const t=await callLLM(prompt); a.aiText=t; a.aiTs=new Date().toISOString(); save(); }
+  catch(e){ a.aiText='⚠️ AI 分析失敗：'+(e&&e.message?e.message:e); }
+  if(document.getElementById('sec-agent')&&document.getElementById('sec-agent').classList.contains('active'))renderAgent(); else go('agent');
+}
+function agentSpeech(){
+  const l=computeConditions().filter(x=>x.status!=='risk').slice(0,4); if(!l.length)return '目前資料還不足以辨識出明確的健康狀況，建議多匯入檢驗與用藥紀錄。';
+  return '系統目前辨識出：'+l.map(x=>x.name.replace(/（.*?）/g,'')+'，'+COND_STATUS[x.status].t).join('；')+'。這些是衛教參考，不是診斷，請與醫師確認。';
+}
+
+/* ---- 畫面 ---- */
+function condCardHtml(x,open){
+  const S=COND_STATUS[x.status], bar=`<div style="height:6px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-top:6px;"><div style="width:${x.conf}%;height:100%;background:${S.c};"></div></div>`;
+  const ev=x.ev.map(e=>`<div style="font-size:.82rem;line-height:1.6;">${COND_SRC[e.s]||'•'} ${esc(e.t)}</div>`).join('');
+  const miss=(x.miss||[]).map((m,i)=>`<div style="font-size:.82rem;line-height:1.6;display:flex;gap:6px;align-items:flex-start;">❓ <span style="flex:1;"><b>${esc(m.label)}</b>${m.why?'：'+esc(m.why):''}</span><button class="btn bg" style="padding:2px 8px;font-size:.72rem;" onclick="agentAddReminder('${x.id}',${i})">⏰ 提醒</button></div>`).join('');
+  return `<details class="card" ${open?'open':''} style="border-left:4px solid ${S.c};padding:12px 14px;margin-bottom:10px;">
+    <summary style="cursor:pointer;list-style:none;"><div style="display:flex;gap:8px;align-items:center;"><span style="font-size:1.5rem;">${x.icon}</span><div style="flex:1;min-width:0;"><div style="font-weight:800;font-size:.98rem;">${esc(x.name)}</div>
+    <div style="margin-top:3px;"><span class="pill" style="background:${S.bg};color:${S.c};">${S.t}</span> <span class="hint">資料支持度 ${x.conf}%</span></div></div><span style="color:var(--g400);">▾</span></div>${bar}</summary>
+    <div style="margin-top:10px;"><div style="font-weight:700;font-size:.8rem;color:var(--g600);">依據</div>${ev}
+    ${x.ctrl?`<div style="margin-top:6px;font-size:.84rem;font-weight:700;">📊 控制狀況：${esc(x.ctrl)}</div>`:''}
+    ${miss?`<div style="font-weight:700;font-size:.8rem;color:var(--g600);margin-top:8px;">還缺什麼才能更確定</div>${miss}`:''}
+    <div style="margin-top:8px;font-size:.84rem;line-height:1.65;background:#f8fafc;border-radius:8px;padding:8px 10px;">💡 <b>建議做法：</b>${esc(x.next)}<br><span class="hint">🏥 建議科別：${esc(x.spec||'家醫科')}</span></div>
+    ${x.goFoot?'<div class="row-btn" style="margin-top:8px;"><button class="btn bg" onclick="go(\'foot\')">🦶 前往走路訓練</button></div>':''}</div></details>`;
+}
+function renderAgent(){
+  const el=document.getElementById('agentBody'); if(!el)return;
+  const a=agentState(), list=computeConditions(), lvl=agentLevel(), rf=activeRedFlags();
+  let h='';
+  if(rf.length)h+=`<div class="card" style="background:#fef2f2;border:2px solid #ef4444;"><div style="font-weight:800;color:#b91c1c;">🚨 你勾選了緊急症狀：${rf.map(r=>esc(r.label)).join('、')}</div><div style="font-size:.88rem;margin:6px 0;line-height:1.6;">這些症狀可能是急症，請<b>不要等待</b>，立即撥打 119 或前往急診。</div><button class="btn" style="background:#dc2626;color:#fff;font-weight:800;" onclick="openEmergency()">🆘 緊急求助</button></div>`;
+  const lv=['👁️ 觀察','💡 建議','🤖 自動'];
+  h+=`<div class="card" style="border-left:4px solid var(--pri);"><div class="ct">🤖 自主健康代理人 <span class="hint">${a.lastRun?'上次巡檢 '+(Date.now()-a.lastRun<36e5?Math.max(1,Math.round((Date.now()-a.lastRun)/6e4))+' 分鐘前':fmtAgo(Math.floor((Date.now()-a.lastRun)/864e5)).replace(/^0 天前$/,'今天')):'尚未巡檢'}</span></div>
+    <div class="hint" style="line-height:1.65;margin-bottom:8px;">只要<b>匯入、新增、編輯任何資料或勾選症狀</b>，代理人就會自動把檢驗、用藥、病史、影像、症狀、走路訓練全部交叉比對；數據<b>變差或出現新狀況</b>會立即警告。</div>
+    <div class="row-btn" style="gap:6px;">${[0,1,2].map(i=>`<button class="btn ${lvl===i?'bp':'bg'}" style="flex:1;font-size:.8rem;" onclick="setAgentLevel(${i})">${lv[i]}</button>`).join('')}</div>
+    <div class="hint" style="margin-top:6px;">${['只更新這個頁面，不跳警告、不排程。','發現惡化／新狀況時跳警告與通知。','警告＋自動排定「確認檢查／回診」提醒（可在總覽一鍵撤銷）。所有動作只在本機，不會寄給任何人。'][lvl]}</div>
+    <div class="row-btn" style="margin-top:8px;gap:6px;"><button class="btn bg" style="flex:1;" onclick="agentRun('manual',true);renderAgent();toast('已完成巡檢')">🔄 立即巡檢</button><button class="btn bg" style="flex:1;" onclick="speakText(agentSpeech())">🔊 唸給我聽</button></div></div>`;
+  const ev=(a.log||[]).filter(e=>e.type!=='baseline').slice(-6).reverse();
+  if(ev.length)h+=`<div class="card"><div class="ct">📬 代理人最近發現</div>${ev.map(e=>{ const d=String(e.ts||'').slice(5,10);
+    if(e.type==='worse')return `<div style="font-size:.84rem;line-height:1.7;">📉 ${d} <b>${esc(e.label)}</b> ${e.from}→${e.to} ${esc(e.unit||'')}（變差）</div>`;
+    if(e.type==='better')return `<div style="font-size:.84rem;line-height:1.7;">📈 ${d} ${esc(e.label)} ${e.from}→${e.to}（進步）</div>`;
+    if(e.type==='new')return `<div style="font-size:.84rem;line-height:1.7;">🧬 ${d} 新發現：${esc(e.name)}</div>`;
+    if(e.type==='up')return `<div style="font-size:.84rem;line-height:1.7;">⬆️ ${d} 升級：${esc(e.name)}</div>`;
+    if(e.type==='clear')return `<div style="font-size:.84rem;line-height:1.7;">✅ ${d} 已不再符合：${esc(e.name)}</div>`;
+    if(e.type==='sched')return `<div style="font-size:.84rem;line-height:1.7;">⏰ ${d} 自動排定：${esc((e.titles||[]).join('、'))}</div>`; return ''; }).join('')}</div>`;
+  const Q=agentQuestions(list);
+  if(Q.length)h+=`<div class="card"><div class="ct">❓ 代理人想問你</div><div class="hint" style="margin-bottom:6px;">你的回答會讓辨識更準（只存在你的裝置）。</div>${Q.map(q=>`<div style="display:flex;gap:6px;align-items:center;margin:6px 0;"><div style="flex:1;font-size:.88rem;">${esc(q.text)}</div><button class="btn bp" style="padding:4px 12px;" onclick="agentAnswerSym('${q.k}',true)">有</button><button class="btn bg" style="padding:4px 12px;" onclick="agentAnswerSym('${q.k}',false)">沒有</button></div>`).join('')}</div>`;
+  const cand=list.filter(x=>x.status!=='confirmed'&&x.status!=='risk'), conf=list.filter(x=>x.status==='confirmed'), risk=list.filter(x=>x.status==='risk');
+  h+=`<div class="card"><div class="ct">🧬 可能的健康狀況 <span class="hint">${cand.length} 項待確認</span></div><div class="hint" style="line-height:1.65;">依檢驗、用藥、診斷、影像與症狀，對照公開診療指引門檻。<b>「資料支持度」是證據多寡，不是患病機率。</b></div></div>`;
+  if(!list.length)h+='<div class="card empty"><div class="em">🧬</div><div style="font-size:.88rem;">目前資料沒有符合任何規則的訊號。匯入健保健康存摺或檢驗報告後，代理人會自動辨識。</div><button class="btn bp" style="margin-top:8px;" onclick="go(\'connect\')">🔗 匯入資料</button></div>';
+  h+=cand.map((x,i)=>condCardHtml(x,i===0||x.status==='urgent')).join('');
+  if(conf.length)h+=`<div class="hint" style="margin:10px 4px 6px;font-weight:700;">已診斷／治療中的狀況：控制得如何</div>`+conf.map(x=>condCardHtml(x,false)).join('');
+  if(risk.length)h+=`<div class="hint" style="margin:10px 4px 6px;font-weight:700;">風險因子</div>`+risk.map(x=>condCardHtml(x,false)).join('');
+  h+=`<div class="card"><div class="ct">🗣️ 我現在的症狀 <span class="hint">勾選後會納入辨識（30 天有效）</span></div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">${SYM_DEFS.map(s=>`<button class="btn ${symActive(s.k)?'bp':'bg'}" style="font-size:.78rem;padding:5px 10px;" onclick="symToggle('${s.k}')">${esc(s.label)}</button>`).join('')}</div>
+    <div style="font-weight:700;font-size:.82rem;color:#b91c1c;margin:12px 0 6px;">🚨 緊急症狀（出現請直接就醫）</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">${RED_FLAGS.map(s=>`<button class="btn ${symActive(s.k)?'bp':'bg'}" style="font-size:.78rem;padding:5px 10px;${symActive(s.k)?'background:#dc2626;':''}" onclick="symToggle('${s.k}')">${esc(s.label)}</button>`).join('')}</div></div>`;
+  const q=state.phq2||{}; const opt=['完全沒有','好幾天','超過一半天數','幾乎每天'];
+  h+=`<div class="card"><div class="ct">💙 情緒小篩檢 PHQ-2 <span class="hint">近兩週</span></div>${[['a','做事提不起勁或沒有樂趣'],['b','感到心情低落、沮喪或絕望']].map(([k,t])=>`<div style="margin:6px 0;"><div style="font-size:.86rem;margin-bottom:4px;">${t}</div><div style="display:flex;gap:4px;flex-wrap:wrap;">${opt.map((o,i)=>`<button class="btn ${q[k]===i?'bp':'bg'}" style="font-size:.74rem;padding:4px 8px;" onclick="phq2Set('${k}',${i})">${o}</button>`).join('')}</div></div>`).join('')}<div class="hint">得分 ≥3 代表值得與專業人員聊聊；24 小時安心專線 1925。</div></div>`;
+  h+=`<div class="card"><div class="ct">🤖 AI 白話解讀與最佳做法 <span class="hint">選填・需金鑰</span></div><div id="agentAI">${a.aiText?`<div style="white-space:pre-wrap;font-size:.86rem;line-height:1.75;">${esc(a.aiText)}</div><div class="hint" style="margin-top:6px;">產生於 ${esc(String(a.aiTs||'').slice(0,16).replace('T',' '))}</div>`:'<div class="hint">AI 會根據上面的辨識結果與你的完整健康資料，整理優先順序、做法與要問醫師的問題。</div>'}</div>
+    <div class="row-btn" style="margin-top:8px;gap:6px;"><button class="btn bp" style="flex:1;" onclick="agentAI()">🤖 ${a.aiText?'重新':''}請 AI 解讀</button><button class="btn bg" style="flex:1;" onclick="showDoctorSheet()">📄 就醫準備單</button></div></div>`;
+  h+='<div class="hint" style="padding:6px 8px;line-height:1.7;">⚠️ 本頁為依公開診療指引門檻整理的<b>衛教參考，不是醫療診斷</b>，不能取代醫師。有急症症狀請撥 119。</div>';
+  el.innerHTML=h; a.unseen=0;
+}
+function renderDashCondition(){
+  const el=document.getElementById('dashCondition'); if(!el)return; const list=computeConditions().filter(x=>x.status!=='risk'&&x.status!=='confirmed');
+  const a=agentState(), rf=activeRedFlags();
+  if(!list.length&&!(a.unseen>0)&&!rf.length){ el.innerHTML=''; return; }
+  const top=list.slice(0,3);
+  el.innerHTML=`<div class="card" style="border-left:4px solid ${top[0]?COND_STATUS[top[0].status].c:'var(--pri)'};cursor:pointer;" onclick="go('agent')">
+    <div class="ct">🧬 健康代理人 ${a.unseen>0?`<span class="pill" style="background:#fee2e2;color:#b91c1c;">${a.unseen} 項新變化</span>`:''}</div>
+    ${rf.length?'<div style="color:#b91c1c;font-weight:800;font-size:.86rem;">🚨 緊急症狀已勾選，請立即就醫</div>':''}
+    ${top.map(x=>`<div style="font-size:.86rem;line-height:1.75;">${x.icon} <b>${esc(x.name)}</b> <span class="hint">${COND_STATUS[x.status].t}</span></div>`).join('')}
+    <div class="hint" style="margin-top:4px;">點此看依據、缺少的檢查與建議做法 ›</div></div>`;
+}
+
 function init(){
   fillProfile(state.profile);
   document.getElementById('set-gemini').value=state.settings.gemini||'';
@@ -7242,6 +7750,7 @@ function init(){
   else if(maybeOnboarding()){ /* 已同意、尚未看過導覽（含既有使用者）：先跑導覽 */ }
   else setTimeout(maybeDailyAlert,600);
   try{ autoScheduleReminders(); renderDashAutoRem(); }catch(e){}
+  try{ setTimeout(()=>agentRun('start',false),1500); setInterval(()=>agentRun('tick',false),30*60*1000); document.addEventListener('visibilitychange',()=>{ if(!document.hidden)agentSoon('resume'); }); renderDashCondition(); }catch(e){}
   setTimeout(checkDueNotifications,1200);
   setInterval(checkDueNotifications,60000);
   try{ if(state.settings&&state.settings.fallDetect)startFallDetect(false); }catch(e){}

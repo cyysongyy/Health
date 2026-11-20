@@ -237,6 +237,17 @@
 
 ---
 
+## 6.5 `symptoms[]`、`phq2`、`agent{}`（健康狀況辨識與自主代理人）
+
+- `symptoms[]`：自述症狀 `{k, ts}`；一般症狀 30 天內有效，紅旗症狀（`rf_*`）3 天內有效。建議後端表：`symptom_reports`。
+- `phq2`：`{a, b, ts}`，各 0–3 分（近兩週 PHQ-2 兩題）。
+- `agent{}`：代理人狀態 `{sig, lastRun, snap{condId:{st,conf,name}}, msnap{metric:{v,t,f}}, asked{symKey:ms}, log[≤80], unseen, aiText, aiTs}`。`snap`／`msnap` 為上次巡檢快照，用於偵測「新匯入後變差」；`log[]` 事件型別：`worse|better|new|up|clear|sched|baseline`。多為可重算的衍生資料，移轉時可選擇不入庫。
+- `settings.agentLevel`：0 觀察／1 建議／2 自動（預設 2）。
+
+> 辨識結果（`computeConditions()`）為即時由規則計算，不落地；`conf`（資料支持度）= 證據權重的 noisy-OR，**不是患病機率**。
+
+---
+
 ## 7. `settings`（本機設定，一般不入庫）
 
 `{ gemini, openai, engine, gas, autosync, fb, fbEmail, dailyAlert, lang, fontScale, remindSilent, visitAheadDays, visitAheadTime, gcalClientId, gdriveLast }` — 含 API 金鑰、OAuth Client ID 與 Firebase 設定，**屬機敏／裝置本機資訊，移轉時建議排除**。`dailyAlert`（預設 true）控制每日健康警戒彈窗；`gcalClientId` 供 Google 日曆／Drive 同步（公開值、非密鑰）；`fontScale`（預設 1.5）為文字放大倍率。
