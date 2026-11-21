@@ -20,6 +20,8 @@ const REC_SHEET = '健康紀錄';   // 每次評估的快照
 const LAB_SHEET = '檢驗匯入';
 const MED_SHEET = '醫藥紀錄';   // 手術／用藥／診斷／篩檢（由 App 同步，供 Ybot 等串接 App 查詢）
 const MED_COLS = ['id', 'kind', 'date', 'name', 'detail', 'hospital', 'source', 'updatedAt'];   // 健康存摺 / 健檢 / 穿戴裝置匯入的原始檢驗值
+const REM_SHEET = '健康提醒';   // 用藥／回診／量測…提醒（由 App 同步，Ybot 依此推 Telegram）
+const REM_COLS = ['id', 'type', 'title', 'note', 'freq', 'time', 'startDate', 'weekday', 'interval', 'enabled', 'doneDates', 'updatedAt'];
 const KV_SHEET  = '個人設定';   // 個人檔案 key/value
 const REPORT_SHEET = '健康週報'; // 自動化週報存檔
 
@@ -155,6 +157,19 @@ function doGet(e) {
     const { lab } = setupSheets();
     return jsonResp({ ok: true, labs: sheetToObjects(lab, LAB_COLS) });
   }
+  if (action === 'reminders') {
+    // 健康提醒。doneDates 存成 JSON 字串，這裡還原成陣列
+    const sh = ensureSheet(REM_SHEET, REM_COLS);
+    const rows = sheetToObjects(sh, REM_COLS).map(r => {
+      let dd = []; try { dd = JSON.parse(r.doneDates || '[]'); } catch (err) { dd = []; }
+      return {
+        id: r.id, type: r.type, title: r.title, note: r.note, freq: r.freq, time: String(r.time || ''),
+        startDate: String(r.startDate || '').slice(0, 10), weekday: r.weekday === '' ? null : Number(r.weekday),
+        interval: Number(r.interval) || 1, enabled: String(r.enabled) === 'true', doneDates: dd
+      };
+    });
+    return jsonResp({ ok: true, reminders: rows });
+  }
   if (action === 'records') {
     // 醫藥紀錄。kind 可篩 surgery / med / dx / screen；不給就全部
     const { med } = setupSheets();
@@ -226,6 +241,24 @@ function doPost(e) {
       if (rid.indexOf('latest_') === 0 && !keep[rid]) lab.deleteRow(i + 1);
     }
     return jsonResp({ ok: true, message: `已同步 ${labs.length} 項檢驗值`, latest: latestLabValues() });
+  }
+  if (action === 'syncReminders') {
+    // App 的提醒整批覆寫（提醒不多，整批最簡單，也不會留下 App 已刪掉的）
+    const list = body.reminders || [];
+    const sh = ensureSheet(REM_SHEET, REM_COLS);
+    if (sh.getLastRow() > 1) sh.deleteRows(2, sh.getLastRow() - 1);
+    const stamp = new Date().toISOString();
+    const rows = list.filter(r => r && r.id).map(r => REM_COLS.map(c => {
+      if (c === 'doneDates') return JSON.stringify((r.doneDates || []).slice(-60));
+      if (c === 'updatedAt') return stamp;
+      if (c === 'enabled') return r.enabled ? 'true' : 'false';
+      const v = r[c]; return v === undefined || v === null ? '' : v;
+    }));
+    if (rows.length) {
+      // 時間、日期欄先設成純文字，免得試算表把 08:00、2026-11-21 自動轉成時間物件
+      sh.getRange(2, 1, rows.length, REM_COLS.length).setNumberFormat('@').setValues(rows);
+    }
+    return jsonResp({ ok: true, message: `已同步 ${rows.length} 個提醒` });
   }
   if (action === 'syncRecords') {
     // App 的手術／用藥／診斷／篩檢紀錄。同 id 覆寫；App 裡已刪的（同 kind 但沒送來）這邊也刪掉。

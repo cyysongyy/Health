@@ -2523,7 +2523,29 @@ function recordsForCloud(){
   return out.slice(0,2000);
 }
 let _recCloudTimer=null,_recCloudSig='';
+/* ---- 健康提醒同步到雲端後台：Ybot 依此在時間到時推 Telegram ---- */
+function remindersForCloud(){
+  return (state.reminders||[]).filter(r=>r&&r.id).map(r=>({
+    id:r.id,type:r.type||'custom',title:r.title||'',note:r.note||'',freq:r.freq||'once',time:r.time||'',
+    startDate:r.startDate||'',weekday:r.weekday!=null?r.weekday:null,interval:r.interval||1,
+    enabled:r.enabled!==false,doneDates:(r.doneDates||[]).slice(-60)
+  }));
+}
+let _remCloudTimer=null,_remCloudSig='';
+function cloudSyncRemindersSoon(){
+  if(!state.settings||!state.settings.gas)return;
+  clearTimeout(_remCloudTimer);
+  _remCloudTimer=setTimeout(()=>{
+    const list=remindersForCloud();
+    // 一個提醒都沒有、也沒刪過任何提醒 → 多半是新裝置還沒同步，不要把雲端清空
+    if(!list.length&&!(state.remGone&&Object.keys(state.remGone).length))return;
+    const sig=JSON.stringify(list);
+    if(sig===_remCloudSig)return;
+    gasPost({action:'syncReminders',reminders:list}).then(d=>{if(d&&d.ok)_remCloudSig=sig;}).catch(()=>{});
+  },4000);
+}
 function cloudSyncRecordsSoon(){
+  try{cloudSyncRemindersSoon();}catch(e){}
   if(!state.settings||!state.settings.gas)return;
   clearTimeout(_recCloudTimer);
   _recCloudTimer=setTimeout(()=>{
@@ -7130,7 +7152,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.11.21-agent6';
+const APP_VERSION='2026.11.21-rem-gas';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -8225,6 +8247,11 @@ async function cloudPush(){
     if(recs.length){
       try{const rd=await gasPost({action:'syncRecords',records:recs});labNote+=rd.ok?('；'+rd.message):'；醫藥紀錄同步失敗（請更新後台程式）';}
       catch(e){labNote+='；醫藥紀錄同步失敗：'+e.message;}
+    }
+    const rems=remindersForCloud();
+    if(rems.length){
+      try{const md=await gasPost({action:'syncReminders',reminders:rems});labNote+=md.ok?('；'+md.message):'；提醒同步失敗（請更新後台程式）';if(md.ok)_remCloudSig=JSON.stringify(rems);}
+      catch(e){labNote+='；提醒同步失敗：'+e.message;}
     }
     cloudMsg('✅ '+d.message+labNote,true);toast('已上傳雲端');
   }catch(e){cloudMsg('⚠️ 上傳失敗：'+e.message,false);}
