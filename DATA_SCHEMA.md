@@ -243,7 +243,7 @@
 - `phq2`：`{a, b, ts}`，各 0–3 分（近兩週 PHQ-2 兩題）。
 - `agent{}`：代理人狀態 `{sig, lastRun, snap{condId:{st,conf,name}}, msnap{metric:{v,t,f}}, asked{symKey:ms}, log[≤80], unseen, aiText, aiTs}`。`snap`／`msnap` 為上次巡檢快照，用於偵測「新匯入後變差」；`log[]` 事件型別：`worse|better|new|up|clear|sched|baseline`。多為可重算的衍生資料，移轉時可選擇不入庫。
 - `settings.agentLevel`：0 觀察／1 建議／2 自動（預設 2）。
-- **雲端同步**：Firestore `users/{uid}/lifespan/data` 另含 `dx[]`、`screen[]`、`symptoms[]`、`phq2`、`agentLevel`、`agent{snap,msnap,lastRun,asked,log≤30,aiText}`；拉取時 `agentMerge()` 依 id／`k|ts` 去重合併，PHQ-2 取較新、巡檢快照取 `lastRun` 較新者，避免換裝置後重複警告。
+- **雲端同步**：Firestore `users/{uid}/lifespan/data` 另含 `dx[]`、`screen[]`、`symptoms[]`、`phq2`、`agentLevel`、`agent{snap,msnap,lastRun,asked,log≤30,aiText}`、`reminders[]`、`remGone{id:ms}`（刪除墓碑，避免已刪提醒被合併復活；同 `autoSig` 只留最早一筆）；拉取時 `agentMerge()` 依 id／`k|ts` 去重合併，PHQ-2 取較新、巡檢快照取 `lastRun` 較新者，避免換裝置後重複警告。
 
 > 辨識結果（`computeConditions()`）為即時由規則計算，不落地；`conf`（資料支持度）= 證據權重的 noisy-OR，**不是患病機率**。
 
