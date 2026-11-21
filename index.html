@@ -3722,7 +3722,7 @@ function buildHealthAlerts(){
   const dates=[];(state.labs||[]).forEach(e=>dates.push(new Date(e.date).getTime()));(state.history||[]).forEach(s=>dates.push(new Date(s.date).getTime()));
   if(dates.length){const d=Math.floor((now-Math.max.apply(null,dates))/864e5);if(d>=120)push('info','⏰','已 '+d+' 天未更新資料','距上次檢驗／評估已久，分析可能失準。','安排一次抽血或健康評估以更新資料。');}
   // 🧬 健康狀況辨識引擎：數值達標準／危急的候選狀況併入警戒（已診斷者不重複）
-  try{ computeConditions().forEach(x=>{ if(x.id==='imaging')return; if(x.status==='urgent'||x.status==='likely')push(x.status==='urgent'?'crit':'warn','🧬','可能狀況：'+x.name,x.ev.slice(0,2).map(e=>e.t).join('；'),x.next+'（建議科別：'+(x.spec||'家醫科')+'）'); }); }catch(e){}
+  try{ let _n=0; computeConditions().forEach(x=>{ if(/^(imaging|mets|medsafety|prevent|trend)$/.test(x.id))return; if(x.status==='urgent'||(x.status==='likely'&&_n++<2))push(x.status==='urgent'?'crit':'warn','🧬','可能狀況：'+x.name,x.ev.slice(0,2).map(e=>e.t).join('；'),x.next+'（建議科別：'+(x.spec||'家醫科')+'）'); }); }catch(e){}
   // 跨資料交叉訊號（影像紅旗、照護缺口…）併入警戒
   const titles=new Set(A.map(x=>x.title));
   crossFindings().forEach(f=>{ if(titles.has(f.title))return; titles.add(f.title); push(f.lvl,f.icon,f.title,f.detail,f.action); });
@@ -7120,7 +7120,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.11.20-agent';
+const APP_VERSION='2026.11.21-agent2';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -7509,6 +7509,7 @@ let _condCache=null,_condSig='';
 function computeConditions(force){
   const sig=agentSig(); if(!force&&_condCache&&_condSig===sig)return _condCache;
   const c=condCtx(); let list=[]; try{ list=condRules(c); }catch(e){ list=[]; }
+  try{ condEnrich(list,c); }catch(e){}
   list.forEach(x=>{ x.conf=noisyOr(x.ev||[]); if(x.status==='confirmed')x.conf=Math.max(x.conf,90); x.ev.sort((a,b)=>b.w-a.w); });
   const rank=s=>(COND_STATUS[s]||{r:9}).r;
   list.sort((a,b)=>rank(a.status)-rank(b.status)||b.conf-a.conf);
@@ -7589,8 +7590,9 @@ function agentNotify(evs,reason){
   showAgentAlert(evs,crit);
 }
 function showAgentAlert(evs,crit){
-  const worse=evs.filter(e=>e.type==='worse'), better=evs.filter(e=>e.type==='better'), cands=evs.filter(e=>e.type==='new'||e.type==='up');
-  if(!worse.length&&!cands.length)return; if(crit)try{siren();}catch(e){}
+  const worseAll=evs.filter(e=>e.type==='worse').sort((a,b)=>(b.dr||0)-(a.dr||0)||(({crit:3,high:2,warn:1})[b.flag]||0)-(({crit:3,high:2,warn:1})[a.flag]||0)), better=evs.filter(e=>e.type==='better').slice(0,2), candAll=evs.filter(e=>e.type==='new'||e.type==='up');
+  const worse=worseAll.slice(0,3), cands=candAll.slice(0,2), more=(worseAll.length-worse.length)+(candAll.length-cands.length);
+  if(!worseAll.length&&!candAll.length)return; if(crit)try{siren();}catch(e){}
   let m=document.getElementById('agentModal'); if(!m){m=document.createElement('div');m.id='agentModal';m.className='modal-overlay';document.body.appendChild(m);}
   const fcol={crit:'var(--err)',high:'var(--warn)',warn:'var(--warn)',ok:'var(--ok)'};
   const wHtml=worse.map(w=>`<div class="rec" style="border-left-color:${fcol[w.flag]||'var(--warn)'};background:${w.flag==='crit'?'#fef2f2':'#fffbeb'};"><div class="rec-icon">📉</div><div class="rec-body"><div class="rec-title">${esc(w.label)}：${w.from} → <b>${w.to}</b> ${esc(w.unit)}</div><div class="rec-desc">${esc(w.advice)}<br><span class="hint">建議科別：${esc(w.spec)}</span></div></div></div>`).join('');
@@ -7598,7 +7600,7 @@ function showAgentAlert(evs,crit){
   const bHtml=better.length?`<div class="hint" style="margin-top:8px;">📈 同時有進步：${better.map(b=>esc(b.label)+' '+b.from+'→'+b.to).join('、')}</div>`:'';
   m.innerHTML=`<div class="modal-box"><div class="ct">🤖 健康代理人：偵測到新匯入／新增的數據有變化</div>
     <div class="hint" style="margin-bottom:8px;line-height:1.6;">已把這次資料與你<b>所有紀錄（檢驗、用藥、病史、影像、症狀、走路訓練）</b>交叉比對。以下為衛教參考，不是診斷，請與醫師確認。</div>
-    ${wHtml}${cHtml}${bHtml}
+    ${wHtml}${cHtml}${more>0?`<div class="hint">另有 ${more} 項較次要的變化，請看完整辨識。</div>`:''}${bHtml}
     <div class="row-btn" style="margin-top:12px;"><button class="btn bp" onclick="closeAgentAlert();go('agent')">🧬 看完整辨識</button><button class="btn bg" onclick="closeAgentAlert();agentAI()">🤖 請 AI 找最佳做法</button><button class="btn bg" onclick="closeAgentAlert()">知道了</button></div></div>`;
   m.style.display='flex';
 }
@@ -7649,66 +7651,114 @@ function agentSpeech(){
 
 /* ---- 畫面 ---- */
 function condCardHtml(x,open){
-  const S=COND_STATUS[x.status], bar=`<div style="height:6px;background:#e5e7eb;border-radius:4px;overflow:hidden;margin-top:6px;"><div style="width:${x.conf}%;height:100%;background:${S.c};"></div></div>`;
-  const ev=x.ev.map(e=>`<div style="font-size:.82rem;line-height:1.6;">${COND_SRC[e.s]||'•'} ${esc(e.t)}</div>`).join('');
-  const miss=(x.miss||[]).map((m,i)=>`<div style="font-size:.82rem;line-height:1.6;display:flex;gap:6px;align-items:flex-start;">❓ <span style="flex:1;"><b>${esc(m.label)}</b>${m.why?'：'+esc(m.why):''}</span><button class="btn bg" style="padding:2px 8px;font-size:.72rem;" onclick="agentAddReminder('${x.id}',${i})">⏰ 提醒</button></div>`).join('');
-  return `<details class="card" ${open?'open':''} style="border-left:4px solid ${S.c};padding:12px 14px;margin-bottom:10px;">
-    <summary style="cursor:pointer;list-style:none;"><div style="display:flex;gap:8px;align-items:center;"><span style="font-size:1.5rem;">${x.icon}</span><div style="flex:1;min-width:0;"><div style="font-weight:800;font-size:.98rem;">${esc(x.name)}</div>
-    <div style="margin-top:3px;"><span class="pill" style="background:${S.bg};color:${S.c};">${S.t}</span> <span class="hint">資料支持度 ${x.conf}%</span></div></div><span style="color:var(--g400);">▾</span></div>${bar}</summary>
-    <div style="margin-top:10px;"><div style="font-weight:700;font-size:.8rem;color:var(--g600);">依據</div>${ev}
-    ${x.ctrl?`<div style="margin-top:6px;font-size:.84rem;font-weight:700;">📊 控制狀況：${esc(x.ctrl)}</div>`:''}
-    ${miss?`<div style="font-weight:700;font-size:.8rem;color:var(--g600);margin-top:8px;">還缺什麼才能更確定</div>${miss}`:''}
-    <div style="margin-top:8px;font-size:.84rem;line-height:1.65;background:#f8fafc;border-radius:8px;padding:8px 10px;">💡 <b>建議做法：</b>${esc(x.next)}<br><span class="hint">🏥 建議科別：${esc(x.spec||'家醫科')}</span></div>
-    ${x.goFoot?'<div class="row-btn" style="margin-top:8px;"><button class="btn bg" onclick="go(\'foot\')">🦶 前往走路訓練</button></div>':''}</div></details>`;
+  const S=COND_STATUS[x.status];
+  const ev=x.ev.slice(0,6).map(e=>`<div style="font-size:.82rem;line-height:1.6;">${COND_SRC[e.s]||'•'} ${esc(e.t)}</div>`).join('');
+  const miss=(x.miss||[]).slice(0,3).map((m,i)=>`<div style="font-size:.82rem;line-height:1.6;display:flex;gap:6px;align-items:flex-start;">❓ <span style="flex:1;"><b>${esc(m.label)}</b>${m.why?'：'+esc(m.why):''}</span><button class="btn bg" style="padding:2px 8px;font-size:.72rem;" onclick="agentAddReminder('${x.id}',${i})">⏰</button></div>`).join('');
+  return `<details class="card" ${open?'open':''} style="border-left:4px solid ${S.c};padding:10px 14px;margin-bottom:8px;">
+    <summary style="cursor:pointer;list-style:none;display:flex;gap:8px;align-items:center;"><span style="font-size:1.3rem;">${x.icon}</span><div style="flex:1;min-width:0;"><div style="font-weight:800;font-size:.94rem;">${esc(x.name)}</div><span class="pill" style="background:${S.bg};color:${S.c};">${S.t}</span></div><span style="color:var(--g400);">▾</span></summary>
+    <div style="margin-top:8px;"><div class="hint">資料支持度 ${x.conf}%（證據多寡，不是患病機率）</div>${ev}
+    ${x.ctrl?`<div style="margin-top:6px;font-size:.84rem;font-weight:700;">📊 ${esc(x.ctrl)}</div>`:''}
+    ${miss?`<div style="font-weight:700;font-size:.8rem;color:var(--g600);margin-top:6px;">還缺什麼</div>${miss}`:''}
+    <div style="margin-top:8px;font-size:.84rem;line-height:1.65;background:#f8fafc;border-radius:8px;padding:8px 10px;">💡 ${esc(x.next)}<br><span class="hint">🏥 ${esc(x.spec||'家醫科')}</span></div>
+    ${x.goFoot?'<div class="row-btn" style="margin-top:8px;"><button class="btn bg" onclick="go(\'foot\')">🦶 走路訓練</button></div>':''}</div></details>`;
 }
 function renderAgent(){
   const el=document.getElementById('agentBody'); if(!el)return;
-  const a=agentState(), list=computeConditions(), lvl=agentLevel(), rf=activeRedFlags();
-  let h='';
-  if(rf.length)h+=`<div class="card" style="background:#fef2f2;border:2px solid #ef4444;"><div style="font-weight:800;color:#b91c1c;">🚨 你勾選了緊急症狀：${rf.map(r=>esc(r.label)).join('、')}</div><div style="font-size:.88rem;margin:6px 0;line-height:1.6;">這些症狀可能是急症，請<b>不要等待</b>，立即撥打 119 或前往急診。</div><button class="btn" style="background:#dc2626;color:#fff;font-weight:800;" onclick="openEmergency()">🆘 緊急求助</button></div>`;
-  const lv=['👁️ 觀察','💡 建議','🤖 自動'];
-  h+=`<div class="card" style="border-left:4px solid var(--pri);"><div class="ct">🤖 自主健康代理人 <span class="hint">${a.lastRun?'上次巡檢 '+(Date.now()-a.lastRun<36e5?Math.max(1,Math.round((Date.now()-a.lastRun)/6e4))+' 分鐘前':fmtAgo(Math.floor((Date.now()-a.lastRun)/864e5)).replace(/^0 天前$/,'今天')):'尚未巡檢'}</span></div>
-    <div class="hint" style="line-height:1.65;margin-bottom:8px;">只要<b>匯入、新增、編輯任何資料或勾選症狀</b>，代理人就會自動把檢驗、用藥、病史、影像、症狀、走路訓練全部交叉比對；數據<b>變差或出現新狀況</b>會立即警告。</div>
-    <div class="row-btn" style="gap:6px;">${[0,1,2].map(i=>`<button class="btn ${lvl===i?'bp':'bg'}" style="flex:1;font-size:.8rem;" onclick="setAgentLevel(${i})">${lv[i]}</button>`).join('')}</div>
-    <div class="hint" style="margin-top:6px;">${['只更新這個頁面，不跳警告、不排程。','發現惡化／新狀況時跳警告與通知。','警告＋自動排定「確認檢查／回診」提醒（可在總覽一鍵撤銷）。所有動作只在本機，不會寄給任何人。'][lvl]}</div>
-    <div class="row-btn" style="margin-top:8px;gap:6px;"><button class="btn bg" style="flex:1;" onclick="agentRun('manual',true);renderAgent();toast('已完成巡檢')">🔄 立即巡檢</button><button class="btn bg" style="flex:1;" onclick="speakText(agentSpeech())">🔊 唸給我聽</button></div></div>`;
-  const ev=(a.log||[]).filter(e=>e.type!=='baseline').slice(-6).reverse();
-  if(ev.length)h+=`<div class="card"><div class="ct">📬 代理人最近發現</div>${ev.map(e=>{ const d=String(e.ts||'').slice(5,10);
-    if(e.type==='worse')return `<div style="font-size:.84rem;line-height:1.7;">📉 ${d} <b>${esc(e.label)}</b> ${e.from}→${e.to} ${esc(e.unit||'')}（變差）</div>`;
-    if(e.type==='better')return `<div style="font-size:.84rem;line-height:1.7;">📈 ${d} ${esc(e.label)} ${e.from}→${e.to}（進步）</div>`;
-    if(e.type==='new')return `<div style="font-size:.84rem;line-height:1.7;">🧬 ${d} 新發現：${esc(e.name)}</div>`;
-    if(e.type==='up')return `<div style="font-size:.84rem;line-height:1.7;">⬆️ ${d} 升級：${esc(e.name)}</div>`;
-    if(e.type==='clear')return `<div style="font-size:.84rem;line-height:1.7;">✅ ${d} 已不再符合：${esc(e.name)}</div>`;
-    if(e.type==='sched')return `<div style="font-size:.84rem;line-height:1.7;">⏰ ${d} 自動排定：${esc((e.titles||[]).join('、'))}</div>`; return ''; }).join('')}</div>`;
-  const Q=agentQuestions(list);
-  if(Q.length)h+=`<div class="card"><div class="ct">❓ 代理人想問你</div><div class="hint" style="margin-bottom:6px;">你的回答會讓辨識更準（只存在你的裝置）。</div>${Q.map(q=>`<div style="display:flex;gap:6px;align-items:center;margin:6px 0;"><div style="flex:1;font-size:.88rem;">${esc(q.text)}</div><button class="btn bp" style="padding:4px 12px;" onclick="agentAnswerSym('${q.k}',true)">有</button><button class="btn bg" style="padding:4px 12px;" onclick="agentAnswerSym('${q.k}',false)">沒有</button></div>`).join('')}</div>`;
+  const a=agentState(), list=computeConditions(), lvl=agentLevel(), rf=activeRedFlags(); let h='';
+  if(rf.length)h+=`<div class="card" style="background:#fef2f2;border:2px solid #ef4444;"><div style="font-weight:800;color:#b91c1c;">🚨 緊急症狀：${rf.map(r=>esc(r.label)).join('、')}</div><div style="font-size:.88rem;margin:6px 0;line-height:1.6;">可能是急症，請<b>不要等待</b>，立即撥 119 或到急診。</div><button class="btn" style="background:#dc2626;color:#fff;font-weight:800;" onclick="openEmergency()">🆘 緊急求助</button></div>`;
+  const top=agentTop3(list);
+  h+=`<div class="card" style="border-left:4px solid var(--pri);"><div class="ct">✅ 現在先做這 ${top.length||0} 件事</div>`+
+    (top.length?top.map((t,i)=>`<div style="display:flex;gap:6px;align-items:center;margin:7px 0;font-size:.9rem;line-height:1.5;"><div style="flex:1;"><b>${i+1}.</b> ${esc(t.txt)}</div>${t.i!=null?`<button class="btn bg" style="padding:3px 9px;font-size:.74rem;" onclick="agentAddReminder('${t.id}',${t.i})">⏰ 提醒</button>`:''}</div>`).join(''):'<div style="font-size:.88rem;color:var(--ok);font-weight:700;">🎉 目前沒有需要特別處理的事，繼續保持！</div><div class="hint">匯入更多檢驗、用藥或健保資料，辨識會更完整。</div>')+
+    `<div class="hint" style="margin-top:6px;">已整合：檢驗・用藥・病史・影像・手術・篩檢・症狀・穿戴／生活型態・走路復健・依從性・趨勢（${a.lastRun?'剛巡檢完':'尚未巡檢'}）</div></div>`;
+  const Q=agentQuestions(list).slice(0,2);
+  if(Q.length)h+=`<div class="card"><div class="ct">❓ 想問你一下</div>${Q.map(q=>`<div style="display:flex;gap:6px;align-items:center;margin:6px 0;"><div style="flex:1;font-size:.88rem;">${esc(q.text)}</div><button class="btn bp" style="padding:4px 12px;" onclick="agentAnswerSym('${q.k}',true)">有</button><button class="btn bg" style="padding:4px 12px;" onclick="agentAnswerSym('${q.k}',false)">沒有</button></div>`).join('')}</div>`;
   const cand=list.filter(x=>x.status!=='confirmed'&&x.status!=='risk'), conf=list.filter(x=>x.status==='confirmed'), risk=list.filter(x=>x.status==='risk');
-  h+=`<div class="card"><div class="ct">🧬 可能的健康狀況 <span class="hint">${cand.length} 項待確認</span></div><div class="hint" style="line-height:1.65;">依檢驗、用藥、診斷、影像與症狀，對照公開診療指引門檻。<b>「資料支持度」是證據多寡，不是患病機率。</b></div></div>`;
-  if(!list.length)h+='<div class="card empty"><div class="em">🧬</div><div style="font-size:.88rem;">目前資料沒有符合任何規則的訊號。匯入健保健康存摺或檢驗報告後，代理人會自動辨識。</div><button class="btn bp" style="margin-top:8px;" onclick="go(\'connect\')">🔗 匯入資料</button></div>';
-  h+=cand.map((x,i)=>condCardHtml(x,i===0||x.status==='urgent')).join('');
-  if(conf.length)h+=`<div class="hint" style="margin:10px 4px 6px;font-weight:700;">已診斷／治療中的狀況：控制得如何</div>`+conf.map(x=>condCardHtml(x,false)).join('');
-  if(risk.length)h+=`<div class="hint" style="margin:10px 4px 6px;font-weight:700;">風險因子</div>`+risk.map(x=>condCardHtml(x,false)).join('');
-  h+=`<div class="card"><div class="ct">🗣️ 我現在的症狀 <span class="hint">勾選後會納入辨識（30 天有效）</span></div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;">${SYM_DEFS.map(s=>`<button class="btn ${symActive(s.k)?'bp':'bg'}" style="font-size:.78rem;padding:5px 10px;" onclick="symToggle('${s.k}')">${esc(s.label)}</button>`).join('')}</div>
-    <div style="font-weight:700;font-size:.82rem;color:#b91c1c;margin:12px 0 6px;">🚨 緊急症狀（出現請直接就醫）</div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;">${RED_FLAGS.map(s=>`<button class="btn ${symActive(s.k)?'bp':'bg'}" style="font-size:.78rem;padding:5px 10px;${symActive(s.k)?'background:#dc2626;':''}" onclick="symToggle('${s.k}')">${esc(s.label)}</button>`).join('')}</div></div>`;
-  const q=state.phq2||{}; const opt=['完全沒有','好幾天','超過一半天數','幾乎每天'];
-  h+=`<div class="card"><div class="ct">💙 情緒小篩檢 PHQ-2 <span class="hint">近兩週</span></div>${[['a','做事提不起勁或沒有樂趣'],['b','感到心情低落、沮喪或絕望']].map(([k,t])=>`<div style="margin:6px 0;"><div style="font-size:.86rem;margin-bottom:4px;">${t}</div><div style="display:flex;gap:4px;flex-wrap:wrap;">${opt.map((o,i)=>`<button class="btn ${q[k]===i?'bp':'bg'}" style="font-size:.74rem;padding:4px 8px;" onclick="phq2Set('${k}',${i})">${o}</button>`).join('')}</div></div>`).join('')}<div class="hint">得分 ≥3 代表值得與專業人員聊聊；24 小時安心專線 1925。</div></div>`;
-  h+=`<div class="card"><div class="ct">🤖 AI 白話解讀與最佳做法 <span class="hint">選填・需金鑰</span></div><div id="agentAI">${a.aiText?`<div style="white-space:pre-wrap;font-size:.86rem;line-height:1.75;">${esc(a.aiText)}</div><div class="hint" style="margin-top:6px;">產生於 ${esc(String(a.aiTs||'').slice(0,16).replace('T',' '))}</div>`:'<div class="hint">AI 會根據上面的辨識結果與你的完整健康資料，整理優先順序、做法與要問醫師的問題。</div>'}</div>
-    <div class="row-btn" style="margin-top:8px;gap:6px;"><button class="btn bp" style="flex:1;" onclick="agentAI()">🤖 ${a.aiText?'重新':''}請 AI 解讀</button><button class="btn bg" style="flex:1;" onclick="showDoctorSheet()">📄 就醫準備單</button></div></div>`;
-  h+='<div class="hint" style="padding:6px 8px;line-height:1.7;">⚠️ 本頁為依公開診療指引門檻整理的<b>衛教參考，不是醫療診斷</b>，不能取代醫師。有急症症狀請撥 119。</div>';
+  if(cand.length){ h+=`<div class="hint" style="margin:8px 4px 6px;font-weight:700;">🧬 可能的狀況（${cand.length}）</div>`+cand.slice(0,3).map((x,i)=>condCardHtml(x,i===0)).join('');
+    if(cand.length>3)h+=`<details class="card" style="padding:10px 14px;"><summary style="cursor:pointer;font-weight:700;font-size:.88rem;">還有 ${cand.length-3} 項 ›</summary><div style="margin-top:8px;">${cand.slice(3).map(x=>condCardHtml(x,false)).join('')}</div></details>`; }
+  else if(!top.length&&!list.length)h+='<div class="card empty"><div class="em">🧬</div><div style="font-size:.88rem;">還沒有足夠資料可辨識。</div><button class="btn bp" style="margin-top:8px;" onclick="go(\'connect\')">🔗 匯入資料</button></div>';
+  if(conf.length||risk.length)h+=`<details class="card" style="padding:10px 14px;"><summary style="cursor:pointer;font-weight:700;font-size:.88rem;">已診斷控制狀況・風險因子（${conf.length+risk.length}）›</summary><div style="margin-top:8px;">${conf.concat(risk).map(x=>condCardHtml(x,false)).join('')}</div></details>`;
+  const q=state.phq2||{}, opt=['沒有','好幾天','過半天數','幾乎每天'];
+  h+=`<details class="card" style="padding:10px 14px;"><summary style="cursor:pointer;font-weight:700;font-size:.88rem;">🗣️ 回報我的症狀・情緒小篩檢 ›</summary><div style="margin-top:8px;">
+    <div style="display:flex;flex-wrap:wrap;gap:6px;">${SYM_DEFS.map(s=>`<button class="btn ${symActive(s.k)?'bp':'bg'}" style="font-size:.76rem;padding:4px 9px;" onclick="symToggle('${s.k}')">${esc(s.label)}</button>`).join('')}</div>
+    <div style="font-weight:700;font-size:.8rem;color:#b91c1c;margin:10px 0 6px;">🚨 緊急症狀（出現請直接就醫）</div><div style="display:flex;flex-wrap:wrap;gap:6px;">${RED_FLAGS.map(s=>`<button class="btn ${symActive(s.k)?'bp':'bg'}" style="font-size:.76rem;padding:4px 9px;${symActive(s.k)?'background:#dc2626;':''}" onclick="symToggle('${s.k}')">${esc(s.label)}</button>`).join('')}</div>
+    <div style="font-weight:700;font-size:.8rem;margin:10px 0 4px;">💙 近兩週 PHQ-2</div>${[['a','做事提不起勁或沒有樂趣'],['b','心情低落、沮喪或絕望']].map(([k,t])=>`<div style="margin:4px 0;"><div style="font-size:.84rem;">${t}</div><div style="display:flex;gap:4px;flex-wrap:wrap;">${opt.map((o,i)=>`<button class="btn ${q[k]===i?'bp':'bg'}" style="font-size:.72rem;padding:3px 7px;" onclick="phq2Set('${k}',${i})">${o}</button>`).join('')}</div></div>`).join('')}<div class="hint">不是診斷；得分 ≥3 建議與專業人員聊聊，24 小時安心專線 1925。</div></div></details>`;
+  const ev=(a.log||[]).filter(e=>e.type!=='baseline').slice(-8).reverse();
+  h+=`<details class="card" style="padding:10px 14px;"><summary style="cursor:pointer;font-weight:700;font-size:.88rem;">🤖 代理人設定與紀錄 ›</summary><div style="margin-top:8px;">
+    <div class="row-btn" style="gap:6px;">${['👁️ 觀察','💡 建議','🤖 自動'].map((t,i)=>`<button class="btn ${lvl===i?'bp':'bg'}" style="flex:1;font-size:.78rem;" onclick="setAgentLevel(${i})">${t}</button>`).join('')}</div>
+    <div class="hint" style="margin:6px 0;">${['只更新此頁，不跳警告。','發現惡化／新狀況時警告＋通知。','警告＋自動排定確認檢查提醒（可撤銷），只在本機。'][lvl]}</div>
+    <div class="row-btn" style="gap:6px;"><button class="btn bg" style="flex:1;" onclick="agentRun('manual',true);renderAgent();toast('已完成巡檢')">🔄 立即巡檢</button><button class="btn bg" style="flex:1;" onclick="speakText(agentSpeech())">🔊 唸給我聽</button></div>
+    ${ev.map(e=>{ const d=String(e.ts||'').slice(5,10);
+      return e.type==='worse'?`<div style="font-size:.8rem;line-height:1.7;">📉 ${d} ${esc(e.label)} ${e.from}→${e.to}</div>`:e.type==='better'?`<div style="font-size:.8rem;line-height:1.7;">📈 ${d} ${esc(e.label)} ${e.from}→${e.to}</div>`:e.type==='new'||e.type==='up'?`<div style="font-size:.8rem;line-height:1.7;">🧬 ${d} ${esc(e.name)}</div>`:e.type==='clear'?`<div style="font-size:.8rem;line-height:1.7;">✅ ${d} 已不符合：${esc(e.name)}</div>`:e.type==='sched'?`<div style="font-size:.8rem;line-height:1.7;">⏰ ${d} 自動排定：${esc((e.titles||[]).join('、'))}</div>`:''; }).join('')}</div></details>`;
+  h+=`<div class="row-btn" style="gap:6px;margin:8px 0;"><button class="btn bp" style="flex:1;" onclick="agentAI()">🤖 ${a.aiText?'重新':''}AI 解讀</button><button class="btn bg" style="flex:1;" onclick="showDoctorSheet()">📄 就醫準備單</button></div>`;
+  if(a.aiText)h+=`<details class="card" open style="padding:10px 14px;"><summary style="cursor:pointer;font-weight:700;font-size:.88rem;">AI 白話解讀</summary><div id="agentAI" style="white-space:pre-wrap;font-size:.86rem;line-height:1.75;margin-top:6px;">${esc(a.aiText)}</div></details>`; else h+='<div id="agentAI"></div>';
+  h+='<div class="hint" style="padding:6px 8px;line-height:1.7;">⚠️ 依公開診療指引門檻整理的衛教參考，<b>不是診斷</b>。急症請撥 119。</div>';
   el.innerHTML=h; a.unseen=0;
 }
 function renderDashCondition(){
-  const el=document.getElementById('dashCondition'); if(!el)return; const list=computeConditions().filter(x=>x.status!=='risk'&&x.status!=='confirmed');
-  const a=agentState(), rf=activeRedFlags();
-  if(!list.length&&!(a.unseen>0)&&!rf.length){ el.innerHTML=''; return; }
-  const top=list.slice(0,3);
-  el.innerHTML=`<div class="card" style="border-left:4px solid ${top[0]?COND_STATUS[top[0].status].c:'var(--pri)'};cursor:pointer;" onclick="go('agent')">
+  const el=document.getElementById('dashCondition'); if(!el)return; const list=computeConditions(), top=agentTop3(list), a=agentState(), rf=activeRedFlags();
+  if(!top.length&&!(a.unseen>0)&&!rf.length){ el.innerHTML=''; return; }
+  const first=list.find(x=>x.status!=='risk');
+  el.innerHTML=`<div class="card" style="border-left:4px solid ${first?COND_STATUS[first.status].c:'var(--pri)'};cursor:pointer;" onclick="go('agent')">
     <div class="ct">🧬 健康代理人 ${a.unseen>0?`<span class="pill" style="background:#fee2e2;color:#b91c1c;">${a.unseen} 項新變化</span>`:''}</div>
-    ${rf.length?'<div style="color:#b91c1c;font-weight:800;font-size:.86rem;">🚨 緊急症狀已勾選，請立即就醫</div>':''}
-    ${top.map(x=>`<div style="font-size:.86rem;line-height:1.75;">${x.icon} <b>${esc(x.name)}</b> <span class="hint">${COND_STATUS[x.status].t}</span></div>`).join('')}
-    <div class="hint" style="margin-top:4px;">點此看依據、缺少的檢查與建議做法 ›</div></div>`;
+    ${rf.length?'<div style="color:#b91c1c;font-weight:800;font-size:.86rem;">🚨 已勾選緊急症狀，請立即就醫</div>':''}
+    ${top.map((t,i)=>`<div style="font-size:.86rem;line-height:1.7;">${i+1}. ${esc(t.txt)}</div>`).join('')}
+    <div class="hint" style="margin-top:4px;">點此看依據與做法 ›</div></div>`;
+}
+/* ---- 更多資料整合：用藥依從性、照護缺口、趨勢預測、生活型態／穿戴、體重變化、用藥安全、骨質、篩檢 ---- */
+function weightDrop(){ // 近 180 天體重變化（合併檢驗庫與評估紀錄點）
+  const pts=[]; (state.labs||[]).forEach(e=>{ if(e.values&&e.values.weight!=null)pts.push({t:new Date(e.date).getTime(),v:+e.values.weight}); });
+  (state.history||[]).forEach(h=>{ if(h.weight)pts.push({t:new Date(h.date).getTime(),v:+h.weight}); });
+  const lim=Date.now()-180*864e5, a=pts.filter(p=>p.t>=lim&&p.v>0).sort((x,y)=>x.t-y.t); if(a.length<2)return null;
+  const hi=Math.max.apply(null,a.slice(0,Math.ceil(a.length/2)).map(p=>p.v)), now=a[a.length-1].v; return hi>0?+((hi-now)/hi*100).toFixed(1):null;
+}
+function condEnrich(list,c){
+  const by={}; list.forEach(x=>{by[x.id]=x;}); const E=(s,t,w)=>({s,t,w}); const p=c.p;
+  const add=x=>{ list.push(x); by[x.id]=x; };
+  // 1 用藥依從性 → 已治療狀況的控制說明
+  try{ const map={dm:'dm',bp:'htn',statin:'lipid',uric:'gout'}; const keyOf=l=>/血壓/.test(l)?'bp':/血糖|胰島素/.test(l)?'dm':/血脂|statin/.test(l)?'statin':'uric';
+    medAdherence().forEach(a=>{ const x=by[map[keyOf(a.label)]]; if(!x)return;
+      x.ctrl=(x.ctrl?x.ctrl+'；':'')+'服藥涵蓋率 '+a.pdc+'%'+(a.pdc<80?'（未達 80%，先確認是否漏藥）':' 👍');
+      if(a.pdc<80&&x.status==='confirmed')x.ev.push(E('med','服藥涵蓋率僅 '+a.pdc+'%，控制不佳可能與漏藥有關',.2)); }); }catch(e){}
+  // 2 照護缺口 → 該驗未驗併入對應狀況的「還缺什麼」
+  try{ careLabGaps().forEach(g=>{ const x=by[METRIC_COND[g.metric]]; if(!x||(x.miss||[]).some(m=>m.metric===g.metric))return; x.miss=x.miss||[];
+      x.miss.push({label:g.label,metric:g.metric,why:(g.whys[0]||'')+(g.status==='never'?'（紀錄中從未檢驗）':'（距上次約 '+fmtAgo(g.ageDays)+'）')}); }); }catch(e){}
+  // 3 趨勢預測 → 惡化中的指標
+  try{ const tl=[]; buildTrajectories().forEach(v=>{ if(!v.worsening||v.r2<0.5||v.years==null||v.years>2)return; const x=by[METRIC_COND[v.metric]];
+      const t=LAB_META[v.metric].label+' 照目前速度'+fmtHorizon(v.years)+'會跨過下一個風險門檻';
+      if(x)x.ev.push(E('trend',t,.2)); else tl.push(t); });
+    if(tl.length)add({id:'trend',name:'預計 2 年內會惡化的指標（'+tl.length+' 項）',icon:'📈',status:'risk',ev:tl.map(t=>E('trend',t,.15)),miss:[],spec:'家醫科',next:'提早調整生活型態並安排複檢，趨勢往往比單次數值更早提示問題。'}); }catch(e){}
+  // 4 生活型態／穿戴裝置／體重變化
+  try{ const ex=p.exercise!=null&&p.exercise!==''?+p.exercise:null, sl=p.sleep!=null&&p.sleep!==''?+p.sleep:null, hr=p.hr?+p.hr:null, wd=weightDrop();
+    ['dm','htn','lipid','mets','cvd'].forEach(id=>{ if(by[id]&&ex!=null&&ex<150)by[id].ev.push(E('prof','每週運動僅 '+ex+' 分（<150）',.08)); });
+    ['htn','mood','osa','dm'].forEach(id=>{ if(by[id]&&sl!=null&&sl<6)by[id].ev.push(E('prof','睡眠僅 '+sl+' 小時',.08)); });
+    if(hr&&hr>100)['thyroid','anemia','cvd'].forEach(id=>{ if(by[id])by[id].ev.push(E('vital','靜止心率 '+hr+' bpm（>100）',.15)); });
+    if(wd!=null&&wd>=5){ const t='近半年體重下降 '+wd+'%（若非刻意減重需留意）'; let hit=false;
+      ['dm','thyroid'].forEach(id=>{ if(by[id]){by[id].ev.push(E('trend',t,.2));hit=true;} });
+      if(!hit)add({id:'wtloss',name:'體重不明原因下降？（近半年 '+wd+'%）',icon:'📉',status:wd>=7?'possible':'risk',ev:[E('trend',t,wd>=7?.35:.2)],miss:[],spec:'家醫科',next:'若不是刻意減重，6 個月內體重下降 ≥5% 建議回診評估（血糖、甲狀腺、腸胃、情緒、感染等都可能）。'}); }
+    if(p.fhHeart&&by.cvd)by.cvd.ev.push(E('prof','有心臟病家族史',.12)); }catch(e){}
+  // 5 用藥安全（交互作用、藥×檢驗）併成一項
+  try{ const ms=crossFindings().filter(f=>f.icon==='💊'&&f.lvl!=='info'); if(ms.length){ const cr=ms.some(f=>f.lvl==='crit');
+    add({id:'medsafety',name:'用藥安全需要檢視（'+ms.length+' 項）',icon:'💊',status:cr?'urgent':'possible',urgent:cr,ev:ms.slice(0,4).map(f=>E('med',f.title+'：'+(f.detail||'').slice(0,50),.3)),miss:[],spec:'開藥醫師／藥師',next:'帶完整用藥清單請醫師或藥師檢視，不要自行停藥或加藥。'}); } }catch(e){}
+  // 6 骨質疏鬆風險
+  try{ const ev=[]; const f=c.sex==='female'&&c.age>=50, m=c.sex==='male'&&c.age>=65; const w=c.p.weight?+c.p.weight:null;
+    if(f||m)ev.push(E('prof',(f?'停經後年齡層女性':'65 歲以上男性'),.15));
+    if(w&&c.age){ const o=Math.round((w-c.age)*0.2*10)/10; if(o<=-1&&(f||m))ev.push(E('prof','OSTA 指數 '+o+'（≤-1 屬骨鬆風險）',.3)); }
+    if(c.v('vitd')!=null&&c.v('vitd')<20)ev.push(E('lab','維生素 D '+c.v('vitd')+'（<20 不足）',.25));
+    if(recentMeds(400).some(x=>/prednisolone|prednisone|methylprednisolone|dexamethasone|可體松/i.test(x.name||'')))ev.push(E('med','近期有口服類固醇（長期使用傷骨）',.25));
+    if(c.p.smoke==='current')ev.push(E('prof','目前吸菸',.1));
+    if(ev.length>=2&&(f||m))add({id:'bone',name:'骨質疏鬆風險',icon:'🦴',status:'risk',ev,miss:[{label:'骨密度檢查（DXA）',metric:'',why:'可確認是否已有骨質流失'}],spec:'骨科／新陳代謝科',next:'補足鈣與維生素 D、負重運動與阻力訓練、戒菸；風險高者與醫師討論骨密度檢查。'}); }catch(e){}
+  // 7 該做的篩檢合併成一項
+  try{ const sc=careScreenings().filter(x=>x.flag!=='done'&&x.flag!=='alert'); if(sc.length)add({id:'prevent',name:'建議安排的篩檢（'+sc.length+' 項）',icon:'🗓️',status:'risk',ev:sc.slice(0,5).map(x=>E('prof',x.label+'：'+String(x.detail||'').replace(/<[^>]+>/g,''),.1)),miss:[],spec:'家醫科／國健署預防保健',next:'早期發現最有價值：依年齡性別安排免費或補助的篩檢。'}); }catch(e){}
+  // 8 代謝症候群是上面幾項的總結：已列出其組成疾病時降為風險因子，避免重複
+  if(by.mets&&['dm','htn','lipid'].filter(id=>by[id]).length>=2)by.mets.status='risk';
+}
+function agentTop3(list){
+  const out=[],seen=new Set(); const push=(txt,id,i)=>{ if(out.length>=3||seen.has(txt))return; seen.add(txt); out.push({txt,id,i}); };
+  list.filter(x=>x.status==='urgent').forEach(x=>push('🚨 儘快就醫：'+x.name.replace(/（.*?）/g,''),x.id));
+  list.filter(x=>x.status==='likely').forEach(x=>{ const m=(x.miss||[])[0]; push(m?'🧪 安排「'+m.label+'」→ 確認'+x.name.replace(/（.*?）/g,''):'🏥 回診確認：'+x.name.replace(/（.*?）/g,''),x.id,m?0:null); });
+  list.filter(x=>x.status==='possible').forEach(x=>{ const m=(x.miss||[])[0]; push(m?'🧪 '+m.label+'（'+x.name.replace(/（.*?）/g,'')+'）':'👀 持續追蹤：'+x.name.replace(/（.*?）/g,''),x.id,m?0:null); });
+  list.filter(x=>x.status==='confirmed').forEach(x=>{ const m=(x.miss||[])[0]; if(m)push('⏰ 定期追蹤：'+m.label,x.id,0); });
+  return out;
 }
 
 function init(){
