@@ -2616,8 +2616,13 @@ function copilotItems(){
       text:(overdue?`${overdue} 項提醒逾期`:'')+(overdue&&due.length>overdue?'，':'')+(due.length>overdue?`今天還有 ${due.length-overdue} 項提醒`:(overdue?'':`今天有 ${due.length} 項提醒`)),
       fn:"go('remind')",cta:'查看'});
   }catch(e){}
-  // 2) 最高優先的健康警示（沿用 buildHealthAlerts；取前 2 項可行項目）
-  try{ const A=(typeof buildHealthAlerts==='function')?buildHealthAlerts().filter(x=>x.lvl!=='info'):[];
+  // 2a) 🧬 健康代理人「現在先做這 3 件事」（已整合檢驗／用藥／病史／症狀／趨勢…）
+  try{ const cl=computeConditions(); const stLvl={urgent:'crit',likely:'warn'};
+    agentTop3(cl).forEach(t=>{ const x=cl.find(y=>y.id===t.id); items.push({lvl:(x&&stLvl[x.status])||'info',icon:'🧬',text:t.txt.replace(/^[^\s]+\s/,''),fn:"go('agent')",cta:'看依據'}); });
+    const rf=activeRedFlags(); if(rf.length)items.push({lvl:'crit',icon:'🚨',text:'你勾選了緊急症狀：'+rf.map(r=>r.label).join('、')+'，請立即就醫（119）',fn:'openEmergency()',cta:'求助'});
+  }catch(e){}
+  // 2b) 其他最高優先的健康警示（沿用 buildHealthAlerts；代理人已涵蓋的 🧬 不重複）
+  try{ const A=(typeof buildHealthAlerts==='function')?buildHealthAlerts().filter(x=>x.lvl!=='info'&&x.icon!=='🧬'):[];
     A.slice(0,2).forEach(x=>items.push({lvl:x.lvl,icon:x.icon,text:String(x.title||'').replace(/\s+/g,' '),fn:'showHealthAlert(true)',cta:'處理'}));
   }catch(e){}
   // 3) 一個趨勢提醒
@@ -2637,7 +2642,7 @@ function copilotItems(){
     else if(due.length)items.push({lvl:'info',icon:'🎗️',text:'建議篩檢 '+due.length+' 項：'+due.slice(0,2).map(x=>x.label.replace(/（.*?）/g,'')).join('、')+(due.length>2?'…':''),fn:"go('advisor')",cta:'看時程'});
   } }catch(e){}
   items.sort((a,b)=>rank[a.lvl]-rank[b.lvl]);
-  return items.slice(0,5);
+  return items.slice(0,6);
 }
 function renderCopilot(){
   const el=document.getElementById('dashCopilot'); if(!el)return;
@@ -2658,9 +2663,11 @@ function renderCopilot(){
     : `<div class="cop-ok">✅ 今天沒有待辦與警訊，維持得很好，繼續保持！</div>`;
   el.innerHTML=`<div class="card copilot-card">
     <div class="cop-hdr"><span class="cop-hi">${hi}，今天的健康重點</span>
+      <button class="tip-btn" onclick="event.stopPropagation();speakDailyBrief()" title="唸出今天的重點">🔊 播放</button>
       <span class="tier-pill" role="button" tabindex="0" title="查看${tier.label}項目" style="background:${tier.bg};color:${tier.color};cursor:pointer;" onclick="event.stopPropagation();showHealthAlert(true);">${tier.emoji} ${tier.label} ›</span></div>
     ${changeNote}
     <div class="cop-list">${list}</div>
+    <details style="margin-top:6px;"><summary class="hint" style="cursor:pointer;">🗒️ 語音稿（與播放同一份）</summary><div class="brief-body">${dailyBriefParts().map(p=>`<div class="brief-line">${esc(p)}</div>`).join('')}</div></details>
   </div>`;
 }
 /* ===== 每日健康任務圈 ＋ 進步回顧（整合現有 habits／history／goals，形成每日回訪循環）===== */
@@ -2813,6 +2820,7 @@ function dailyBriefParts(){
   const tier=(typeof alertTier==='function')?alertTier():null;
   const parts=[hi+'，這是你今天的健康重點。'];
   if(tier)parts.push('目前分級：'+String(tier.label).replace(/\s*·\s*/,"，")+'。');
+  try{ const u=agentState().unseen||0; if(u>0)parts.push('健康代理人偵測到 '+u+' 項新變化。'); }catch(e){}
   try{ (copilotItems()||[]).slice(0,3).forEach(x=>parts.push(String(x.text).replace(/\s+/g,'')+'。')); }catch(e){}
   const tip=dailyTip(); if(tip)parts.push('今日小提醒：'+tip.t);
   try{ if(typeof pickEduTopic==='function'){ const e=pickEduTopic(); if(e){
@@ -2821,7 +2829,7 @@ function dailyBriefParts(){
   } } }catch(err){}
   return parts;
 }
-function speakDailyBrief(){ speakText(dailyBriefParts().join('')); try{renderDashBrief();}catch(e){} }
+function speakDailyBrief(){ speakText(dailyBriefParts().join('')); }
 // 今日語音摘要（文字版）——與語音同一份內容，讓使用者可邊看邊聽
 /* ===== 閉環：偵測到該追蹤的事項 → 自動建立提醒（每天最多一次、可一鍵撤銷）===== */
 function autoReminderCandidates(){
@@ -2925,6 +2933,7 @@ function renderDashBrief(){
   const el=document.getElementById('dashBrief'); if(!el)return;
   const hasData=(state.labs&&state.labs.length)||state.result||(state.reminders&&state.reminders.length)||(state.meds&&state.meds.length);
   if(!hasData){ el.innerHTML=''; return; }
+  el.innerHTML=''; return;
   const parts=dailyBriefParts();
   const lines=parts.map(p=>`<div class="brief-line">${esc(p)}</div>`).join('');
   el.innerHTML=`<div class="card brief-card">
@@ -7121,7 +7130,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.11.21-agent5';
+const APP_VERSION='2026.11.21-agent6';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -7567,7 +7576,7 @@ function agentRun(reason,force){
     ag.unseen=(ag.unseen||0)+bad.length;
     save();
     if(lvl>=1&&bad.length&&!first){ agentNotify(evs,reason); }
-    try{ if(document.getElementById('sec-agent')&&document.getElementById('sec-agent').classList.contains('active'))renderAgent(); renderDashCondition(); renderDashAutoRem(); }catch(e){}
+    try{ if(document.getElementById('sec-agent')&&document.getElementById('sec-agent').classList.contains('active'))renderAgent(); renderDashCondition(); renderCopilot(); renderDashAutoRem(); }catch(e){}
     return evs;
   }catch(err){ return null; }
   finally{ _agentBusy=false; }
@@ -7696,7 +7705,7 @@ function renderAgent(){
   el.innerHTML=h; a.unseen=0;
 }
 function renderDashCondition(){
-  const el=document.getElementById('dashCondition'); if(!el)return; const list=computeConditions(), top=agentTop3(list), a=agentState(), rf=activeRedFlags();
+  const el=document.getElementById('dashCondition'); if(!el)return; el.innerHTML=''; return; const list=computeConditions(), top=agentTop3(list), a=agentState(), rf=activeRedFlags();
   if(!top.length&&!(a.unseen>0)&&!rf.length){ el.innerHTML=''; return; }
   const first=list.find(x=>x.status!=='risk');
   el.innerHTML=`<div class="card" style="border-left:4px solid ${first?COND_STATUS[first.status].c:'var(--pri)'};cursor:pointer;" onclick="go('agent')">
