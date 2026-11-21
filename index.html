@@ -5540,6 +5540,12 @@ function saveLabEditor(id){
   const values={};
   LAB_ORDER.forEach(k=>{const el=document.getElementById('labIn_'+k);const n=toNum(el&&el.value);if(n!==null)values[k]=n;});
   if(!Object.keys(values).length){toast('請至少填入一個數值');return;}
+  /* 手動輸入防呆：Hb 落在 3.5–9.9、又沒填其他血球數據、也沒填 HbA1c → 多半是把糖化血色素(%)填進血紅素(g/dL)，詢問後改記為 HbA1c */
+  if(values.hb!=null&&values.hba1c==null&&values.hb>=3.5&&values.hb<10&&!['hct','rbc','mcv','mch','mchc','rdw','wbc','plt'].some(k=>values[k]!=null)){
+    if(confirm('你填的「血紅素 Hb」是 '+values.hb+'。\n\n如果這是「糖化血色素 HbA1c（%）」，按〔確定〕改記為 HbA1c；\n如果真的是血紅素 Hb（g/dL，等於嚴重貧血），按〔取消〕維持原樣。')){
+      values.hba1c=values.hb; delete values.hb;
+    }
+  }
   state.labs=state.labs||[];
   if(id){
     const e=state.labs.find(x=>x.id===id);
