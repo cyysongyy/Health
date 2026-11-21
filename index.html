@@ -7121,7 +7121,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.11.21-agent4';
+const APP_VERSION='2026.11.21-agent5';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -7783,6 +7783,19 @@ function agentMerge(d){
   _condCache=null; try{ agentRun('sync',true); }catch(e){}
 }
 
+/* Hb／HbA1c 誤判防護：匯入或 AI 辨識時，若單獨出現 3.5–9.9 的「hb」且同筆沒有血球數據（Hct／RBC／MCV…），
+   幾乎都是糖化血色素 HbA1c（%）被當成血紅素（g/dL）→ 改記為 hba1c。手動輸入不動。 */
+function labFixHb(values,source){
+  if(!values||values.hb==null||values.hba1c!=null||source==='manual')return false;
+  const h=+values.hb; if(!(h>=3.5&&h<10))return false;
+  if(['hct','rbc','mcv','mch','mchc','rdw','wbc','plt'].some(k=>values[k]!=null))return false;
+  values.hba1c=h; delete values.hb; return true;
+}
+function labFixHbAll(){
+  let n=0; (state.labs||[]).forEach(e=>{ if(e&&e.values&&labFixHb(e.values,e.source)){ e.fix='hb→hba1c'; n++; } });
+  return n;
+}
+
 function init(){
   fillProfile(state.profile);
   document.getElementById('set-gemini').value=state.settings.gemini||'';
@@ -7822,6 +7835,7 @@ function init(){
   else if(maybeOnboarding()){ /* 已同意、尚未看過導覽（含既有使用者）：先跑導覽 */ }
   else setTimeout(maybeDailyAlert,600);
   try{ autoScheduleReminders(); renderDashAutoRem(); }catch(e){}
+  try{ if(localStorage.getItem('ls_fix_hb_v1')!=='1'){ localStorage.setItem('ls_fix_hb_v1','1'); const n=labFixHbAll(); if(n){ save(); setTimeout(()=>toast('已修正 '+n+' 筆被誤判為血紅素的糖化血色素 HbA1c'),1200); } } }catch(e){}
   try{ setTimeout(()=>agentRun('start',false),1500); setInterval(()=>agentRun('tick',false),30*60*1000); document.addEventListener('visibilitychange',()=>{ if(!document.hidden)agentSoon('resume'); }); renderDashCondition(); }catch(e){}
   setTimeout(checkDueNotifications,1200);
   setInterval(checkDueNotifications,60000);
@@ -8493,7 +8507,7 @@ function buildExtractPrompt(){
 JSON 格式：{"fields":{ 欄位代碼: 數值 }, "notes":[ 補充或不在下列清單的其他項目與數值 ]}
 可用欄位代碼（請用「代碼」當 key；數值只放數字、去單位並換算成括號內的單位）：
 ${list}
-規則：只放實際看到的數值，找不到的直接省略、不要猜測或填 0；同一項目多筆取最新或有標參考值那筆；清單以外的檢驗項目請整理進 notes（項目名＋數值），不要硬塞進 fields；notes 用繁體中文。`;
+重要：「糖化血色素／HbA1c／A1c（單位 %，約 4–14）」一律用 hba1c，絕不可放進 hb；hb 只限「血紅素 Hemoglobin（單位 g/dL，成人約 11–17）」。規則：只放實際看到的數值，找不到的直接省略、不要猜測或填 0；同一項目多筆取最新或有標參考值那筆；清單以外的檢驗項目請整理進 notes（項目名＋數值），不要硬塞進 fields；notes 用繁體中文。`;
 }
 async function visionExtract(images){
   const s=state.settings;
@@ -8939,6 +8953,7 @@ function ingestLabRecords(records,source){
   records.forEach(r=>{
     const values={};Object.keys(r.values||{}).forEach(k=>{if(LAB_META[k]){const n=toNum(r.values[k]);if(n!==null)values[k]=n;}});
     const extra=Array.isArray(r.extra)?r.extra.filter(x=>x&&x.name&&x.val!=null).map(x=>({name:String(x.name).trim().slice(0,24),val:x.val})):[];
+    if(labFixHb(values,source))toast('已把「Hb」判為糖化血色素 HbA1c（無完整血球數據、數值 <10%）');
     if(!Object.keys(values).length)return;   // 沒有標準檢驗值就不建檔；未歸類不單獨成筆，避免出現「0 項」紀錄
     const s=(r.date||'').slice(0,10)+'|'+JSON.stringify(values)+'|'+JSON.stringify(extra.map(x=>x.name+':'+x.val));
     if(seen.has(s))return; seen.add(s);
