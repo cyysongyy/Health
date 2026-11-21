@@ -2686,7 +2686,7 @@ function renderCopilot(){
     ? items.map(x=>`<button class="cop-item ${x.lvl}" onclick="${x.fn}"><span class="cop-ic">${x.icon}</span><span class="cop-tx">${esc(x.text)}</span><span class="cop-cta">${x.cta} ›</span></button>`).join('')
     : `<div class="cop-ok">✅ 今天沒有待辦與警訊，維持得很好，繼續保持！</div>`;
   el.innerHTML=`<div class="card copilot-card">
-    <div class="cop-hdr"><span class="cop-hi">${hi}，今天的健康重點</span>
+    <div class="cop-hdr"><span class="cop-hi">${hi.split(' ')[1]}</span>
       <button class="tip-btn" onclick="event.stopPropagation();speakDailyBrief()" title="唸出今天的重點">🔊 播放</button>
       <span class="tier-pill" role="button" tabindex="0" title="查看${tier.label}項目" style="background:${tier.bg};color:${tier.color};cursor:pointer;" onclick="event.stopPropagation();showHealthAlert(true);">${tier.emoji} ${tier.label} ›</span></div>
     ${changeNote}
