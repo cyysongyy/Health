@@ -7120,7 +7120,7 @@ function renderMedScore(){
     chk('labileINR','服用 warfarin 且 INR 不穩定')+`</div>`);
   el.innerHTML=cards.join('')+`<div class="foot" style="text-align:left;padding:0 4px;">📚 依據：Goff DC 2013 ACC/AHA、Lindström & Tuomilehto 2003 FINDRISC、Inker 2021 CKD-EPI、Sterling 2006 FIB-4、Bedogni 2006 FLI、NCEP ATP III、Simental-Mendía 2008 TyG、Lloyd-Jones 2022 AHA Life’s Essential 8、Lip 2010 CHA₂DS₂-VASc、Pisters 2010 HAS-BLED、Koh 2001 OSTA、Angulo 2007 NAFLD Fibrosis Score、Wai 2003 APRI、Woolcott & Bergman 2018 RFM、Nathan 2008 ADAG（eAG）、Payne 1973 校正鈣。此頁為衛教參考、非醫療診斷；請以醫師判讀為準。</div>`;
 }
-const APP_VERSION='2026.11.21-agent2';
+const APP_VERSION='2026.11.21-agent3';
 // 最簡易的雲端備份：叫出手機原生「分享」面板，讓使用者直接「儲存到雲端硬碟」（免任何設定、免 OAuth）；
 // 不支援分享（多為桌機）時自動退回下載檔案。本機資料照常保留，單機＋雲端共存。
 async function shareOrDownloadBackup(){
@@ -7761,6 +7761,22 @@ function agentTop3(list){
   return out;
 }
 
+/* ---- 雲端同步：症狀、PHQ-2、代理人狀態（換手機不遺失、不重複警告）---- */
+function agentCloud(){ const a=agentState(); return {snap:a.snap||{},msnap:a.msnap||{},lastRun:a.lastRun||0,asked:a.asked||{},log:(a.log||[]).slice(-30),aiText:a.aiText||'',aiTs:a.aiTs||''}; }
+function agentMerge(d){
+  const byKey=(arr,keyf)=>{ const m={}; arr.forEach(x=>{ if(x)m[keyf(x)]=x; }); return Object.values(m); };
+  ['dx','screen'].forEach(k=>{ if(Array.isArray(d[k]))state[k]=byKey([...(state[k]||[]),...d[k]],x=>x.id||JSON.stringify(x)).sort((a,b)=>new Date(a.date||0)-new Date(b.date||0)); });
+  if(Array.isArray(d.symptoms))state.symptoms=byKey([...(state.symptoms||[]),...d.symptoms],x=>x.k+'|'+x.ts);
+  const ts=q=>q&&q.ts?new Date(q.ts).getTime():0; if(d.phq2&&ts(d.phq2)>ts(state.phq2))state.phq2=d.phq2;
+  if(d.agentLevel!=null&&state.settings&&state.settings.agentLevel==null)state.settings.agentLevel=d.agentLevel;
+  if(d.agent&&typeof d.agent==='object'){ const a=agentState(), c=d.agent;
+    if((c.lastRun||0)>(a.lastRun||0)){ a.snap=c.snap||a.snap; a.msnap=c.msnap||a.msnap; a.lastRun=c.lastRun; }
+    Object.keys(c.asked||{}).forEach(k=>{ a.asked[k]=Math.max(a.asked[k]||0,c.asked[k]); });
+    a.log=byKey([...(a.log||[]),...(c.log||[])],x=>x.ts+'|'+x.type+'|'+(x.metric||x.id||'')).sort((x,y)=>String(x.ts).localeCompare(String(y.ts))).slice(-80);
+    if(c.aiTs&&String(c.aiTs)>String(a.aiTs||'')){a.aiText=c.aiText;a.aiTs=c.aiTs;} }
+  _condCache=null; try{ agentRun('sync',true); }catch(e){}
+}
+
 function init(){
   fillProfile(state.profile);
   document.getElementById('set-gemini').value=state.settings.gemini||'';
@@ -8082,6 +8098,7 @@ function fbSyncNow(){
   if(!fbUser||!fbDb)return Promise.reject(new Error('未登入'));
   return fbDoc().set(fbClean({
     profile:state.profile||null, history:state.history||[], labs:state.labs||[], meds:state.meds||[], surgeries:state.surgeries||[], reports:state.reports||[], habits:state.habits||{}, customHabits:state.customHabits||[],
+    dx:state.dx||[], screen:state.screen||[], symptoms:state.symptoms||[], phq2:state.phq2||null, agentLevel:agentLevel(), agent:agentCloud(),
     updatedAt:new Date().toISOString()
   }),{merge:true});
 }
@@ -8117,6 +8134,7 @@ async function fbPull(){
       const rm={};[...(state.reports||[]),...d.reports].forEach(x=>{if(x&&x.id)rm[x.id]=x;});
       state.reports=Object.values(rm).sort((a,b)=>new Date(a.date||0)-new Date(b.date||0));
     }
+    agentMerge(d);
     if(d.profile)state.profile=d.profile;
     if(d.habits)state.habits=Object.assign({},state.habits,d.habits);
     if(Array.isArray(d.customHabits)){const cm={};[...(state.customHabits||[]),...d.customHabits].forEach(x=>{if(x&&x.id)cm[x.id]=x;});state.customHabits=Object.values(cm);}
